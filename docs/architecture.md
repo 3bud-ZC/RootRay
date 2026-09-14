@@ -64,3 +64,24 @@ so adapters only identify the framework.
 
 Append a `LauncherSpec` (id, display name, PATH names, known install
 locations) to `LAUNCHERS` in `launcher/mod.rs`.
+
+## Inspector (Milestone 02)
+
+```
+Vite dev transform (babel) ── stamps data-rootray-{file,line,column,component}
+        │                       on intrinsic JSX elements; source untouched
+        ▼
+rendered DOM ──▶ browser inspector-runtime (Shadow-DOM overlay,
+        │        capture-phase suppression, Escape, bounded reconnect)
+        ▼
+ws://127.0.0.1:<dynamic>/rootray  + per-session token + versioned protocol
+        ▼
+Rust inspector bridge ── validates version/token/shape/path-safety
+        ▼
+AppCore ──▶ rootray://inspector-state + selection ──▶ InspectorPanel
+        ▼
+read_source_preview / open_source_location  (re-validated vs project root)
+```
+
+Browser messages are data only. Every privileged action is an explicit
+command initiated by the desktop UI, never by the page.

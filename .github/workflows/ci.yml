@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm exec biome check .
+
+      - name: Typecheck
+        run: pnpm -r --if-present typecheck
+
+      - name: Build packages (runtime + plugin bundles used by E2E)
+        run: pnpm -r --if-present build
+
+      - name: TypeScript unit tests
+        run: pnpm -r --if-present --filter=!@rootray/e2e test
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @rootray/e2e exec playwright install chromium
+
+      - name: Inspector E2E (Playwright)
+        run: pnpm --filter @rootray/e2e test
+
+      - name: Rust tests
+        run: cargo test -p rootray-core
+
+      - name: Rust checks
+        run: cargo check -p rootray-core && cargo check -p rootray-desktop
+
+      - name: Frontend production build
+        run: pnpm --filter @rootray/desktop build
