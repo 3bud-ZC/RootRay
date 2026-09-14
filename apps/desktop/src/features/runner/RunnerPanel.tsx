@@ -24,7 +24,7 @@ export function RunnerPanel() {
     dispatch({ type: "notice", message: null });
     try {
       if (which === "stop") await stopDevServer();
-      else await restartDevServer();
+      else await restartDevServer(true);
     } catch (e) {
       dispatch({ type: "notice", message: errorMessage(e) });
     } finally {

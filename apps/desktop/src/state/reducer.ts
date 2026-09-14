@@ -1,9 +1,10 @@
-import type { LogLine, ProcessEventPayload, RuntimeState } from "@rootray/shared";
+import type { InspectorState, LogLine, ProcessEventPayload, RuntimeState } from "@rootray/shared";
 
 export const LOG_CAP = 500;
 
 export interface UiState {
   runtime: RuntimeState;
+  inspector: InspectorState;
   /** Live-appended log tail (mirrors backend recentLogs, streams realtime). */
   logs: LogLine[];
   settingsOpen: boolean;
@@ -23,8 +24,20 @@ export const emptyRuntime: RuntimeState = {
   recentLogs: [],
 };
 
+export const emptyInspector: InspectorState = {
+  phase: "inactive",
+  sessionId: null,
+  port: null,
+  pageUrl: null,
+  connectedAt: null,
+  inspectionEnabled: false,
+  lastSelection: null,
+  error: null,
+};
+
 export const initialUiState: UiState = {
   runtime: emptyRuntime,
+  inspector: emptyInspector,
   logs: [],
   settingsOpen: false,
   notice: null,
@@ -32,6 +45,7 @@ export const initialUiState: UiState = {
 
 export type UiAction =
   | { type: "runtime"; state: RuntimeState }
+  | { type: "inspector"; state: InspectorState }
   | { type: "process-event"; event: ProcessEventPayload }
   | { type: "toggle-settings"; open?: boolean }
   | { type: "notice"; message: string | null };
@@ -43,6 +57,8 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
       const logs = action.state.phase === "starting" ? [] : state.logs;
       return { ...state, runtime: action.state, logs };
     }
+    case "inspector":
+      return { ...state, inspector: action.state };
     case "process-event": {
       const e = action.event;
       if (e.kind === "stdout" || e.kind === "stderr") {

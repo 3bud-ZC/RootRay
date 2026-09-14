@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use rootray_core::app::SettingsUpdate;
+use rootray_core::filesystem::preview::SourcePreview;
+use rootray_core::inspector::InspectorState;
 use rootray_core::launcher::DetectedLauncher;
 use rootray_core::process::{EventSink, ProcessEvent};
 use rootray_core::project::ProjectAnalysis;
@@ -19,6 +21,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 const EVENT_PROCESS: &str = "rootray://process-event";
 const EVENT_STATE: &str = "rootray://state";
+const EVENT_INSPECTOR: &str = "rootray://inspector-state";
 
 type CmdResult<T> = Result<T, CommandError>;
 
@@ -42,9 +45,10 @@ fn analyze_project(path: String, core: State<'_, Arc<AppCore>>) -> CmdResult<Pro
 #[tauri::command]
 fn start_dev_server(
     app: AppHandle,
+    inspector: bool,
     core: State<'_, Arc<AppCore>>,
 ) -> CmdResult<u32> {
-    core.start_dev_server(ui_sink(&app)).map_err(Into::into)
+    core.start_dev_server(ui_sink(&app), inspector).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -55,9 +59,10 @@ fn stop_dev_server(core: State<'_, Arc<AppCore>>) -> CmdResult<()> {
 #[tauri::command]
 fn restart_dev_server(
     app: AppHandle,
+    inspector: bool,
     core: State<'_, Arc<AppCore>>,
 ) -> CmdResult<u32> {
-    core.restart_dev_server(ui_sink(&app)).map_err(Into::into)
+    core.restart_dev_server(ui_sink(&app), inspector).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -90,6 +95,44 @@ fn open_in_editor(
 }
 
 #[tauri::command]
+fn open_source_location(
+    launcher_id: String,
+    relative_path: String,
+    line: u32,
+    column: u32,
+    core: State<'_, Arc<AppCore>>,
+) -> CmdResult<()> {
+    core.open_source_location(&launcher_id, &relative_path, line, column)
+        .map_err(Into::into)
+}
+
+// --- inspector --------------------------------------------------------------
+
+#[tauri::command]
+fn get_inspector_state(core: State<'_, Arc<AppCore>>) -> InspectorState {
+    core.inspector_state()
+}
+
+#[tauri::command]
+fn set_inspection(enabled: bool, core: State<'_, Arc<AppCore>>) -> CmdResult<()> {
+    core.set_inspection(enabled).map_err(Into::into)
+}
+
+#[tauri::command]
+fn clear_inspector_selection(core: State<'_, Arc<AppCore>>) -> CmdResult<()> {
+    core.clear_inspector_selection().map_err(Into::into)
+}
+
+#[tauri::command]
+fn read_source_preview(
+    relative_path: String,
+    line: u32,
+    core: State<'_, Arc<AppCore>>,
+) -> CmdResult<SourcePreview> {
+    core.read_source_preview(&relative_path, line).map_err(Into::into)
+}
+
+#[tauri::command]
 fn get_settings(core: State<'_, Arc<AppCore>>) -> CmdResult<Settings> {
     core.settings().map_err(Into::into)
 }
@@ -113,7 +156,14 @@ pub fn run() {
                 .app_config_dir()
                 .unwrap_or_else(|_| PathBuf::from("."));
             let core = Arc::new(AppCore::new(&dir));
-            app.manage(core);
+            app.manage(core.clone());
+
+            // Inspector state changes are pushed as full snapshots.
+            let handle = app.handle().clone();
+            let core_for_notify = core.clone();
+            core.set_inspector_notify(Arc::new(move || {
+                let _ = handle.emit(EVENT_INSPECTOR, core_for_notify.inspector_state());
+            }));
 
             // If the window closes, make sure no dev server is orphaned.
             Ok(())
@@ -127,6 +177,11 @@ pub fn run() {
             open_browser,
             detect_editors,
             open_in_editor,
+            open_source_location,
+            get_inspector_state,
+            set_inspection,
+            clear_inspector_selection,
+            read_source_preview,
             get_settings,
             update_settings,
         ])

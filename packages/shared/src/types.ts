@@ -94,6 +94,12 @@ export type CoreErrorCode =
   | "LAUNCHER_NOT_FOUND"
   | "ILLEGAL_STATE_TRANSITION"
   | "SETTINGS_IO"
+  | "INSPECTOR_BRIDGE_START_FAILED"
+  | "INSPECTOR_UNAVAILABLE"
+  | "INSPECTOR_NOT_ACTIVE"
+  | "INSPECTOR_SOURCE_NOT_FOUND"
+  | "SOURCE_PREVIEW_FAILED"
+  | "EDITOR_OPEN_FAILED"
   | "INTERNAL";
 
 /** Payload of the `rootray://process-event` Tauri event. */
@@ -104,3 +110,59 @@ export type ProcessEventPayload =
   | { kind: "url-timeout" }
   | { kind: "exited"; code: number | null; clean: boolean }
   | { kind: "start-failed"; message: string };
+
+// --- inspector ------------------------------------------------------------------
+
+export type InspectorPhase =
+  | "inactive"
+  | "starting"
+  | "waiting_for_browser"
+  | "connected"
+  | "inspecting"
+  | "disconnected"
+  | "failed";
+
+export interface SourceLocation {
+  relativePath: string;
+  line: number;
+  column: number;
+  componentName?: string;
+}
+
+export interface ElementFacts {
+  tagName: string;
+  id?: string;
+  className?: string;
+  textPreview?: string;
+}
+
+export interface ElementSelection {
+  element: ElementFacts;
+  source: SourceLocation;
+}
+
+/** Snapshot pushed on `rootray://inspector-state`. */
+export interface InspectorState {
+  phase: InspectorPhase;
+  sessionId: string | null;
+  port: number | null;
+  pageUrl: string | null;
+  connectedAt: number | null;
+  inspectionEnabled: boolean;
+  lastSelection: ElementSelection | null;
+  error: CoreErrorPayload | null;
+}
+
+export interface SourcePreviewLine {
+  n: number;
+  text: string;
+}
+
+/** Result of the `read_source_preview` command. */
+export interface SourcePreview {
+  relativePath: string;
+  selectedLine: number;
+  startLine: number;
+  endLine: number;
+  lines: SourcePreviewLine[];
+}

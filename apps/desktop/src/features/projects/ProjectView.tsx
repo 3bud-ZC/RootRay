@@ -8,6 +8,7 @@ import {
   startDevServer,
 } from "../../lib/ipc";
 import { useStore } from "../../state/store";
+import { InspectorPanel } from "../inspector/InspectorPanel";
 import { LogPanel } from "../runner/LogPanel";
 import { RunnerPanel } from "../runner/RunnerPanel";
 
@@ -23,7 +24,7 @@ export function ProjectView() {
   const run = async () => {
     dispatch({ type: "notice", message: null });
     try {
-      await startDevServer();
+      await startDevServer(true);
     } catch (e) {
       dispatch({ type: "notice", message: errorMessage(e) });
     }
@@ -150,6 +151,10 @@ export function ProjectView() {
       </section>
 
       {(isLive || runtime.phase === "stopped" || runtime.phase === "failed") && <RunnerPanel />}
+
+      {isLive &&
+        project.capabilities.inspectorCompatible &&
+        state.inspector.phase !== "inactive" && <InspectorPanel />}
 
       {(state.logs.length > 0 || isLive) && <LogPanel logs={state.logs} />}
     </div>

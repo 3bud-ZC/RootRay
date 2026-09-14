@@ -1,7 +1,7 @@
-import type { ProcessEventPayload, RuntimeState } from "@rootray/shared";
+import type { InspectorState, ProcessEventPayload, RuntimeState } from "@rootray/shared";
 import { listen } from "@tauri-apps/api/event";
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useReducer } from "react";
-import { getRuntimeState, getSettings, openBrowser } from "../lib/ipc";
+import { getInspectorState, getRuntimeState, getSettings, openBrowser } from "../lib/ipc";
 import { initialUiState, type UiAction, type UiState, uiReducer } from "./reducer";
 
 const StoreContext = createContext<{
@@ -17,9 +17,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getRuntimeState()
       .then((s) => dispatch({ type: "runtime", state: s }))
       .catch(() => {});
+    getInspectorState()
+      .then((s) => dispatch({ type: "inspector", state: s }))
+      .catch(() => {});
 
     const unlistenState = listen<RuntimeState>("rootray://state", (e) =>
       dispatch({ type: "runtime", state: e.payload }),
+    );
+    const unlistenInspector = listen<InspectorState>("rootray://inspector-state", (e) =>
+      dispatch({ type: "inspector", state: e.payload }),
     );
     const unlistenEvents = listen<ProcessEventPayload>("rootray://process-event", (e) => {
       const payload = e.payload;
@@ -37,6 +43,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     return () => {
       unlistenState.then((f) => f());
+      unlistenInspector.then((f) => f());
       unlistenEvents.then((f) => f());
     };
   }, []);
