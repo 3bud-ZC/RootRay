@@ -124,6 +124,11 @@ pub fn detect_launchers() -> Vec<DetectedLauncher> {
         .collect()
 }
 
+/// Resolves an executable name against PATH (PATHEXT-aware on Windows).
+pub fn find_executable_on_path(name: &str) -> Option<PathBuf> {
+    which_in(&path_dirs(), name, &pathext())
+}
+
 /// Finds one launcher by id among detected ones.
 pub fn find_launcher(id: &str) -> Option<DetectedLauncher> {
     detect_launchers()
@@ -131,9 +136,36 @@ pub fn find_launcher(id: &str) -> Option<DetectedLauncher> {
         .find(|l| l.id == id && l.available)
 }
 
+/// Argument vector that opens `path` at `line:column`.
+///
+/// All currently supported launchers are VS Code family — they share the
+/// `--goto file:line:col` convention. Pure function, trivially testable.
+pub fn location_args(path: &Path, line: u32, column: u32) -> Vec<String> {
+    vec![
+        "--goto".to_string(),
+        format!("{}:{}:{}", path.display(), line, column),
+    ]
+}
+
 /// Opens `path` in the given launcher. `path` must already be validated
 /// against the project root by the caller.
 pub fn open_path_in_launcher(launcher: &DetectedLauncher, path: &Path) -> CoreResult<()> {
+    open_in_launcher(launcher, &[path.to_string_lossy().to_string()])
+}
+
+/// Opens `path` at an exact `line:column` in the given launcher.
+/// `path` must already be validated against the project root.
+pub fn open_location_in_launcher(
+    launcher: &DetectedLauncher,
+    path: &Path,
+    line: u32,
+    column: u32,
+) -> CoreResult<()> {
+    let args = location_args(path, line, column);
+    open_in_launcher(launcher, &args)
+}
+
+fn open_in_launcher(launcher: &DetectedLauncher, args: &[String]) -> CoreResult<()> {
     let exe = launcher
         .executable_path
         .as_ref()
@@ -150,7 +182,7 @@ pub fn open_path_in_launcher(launcher: &DetectedLauncher, path: &Path) -> CoreRe
         Command::new(exe)
     };
     command
-        .arg(path)
+        .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

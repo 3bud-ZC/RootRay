@@ -13,6 +13,7 @@ fn sleeper(args: &[&str]) -> DevCommand {
         args: args.iter().map(|s| s.to_string()).collect(),
         display: format!("test-sleeper {}", args.join(" ")),
         cwd: std::env::temp_dir(),
+        env: Vec::new(),
     }
 }
 

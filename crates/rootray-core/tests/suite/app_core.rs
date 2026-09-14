@@ -49,7 +49,7 @@ fn analyze_bad_project_sets_failed() {
 #[test]
 fn start_requires_project() {
     let (core, _tmp) = core();
-    let err = core.start_dev_server(noop_sink()).unwrap_err();
+    let err = core.start_dev_server(noop_sink(), false).unwrap_err();
     assert!(matches!(err, CoreError::NoProjectSelected));
 }
 
@@ -57,7 +57,7 @@ fn start_requires_project() {
 fn start_rejects_unsupported_project() {
     let (core, _tmp) = core();
     core.analyze(&fixtures().join("unsupported-project")).unwrap();
-    let err = core.start_dev_server(noop_sink()).unwrap_err();
+    let err = core.start_dev_server(noop_sink(), false).unwrap_err();
     assert_eq!(err.code(), "UNSUPPORTED_FRAMEWORK");
     assert_eq!(core.state().phase, RuntimePhase::Ready); // not left dangling
 }

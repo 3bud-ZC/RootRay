@@ -55,7 +55,7 @@ fn golden_path_real_vite_server() {
 
     // 2. start — real `npm.cmd run dev` → real Vite
     let (seen, sink) = recorder();
-    let pid = core.start_dev_server(sink).unwrap();
+    let pid = core.start_dev_server(sink, false).unwrap();
     assert_eq!(core.state().phase, RuntimePhase::Running);
     assert_eq!(core.state().pid, Some(pid));
 
@@ -85,7 +85,7 @@ fn golden_path_real_vite_server() {
 
     // 6. restart works and gets a fresh URL
     let (seen2, sink2) = recorder();
-    core.restart_dev_server(sink2).unwrap();
+    core.restart_dev_server(sink2, false).unwrap();
     assert_eq!(core.state().phase, RuntimePhase::Running);
     assert!(wait_for(
         &seen2,

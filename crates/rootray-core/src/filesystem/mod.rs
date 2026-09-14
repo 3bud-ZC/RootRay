@@ -5,6 +5,8 @@
 //! `..`, `.` and symlinks — so traversal and symlink-escape attempts fail
 //! closed.
 
+pub mod preview;
+
 use std::path::{Path, PathBuf};
 
 use crate::error::{CoreError, CoreResult};

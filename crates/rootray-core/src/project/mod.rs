@@ -25,6 +25,10 @@ pub struct DevCommand {
     pub display: String,
     /// Working directory — always the canonicalized project root.
     pub cwd: PathBuf,
+    /// Extra environment for the child. Never serialized — it may carry
+    /// the ephemeral inspector session token.
+    #[serde(skip)]
+    pub env: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -118,7 +122,7 @@ pub fn analyze_project(root: &Path) -> CoreResult<ProjectAnalysis> {
         let args = package_manager.run_args("dev");
         let exe = package_manager.executable().to_string();
         let display = format!("{} {}", exe.trim_end_matches(".cmd"), args.join(" "));
-        Some(DevCommand { executable: exe, args, display, cwd: root.clone() })
+        Some(DevCommand { executable: exe, args, display, cwd: root.clone(), env: Vec::new() })
     } else {
         None
     };

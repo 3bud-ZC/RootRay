@@ -6,6 +6,10 @@ mod app_core;
 mod filesystem;
 #[path = "suite/golden_path.rs"]
 mod golden_path;
+#[path = "suite/inspector_bridge.rs"]
+mod inspector_bridge;
+#[path = "suite/inspector_launch.rs"]
+mod inspector_launch;
 #[path = "suite/process_lifecycle.rs"]
 mod process_lifecycle;
 #[path = "suite/project_analysis.rs"]

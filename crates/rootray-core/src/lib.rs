@@ -9,6 +9,7 @@
 pub mod app;
 pub mod error;
 pub mod filesystem;
+pub mod inspector;
 pub mod launcher;
 pub mod process;
 pub mod project;

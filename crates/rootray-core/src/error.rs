@@ -48,6 +48,24 @@ pub enum CoreError {
     #[error("launcher is not available: {0}")]
     LauncherNotFound(String),
 
+    #[error("inspector bridge failed to start: {0}")]
+    InspectorBridgeStartFailed(String),
+
+    #[error("inspector is unavailable: {0}")]
+    InspectorUnavailable(String),
+
+    #[error("no inspector session is active")]
+    InspectorNotActive,
+
+    #[error("inspector source not found: {0}")]
+    InspectorSourceNotFound(String),
+
+    #[error("source preview failed: {0}")]
+    SourcePreviewFailed(String),
+
+    #[error("failed to open editor: {0}")]
+    EditorOpenFailed(String),
+
     #[error("illegal runtime state transition: {from} -> {to}")]
     IllegalTransition { from: String, to: String },
 
@@ -76,6 +94,12 @@ impl CoreError {
             Self::LocalUrlNotDetected => "LOCAL_URL_NOT_DETECTED",
             Self::ProjectOutsideAllowedRoot(_) => "PROJECT_OUTSIDE_ALLOWED_ROOT",
             Self::LauncherNotFound(_) => "LAUNCHER_NOT_FOUND",
+            Self::InspectorBridgeStartFailed(_) => "INSPECTOR_BRIDGE_START_FAILED",
+            Self::InspectorUnavailable(_) => "INSPECTOR_UNAVAILABLE",
+            Self::InspectorNotActive => "INSPECTOR_NOT_ACTIVE",
+            Self::InspectorSourceNotFound(_) => "INSPECTOR_SOURCE_NOT_FOUND",
+            Self::SourcePreviewFailed(_) => "SOURCE_PREVIEW_FAILED",
+            Self::EditorOpenFailed(_) => "EDITOR_OPEN_FAILED",
             Self::IllegalTransition { .. } => "ILLEGAL_STATE_TRANSITION",
             Self::SettingsIo(_) => "SETTINGS_IO",
             Self::Internal(_) => "INTERNAL",

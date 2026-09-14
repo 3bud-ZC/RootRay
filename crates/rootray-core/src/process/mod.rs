@@ -252,6 +252,7 @@ fn build_command(cmd: &DevCommand) -> Command {
 
 fn configure(mut c: Command, cmd: &DevCommand) -> Command {
     c.args(&cmd.args)
+        .envs(cmd.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .current_dir(&cmd.cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

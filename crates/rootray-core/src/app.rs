@@ -9,9 +9,10 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use crate::error::{CommandError, CoreError, CoreResult};
+use crate::inspector::{InspectorManager, InspectorState};
 use crate::launcher::{self, DetectedLauncher};
 use crate::process::{EventSink, ProcessEvent, ProcessManager};
-use crate::project::{analyze_project, ProjectAnalysis};
+use crate::project::{analyze_project, DevCommand, ProjectAnalysis};
 use crate::settings::{Settings, SettingsStore};
 use crate::state::{LogStream, RuntimePhase, RuntimeState};
 
@@ -19,6 +20,7 @@ pub struct AppCore {
     state: Arc<Mutex<RuntimeState>>,
     processes: Arc<ProcessManager>,
     settings: SettingsStore,
+    inspector: InspectorManager,
     /// Monotonic run id — guards against events from a previous process
     /// generation landing on a newer run.
     generation: Arc<Mutex<u64>>,
@@ -30,6 +32,7 @@ impl AppCore {
             state: Arc::new(Mutex::new(RuntimeState::default())),
             processes: Arc::new(ProcessManager::new()),
             settings: SettingsStore::new(settings_dir),
+            inspector: InspectorManager::new(),
             generation: Arc::new(Mutex::new(0)),
         }
     }
@@ -101,25 +104,40 @@ impl AppCore {
 
     /// Starts the analyzed project's dev server. `hook` additionally
     /// receives every event (used by the Tauri layer to emit to the UI).
-    pub fn start_dev_server(&self, hook: EventSink) -> CoreResult<u32> {
-        let (cmd, gen) = {
+    ///
+    /// When `inspector_enabled` and the project is inspector-compatible,
+    /// RootRay starts an authenticated bridge session and launches Vite
+    /// through the inspector runner; on any incompatibility it falls back
+    /// to the plain dev command and reports `INSPECTOR_UNAVAILABLE`.
+    pub fn start_dev_server(&self, hook: EventSink, inspector_enabled: bool) -> CoreResult<u32> {
+        let (mut cmd, gen, analysis) = {
             let mut s = self.lock_state()?;
-            let project = s
+            let analysis = s
                 .project
-                .as_ref()
+                .clone()
                 .ok_or(CoreError::NoProjectSelected)?;
-            let cmd = project
+            let cmd = analysis
                 .dev_command
                 .clone()
-                .ok_or_else(|| Self::not_runnable_error(project))?;
+                .ok_or_else(|| Self::not_runnable_error(&analysis))?;
             if self.processes.is_running() {
                 return Err(CoreError::ProcessAlreadyRunning);
             }
             s.transition(RuntimePhase::Starting)?;
             let mut g = self.generation.lock().map_err(|_| CoreError::Internal("generation lock".into()))?;
             *g += 1;
-            (cmd, *g)
+            (cmd, *g, analysis)
         };
+
+        if inspector_enabled && analysis.capabilities.inspector_compatible {
+            match self.inspector_launch_command(&analysis) {
+                Ok(Some(icmd)) => cmd = icmd,
+                Ok(None) => {}
+                Err(reason) => self.push_stderr_log(&format!(
+                    "[rootray] inspector unavailable: {reason} — running without instrumentation"
+                )),
+            }
+        }
 
         let sink = self.make_sink(hook, gen);
         match self.processes.start(&cmd, sink) {
@@ -132,6 +150,7 @@ impl AppCore {
                 Ok(pid)
             }
             Err(e) => {
+                self.inspector.on_process_exit();
                 let mut s = self.lock_state()?;
                 s.set_error(CommandError::from(match &e {
                     CoreError::ProcessStartFailed(m) => {
@@ -142,6 +161,36 @@ impl AppCore {
                 let _ = s.transition(RuntimePhase::Failed);
                 Err(e)
             }
+        }
+    }
+
+    /// Builds the inspector-enabled dev command. `Ok(None)` keeps the
+    /// plain command silently (non-compatible projects); `Err(reason)`
+    /// reports why the inspector could not be used.
+    fn inspector_launch_command(
+        &self,
+        analysis: &ProjectAnalysis,
+    ) -> Result<Option<DevCommand>, String> {
+        let assets = crate::inspector::resolve_assets()
+            .ok_or_else(|| "inspector assets not found (run pnpm build)".to_string())?;
+        let info = self
+            .inspector
+            .start_session()
+            .map_err(|e| format!("bridge failed: {e}"))?;
+        match crate::inspector::launch::inspector_dev_command(analysis, &info, &assets) {
+            Some(cmd) => Ok(Some(cmd)),
+            None => {
+                self.inspector
+                    .fail("unsupported dev script for automatic instrumentation");
+                Err("unsupported dev script — inspector expects a plain \"vite\" invocation"
+                    .to_string())
+            }
+        }
+    }
+
+    fn push_stderr_log(&self, line: &str) {
+        if let Ok(mut s) = self.lock_state() {
+            s.push_log(LogStream::Stderr, line.to_string());
         }
     }
 
@@ -158,6 +207,7 @@ impl AppCore {
         }
         match self.processes.stop() {
             Ok(()) => {
+                self.inspector.on_process_exit();
                 let mut s = self.lock_state()?;
                 if s.phase == RuntimePhase::Stopping {
                     s.transition(RuntimePhase::Stopped)?;
@@ -175,13 +225,13 @@ impl AppCore {
 
     /// Restarts the dev server — works from `running`, `stopped` and
     /// `failed` states.
-    pub fn restart_dev_server(&self, hook: EventSink) -> CoreResult<u32> {
+    pub fn restart_dev_server(&self, hook: EventSink, inspector_enabled: bool) -> CoreResult<u32> {
         // stop() leaves phase = Stopped; start() handles the rest. From
         // Failed the process handle may be dead already — start anyway.
         if self.processes.is_running() {
             self.stop_dev_server()?;
         }
-        self.start_dev_server(hook)
+        self.start_dev_server(hook, inspector_enabled)
     }
 
     fn not_runnable_error(project: &ProjectAnalysis) -> CoreError {
@@ -199,6 +249,7 @@ impl AppCore {
     fn make_sink(&self, hook: EventSink, gen: u64) -> EventSink {
         let state = self.state.clone();
         let generation = self.generation.clone();
+        let inspector = self.inspector.clone();
         Arc::new(move |event: ProcessEvent| {
             {
                 let current_gen = generation.lock().map(|g| *g).unwrap_or(0);
@@ -228,6 +279,7 @@ impl AppCore {
                             );
                         }
                         ProcessEvent::Exited { code, clean } => {
+                            inspector.on_process_exit();
                             s.push_log(
                                 LogStream::Stderr,
                                 format!("[rootray] process exited (code {code:?})"),
@@ -296,6 +348,64 @@ impl AppCore {
         let launcher = launcher::find_launcher(launcher_id)
             .ok_or_else(|| CoreError::LauncherNotFound(launcher_id.to_string()))?;
         launcher::open_path_in_launcher(&launcher, &safe)
+    }
+
+    /// Opens a project file at an exact `line:column` in the editor.
+    /// The path is validated inside the project root before launch.
+    pub fn open_source_location(
+        &self,
+        launcher_id: &str,
+        relative_path: &str,
+        line: u32,
+        column: u32,
+    ) -> CoreResult<()> {
+        let root = self.project_root()?;
+        if !crate::inspector::protocol::is_safe_relative_path(relative_path) {
+            return Err(CoreError::ProjectOutsideAllowedRoot(relative_path.to_string()));
+        }
+        let safe = crate::filesystem::ensure_within_root(&root, &root.join(relative_path))?;
+        let launcher = launcher::find_launcher(launcher_id)
+            .ok_or_else(|| CoreError::LauncherNotFound(launcher_id.to_string()))?;
+        launcher::open_location_in_launcher(&launcher, &safe, line, column)
+            .map_err(|e| CoreError::EditorOpenFailed(e.to_string()))
+    }
+
+    // --- inspector -----------------------------------------------------------
+
+    /// Registers the host callback fired on every inspector state change.
+    pub fn set_inspector_notify(&self, notify: Arc<dyn Fn() + Send + Sync>) {
+        self.inspector.set_notify(notify);
+    }
+
+    pub fn inspector_state(&self) -> InspectorState {
+        self.inspector.state()
+    }
+
+    pub fn set_inspection(&self, enabled: bool) -> CoreResult<()> {
+        self.inspector.set_inspection(enabled)
+    }
+
+    pub fn clear_inspector_selection(&self) -> CoreResult<()> {
+        self.inspector.clear_selection()
+    }
+
+    /// Read-only preview around a source line. Desktop-initiated only —
+    /// browser events never reach this path.
+    pub fn read_source_preview(
+        &self,
+        relative_path: &str,
+        line: u32,
+    ) -> CoreResult<crate::filesystem::preview::SourcePreview> {
+        let root = self.project_root()?;
+        crate::filesystem::preview::read_source_preview(&root, relative_path, line)
+    }
+
+    fn project_root(&self) -> CoreResult<std::path::PathBuf> {
+        let s = self.lock_state()?;
+        s.project
+            .as_ref()
+            .map(|p| p.root.clone())
+            .ok_or(CoreError::NoProjectSelected)
     }
 
     // --- browser -----------------------------------------------------------
