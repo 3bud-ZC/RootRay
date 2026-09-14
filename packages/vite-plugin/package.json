@@ -1,0 +1,27 @@
+{
+  "name": "@rootray/vite-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only Vite plugin that stamps JSX source identity onto DOM nodes and injects the RootRay inspector runtime.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.28.4",
+    "@rootray/source-protocol": "workspace:*",
+    "magic-string": "^0.30.19"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.4",
+    "esbuild": "0.25.9",
+    "typescript": "5.9.2",
+    "vite": "^7.1.0",
+    "vitest": "3.2.4"
+  }
+}

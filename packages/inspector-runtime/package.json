@@ -1,0 +1,24 @@
+{
+  "name": "@rootray/inspector-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser-side RootRay inspector runtime: connects to the local bridge, drives hover/select inspection.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rootray/source-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.9",
+    "happy-dom": "19.0.2",
+    "typescript": "5.9.2",
+    "vitest": "3.2.4"
+  }
+}
