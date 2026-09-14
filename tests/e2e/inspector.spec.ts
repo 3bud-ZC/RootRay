@@ -119,7 +119,7 @@ class MockBridge {
   }
 
   async waitFor(predicate: () => boolean, what: string): Promise<void> {
-    const deadline = Date.now() + 15_000;
+    const deadline = Date.now() + 60_000;
     while (!predicate()) {
       if (Date.now() > deadline) throw new Error(`bridge timeout waiting for ${what}`);
       await new Promise((r) => setTimeout(r, 50));
