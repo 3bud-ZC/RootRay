@@ -29,6 +29,10 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import { type WebSocket, WebSocketServer } from "ws";
 
+// beforeAll performs a cold `npm install` in a temp fixture copy — on CI
+// that can take minutes, well beyond Playwright's default 60s budget.
+test.setTimeout(300_000);
+
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "..", "..", "..");
 const FIXTURE = join(REPO_ROOT, "fixtures", "vite-react-inspector");
 const RUNNER = join(REPO_ROOT, "packages", "vite-plugin", "dist", "runner.cjs");
