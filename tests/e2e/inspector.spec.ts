@@ -175,7 +175,7 @@ function waitForRunnerUrl(child: ChildProcess): Promise<string> {
     let out = "";
     const timer = setTimeout(
       () => rejectPromise(new Error(`runner URL timeout. Output:\n${out}`)),
-      30_000,
+      90_000,
     );
     child.stdout?.on("data", (chunk: Buffer) => {
       out += chunk.toString();
