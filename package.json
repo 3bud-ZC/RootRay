@@ -1,0 +1,29 @@
+{
+  "name": "rootray",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RootRay — point at the UI, reach the source.",
+  "scripts": {
+    "dev": "pnpm --filter @rootray/desktop dev",
+    "dev:tauri": "pnpm --filter @rootray/desktop tauri dev",
+    "build": "pnpm -r --if-present build",
+    "build:tauri": "pnpm --filter @rootray/desktop tauri build",
+    "test": "pnpm -r --if-present test",
+    "test:rust": "cargo test -p rootray-core",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "check:rust": "cargo check -p rootray-core && cargo check -p rootray-desktop"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.2.4",
+    "typescript": "5.9.2"
+  },
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}

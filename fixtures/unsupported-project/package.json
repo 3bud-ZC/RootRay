@@ -1,0 +1,13 @@
+{
+  "name": "fixture-unsupported-project",
+  "private": true,
+  "version": "0.0.0",
+  "description": "A valid Node project that is intentionally not a Vite app.",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}

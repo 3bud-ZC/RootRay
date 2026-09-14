@@ -1,0 +1,18 @@
+[package]
+name = "rootray-core"
+version = "0.1.0"
+edition = "2021"
+description = "RootRay native core: project detection, dev-server lifecycle, launchers, settings."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+url = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "test-sleeper"
+path = "src/bin/test-sleeper.rs"

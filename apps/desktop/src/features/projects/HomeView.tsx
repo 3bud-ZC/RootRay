@@ -1,0 +1,79 @@
+import type { RootRaySettings } from "@rootray/shared";
+import { errorMessage } from "@rootray/shared";
+import { useEffect, useState } from "react";
+import { analyzeProject, getSettings, pickProjectDirectory } from "../../lib/ipc";
+import { useStore } from "../../state/store";
+
+export function HomeView() {
+  const { dispatch } = useStore();
+  const [settings, setSettings] = useState<RootRaySettings | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    getSettings()
+      .then(setSettings)
+      .catch(() => {});
+  }, []);
+
+  const openProject = async (path?: string) => {
+    const dir = path ?? (await pickProjectDirectory());
+    if (!dir) return;
+    setBusy(true);
+    dispatch({ type: "notice", message: null });
+    try {
+      await analyzeProject(dir);
+    } catch (e) {
+      dispatch({ type: "notice", message: errorMessage(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const recents = settings?.recentProjects ?? [];
+
+  return (
+    <div className="home">
+      <div className="home-hero">
+        <h1>Open a project</h1>
+        <p className="muted">
+          Select a local web project. RootRay inspects it, starts its dev server, and — soon — lets
+          you point at the rendered UI to reach the source.
+        </p>
+        <button
+          type="button"
+          className="btn btn-primary btn-lg"
+          disabled={busy}
+          onClick={() => openProject()}
+        >
+          {busy ? "Analyzing…" : "Open Project"}
+        </button>
+      </div>
+
+      <section className="recents">
+        <h2 className="section-title">Recent Projects</h2>
+        {recents.length === 0 ? (
+          <p className="muted empty-hint">
+            No recent projects yet. Open a React + Vite project to get started.
+          </p>
+        ) : (
+          <ul className="recent-list">
+            {recents.map((p) => (
+              <li key={p}>
+                <button
+                  type="button"
+                  className="recent-item"
+                  disabled={busy}
+                  onClick={() => openProject(p)}
+                  title={p}
+                >
+                  <span className="recent-name">{p.split(/[\\/]/).filter(Boolean).pop()}</span>
+                  <span className="recent-path">{p}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}

@@ -1,0 +1,97 @@
+import type { DetectedLauncher, RootRaySettings } from "@rootray/shared";
+import { errorMessage } from "@rootray/shared";
+import { useEffect, useState } from "react";
+import { detectEditors, getSettings, updateSettings } from "../../lib/ipc";
+import { useStore } from "../../state/store";
+
+export function SettingsPanel() {
+  const { dispatch } = useStore();
+  const [settings, setSettings] = useState<RootRaySettings | null>(null);
+  const [launchers, setLaunchers] = useState<DetectedLauncher[]>([]);
+
+  useEffect(() => {
+    getSettings()
+      .then(setSettings)
+      .catch(() => {});
+    detectEditors()
+      .then(setLaunchers)
+      .catch(() => {});
+  }, []);
+
+  const patch = async (p: Parameters<typeof updateSettings>[0], fallback: string) => {
+    try {
+      setSettings(await updateSettings(p));
+    } catch (e) {
+      dispatch({ type: "notice", message: `${fallback}: ${errorMessage(e)}` });
+    }
+  };
+
+  const close = () => dispatch({ type: "toggle-settings", open: false });
+
+  return (
+    <div className="settings-overlay" role="dialog" aria-label="Settings">
+      <div className="settings-panel">
+        <div className="settings-head">
+          <h2>Settings</h2>
+          <button type="button" className="icon-btn" onClick={close} aria-label="Close">
+            ×
+          </button>
+        </div>
+
+        <section className="settings-section">
+          <h3 className="section-title">Preferred code editor</h3>
+          <ul className="launcher-list">
+            {launchers.map((l) => (
+              <li key={l.id}>
+                <label className={`launcher ${l.available ? "" : "unavailable"}`}>
+                  <input
+                    type="radio"
+                    name="launcher"
+                    disabled={!l.available}
+                    checked={settings?.preferredLauncher === l.id}
+                    onChange={() =>
+                      patch({ preferredLauncher: l.id }, "Failed to save editor preference")
+                    }
+                  />
+                  <span className="launcher-name">{l.name}</span>
+                  <span className="launcher-state">
+                    {l.available ? l.executablePath : "not found"}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="settings-section">
+          <h3 className="section-title">Browser</h3>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={settings?.openBrowserAutomatically ?? false}
+              onChange={(e) =>
+                patch(
+                  { openBrowserAutomatically: e.target.checked },
+                  "Failed to save browser preference",
+                )
+              }
+            />
+            Open the app URL automatically when the dev server is ready
+          </label>
+        </section>
+
+        <section className="settings-section">
+          <h3 className="section-title">Recent projects</h3>
+          <p className="muted">{settings?.recentProjects.length ?? 0} saved</p>
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={() => patch({ clearRecentProjects: true }, "Failed to clear recents")}
+          >
+            Clear recent projects
+          </button>
+        </section>
+      </div>
+    </div>
+  );
+}
