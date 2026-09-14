@@ -8,4 +8,6 @@ fixtures/*/node_modules/
 Thumbs.db
 .tauri/
 **/src-tauri/gen/
+test-results/
+playwright-report/
 

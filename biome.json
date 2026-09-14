@@ -6,7 +6,13 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["apps/**/src/**", "packages/**/src/**", "tests/**"],
+    "includes": [
+      "apps/**/src/**",
+      "packages/**/src/**",
+      "tests/**",
+      "!tests/**/test-results",
+      "!tests/**/playwright-report"
+    ],
     "ignoreUnknown": true
   },
   "formatter": {
@@ -31,6 +37,18 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["**/*.test.ts", "tests/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    }
+  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "double",

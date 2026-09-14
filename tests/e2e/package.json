@@ -1,0 +1,17 @@
+{
+  "name": "@rootray/e2e",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.5.0",
+    "typescript": "~5.9.2",
+    "ws": "^8.18.0"
+  }
+}
