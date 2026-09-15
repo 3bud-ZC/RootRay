@@ -85,3 +85,31 @@ read_source_preview / open_source_location  (re-validated vs project root)
 
 Browser messages are data only. Every privileged action is an explicit
 command initiated by the desktop UI, never by the page.
+
+## Safe source editing (Milestone 03)
+
+```
+Quick Edit ─▶ editor::file::read_source_file
+              (relative path → canonicalized inside root; deny list for
+              secrets / generated dirs; ≤2 MiB; UTF-8; NUL-sniff; BOM/EOL)
+        ▼
+EditorManager session: baseHash + revert snapshot + notify watcher
+        ▼
+CodeMirror (lazy chunk): LF buffer, dirty tracking, Ctrl+S / Ctrl+F,
+        line diff vs last-known disk snapshot
+        ▼
+save_source_file(content, expectedHash)
+  → re-read disk → hash mismatch → SOURCE_EDIT_CONFLICT
+  → match → encode(BOM/EOL) → same-dir temp → fsync → rename (atomic)
+        ▼
+Vite filesystem watcher → HMR → instrumented re-render → re-inspect
+
+External write on the open file → notify → hash != baseHash →
+  rootray://editor-event → clean session auto-reloads;
+  dirty session → conflict UI (Reload / Compare / keep editing)
+```
+
+`peek_source_file` is a read-only fetch that never mutates the session —
+it powers the conflict "Compare" view. `revert_source_save` restores the
+bytes before RootRay's last write only while the disk still matches that
+write. The watcher covers exactly the open file — no project indexing.
