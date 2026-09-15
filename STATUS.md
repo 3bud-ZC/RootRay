@@ -10,8 +10,12 @@ Milestone 05 — Release Hardening, Windows Packaging & MVP Final Acceptance
 Complete
 
 ## Release Status
-MVP READY
+MVP READY — **published**
 
+- Published release: `v0.1.0` —
+  https://github.com/3bud-ZC/RootRay/releases/tag/v0.1.0
+- Tag: `v0.1.0` → `62d05f23b05c063aa6f1a93c4d2f1c8971c34302` (annotated,
+  immutable)
 - License: **MIT**
 - Copyright: `Copyright (c) 2026 Abdallah — ABUD FUN`
 
@@ -181,9 +185,10 @@ WebView2 remains environment-limited (no WebView2 test driver).
 
 - **Unsigned Windows binary** — SmartScreen/Smart App Control may warn
   (documented; signing deferred — no cert provided).
-- ~~No LICENSE selected yet~~ — **resolved: MIT** (see Release Status metadata below).
-- **No public `v0.1.0` tag, no GitHub Release yet** — publish is a human
-  decision; everything needed is verified and packaged.
+- ~~No LICENSE selected yet~~ — **resolved: MIT**, published with v0.1.0.
+- ~~No public `v0.1.0` tag~~ — **resolved: published** at
+  `github.com/3bud-ZC/RootRay/releases/tag/v0.1.0` with the verified
+  Actions installer + checksum manifest attached.
 - Playwright drives a protocol-faithful mock bridge plus a stubbed-IPC
   DOM pass; the Rust bridge itself is covered by the Rust suite.
 - Vite occasionally needs a manual page reload after a broken-then-fixed
