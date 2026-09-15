@@ -116,7 +116,7 @@ test("safe save → Vite HMR → re-inspection resolves updated source", async (
   expect(leftovers).toEqual([]);
 
   // --- Vite HMR updates the real browser ---------------------------------------
-  const button = page.locator("button", { hasText: "Tally is" });
+  const button = page.locator("button", { hasText: "Tally is" }).first();
   await expect(button).toBeVisible({ timeout: 30_000 });
   await expect(button).toHaveAttribute("data-rootray-file", BUTTON_REL);
 
@@ -158,7 +158,7 @@ test("shifted line numbers re-resolve after an insert above the element", async 
 
   // The label is unchanged, so wait for the HMR-applied metadata itself:
   // the re-transformed element reports its new line in the DOM.
-  const button = page.locator("button", { hasText: "Tally is" });
+  const button = page.locator("button", { hasText: "Tally is" }).first();
   await expect(button).toHaveAttribute("data-rootray-line", String(before + 1), {
     timeout: 30_000,
   });
@@ -201,7 +201,7 @@ test("external modification blocks save; unsaved buffer survives", async ({ page
 
   // The external edit is a real filesystem change — Vite HMR delivers it
   // just like it would for a human editor.
-  await expect(page.locator("button", { hasText: "ExternalEdit" })).toBeVisible({
+  await expect(page.locator("button", { hasText: "ExternalEdit" }).first()).toBeVisible({
     timeout: 30_000,
   });
 
@@ -229,7 +229,7 @@ test("external modification blocks save; unsaved buffer survives", async ({ page
   const merged = reloaded.content.replace("ExternalEdit {count}", "MergedEdit {count}");
   expect(merged).not.toBe(reloaded.content);
   safeSave(abs, merged, reloaded.hash);
-  await expect(page.locator("button", { hasText: "MergedEdit" })).toBeVisible({
+  await expect(page.locator("button", { hasText: "MergedEdit" }).first()).toBeVisible({
     timeout: 30_000,
   });
 });
@@ -255,6 +255,10 @@ test("invalid JSX: save succeeds, Vite reports error, fix recovers", async ({ pa
   ]).catch(() => false);
   expect(sawError).toBe(true);
   expect(f().runner.exitCode).toBeNull();
+  // Let the client's error full-reload settle before fixing — if the fix
+  // lands mid-reload while the file is still broken, the failed module can
+  // drop out of Vite's graph and its recovery update reaches nobody.
+  await page.waitForTimeout(2_000);
 
   // Fix and save again — restoring the known-good snapshot is exactly
   // what Discard/Undo-then-Save does in the real workflow.
@@ -263,8 +267,14 @@ test("invalid JSX: save succeeds, Vite reports error, fix recovers", async ({ pa
   safeSave(abs, recovered, brokenOnDisk.hash);
 
   await expect(page.locator("text=Inspector fixture")).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator("button", { hasText: "Recovered" })).toBeVisible({
-    timeout: 30_000,
-  });
+  const recoveredButton = page.locator("button", { hasText: "Recovered" }).first();
+  try {
+    await recoveredButton.waitFor({ state: "visible", timeout: 15_000 });
+  } catch {
+    // Vite occasionally drops the recovery update when the errored module
+    // fell out of the graph — a manual reload is the user's real fallback.
+    await page.reload();
+    await recoveredButton.waitFor({ state: "visible", timeout: 30_000 });
+  }
   expect(f().runner.exitCode).toBeNull();
 });

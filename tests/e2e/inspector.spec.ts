@@ -287,7 +287,7 @@ test("inspect → hover → overlay → click → real source selection", async 
   await bridge.waitFor(() => bridge.ready, "runtime:ready");
   bridge.sendInspectSet(true);
 
-  const button = page.locator("button", { hasText: "Count is" });
+  const button = page.locator("button", { hasText: "Count is" }).first();
   await expect(button).toBeVisible();
 
   // Instrumented element carries source metadata in the DOM.

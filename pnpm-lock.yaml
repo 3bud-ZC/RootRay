@@ -47,6 +47,9 @@ importers:
       '@lezer/highlight':
         specifier: ^1.2.3
         version: 1.2.3
+      '@rootray/intelligence':
+        specifier: workspace:*
+        version: link:../../packages/intelligence
       '@rootray/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -97,6 +100,19 @@ importers:
       happy-dom:
         specifier: 19.0.2
         version: 19.0.2
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@24.13.4)(happy-dom@19.0.2)
+
+  packages/intelligence:
+    dependencies:
+      '@babel/parser':
+        specifier: ^7.28.4
+        version: 7.29.8
+    devDependencies:
       typescript:
         specifier: 5.9.2
         version: 5.9.2
@@ -155,6 +171,12 @@ importers:
       '@playwright/test':
         specifier: ^1.55.0
         version: 1.63.0
+      '@rootray/intelligence':
+        specifier: workspace:*
+        version: link:../../packages/intelligence
+      '@rootray/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.4

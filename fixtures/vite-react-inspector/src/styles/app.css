@@ -1,0 +1,23 @@
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+.app-main {
+  padding: 1.5rem;
+}
+
+.navbar {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.nav-link {
+  color: #4f8cff;
+  text-decoration: none;
+}
+
+.logo {
+  display: inline-block;
+}
