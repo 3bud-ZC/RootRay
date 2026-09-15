@@ -57,7 +57,8 @@ boundaries — all preserved and passing), plus:
   resolution.
 - **CI** — `.github/workflows/ci.yml` on windows-latest: install, lint,
   typecheck, package builds, Vitest, Playwright E2E, `cargo test`,
-  `cargo check`, frontend prod build.
+  `cargo check`, frontend prod build. Verified green on the milestone
+  head commit.
 
 ## Architecture
 
