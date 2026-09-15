@@ -49,8 +49,9 @@ Everything from Milestones 01–04, plus release hardening:
   (official Tauri v2 strategy — silent, skips when present).
 - **Bundled inspector assets** — `runner.cjs`/`plugin.cjs`/`runtime.js`
   ship as Tauri resources under `inspector-assets/`; resolution order is
-  `ROOTRAY_*_PATH` env → `ROOTRAY_RESOURCE_DIR` → bundled resource dir →
-  workspace fallback for dev.
+  per-file `ROOTRAY_*_PATH` env overrides → `ROOTRAY_INSPECTOR_ASSETS_DIR`
+  (set by the shell to the bundle resource dir) → workspace `packages/`
+  fallback for dev.
 - **Capabilities trimmed** — `core:default` + `dialog:allow-open` only
   (unused message/ask/confirm permissions removed).
 - **Installer smoke script** (`scripts/installer-smoke.ps1`) — silent
@@ -198,7 +199,8 @@ script. Driving every GUI step inside WebView2 remains environment-limited
 CI release workflow uploads installer + checksum as Actions artifacts.
 
 ## Final GitHub SHA
-(recorded after final push — see git log)
+`2ac5c00c5212d1c2779beff798fa98ac9175feb2` (plus a docs commit recording
+this line — see `git log` on `main`)
 
 ## Last Updated
 2026-09-15
