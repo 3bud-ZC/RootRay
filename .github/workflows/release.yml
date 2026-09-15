@@ -1,0 +1,91 @@
+name: Release
+
+# RootRay release build — produces the unsigned MVP Windows installer.
+#
+# Triggers:
+#   - workflow_dispatch: manual "build the installer" run from Actions UI
+#   - push tags "v*": tag-triggered build (the human creates the tag)
+#
+# This workflow NEVER creates a GitHub Release. It builds, checksums, and
+# uploads artifacts to the Actions run. Publishing `v0.1.0` is a human
+# decision made after inspecting these artifacts.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.22.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Full quality gate before packaging — a release build must pass
+      # everything normal CI passes.
+      - name: Lint
+        run: pnpm exec biome check .
+
+      - name: Typecheck
+        run: pnpm -r --if-present typecheck
+
+      - name: Build packages (runtime + plugin bundles + desktop dist)
+        run: pnpm -r --if-present build
+
+      - name: TypeScript unit tests
+        run: pnpm -r --if-present --filter=!@rootray/e2e test
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @rootray/e2e exec playwright install chromium
+
+      - name: E2E (Playwright)
+        run: pnpm --filter @rootray/e2e test
+
+      - name: Rust tests
+        run: cargo test -p rootray-core
+
+      - name: Tauri release build + NSIS bundle
+        run: pnpm build:tauri
+
+      - name: SHA-256 checksum manifest
+        working-directory: target/release/bundle/nsis
+        shell: pwsh
+        run: |
+          Get-ChildItem -Filter "*-setup.exe" | ForEach-Object {
+            $h = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
+            "$h  $($_.Name)" | Out-File -NoNewline -Encoding ascii "$($_.Name).sha256"
+            Write-Host "$h  $($_.Name)"
+          }
+
+      - name: Installer smoke test
+        shell: pwsh
+        run: pwsh -File scripts/installer-smoke.ps1
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rootray-${{ github.ref_name }}-windows-x64
+          path: |
+            target/release/bundle/nsis/*-setup.exe
+            target/release/bundle/nsis/*.sha256
+          if-no-files-found: error
