@@ -99,6 +99,12 @@ pub enum CoreError {
     #[error("failed to open editor: {0}")]
     EditorOpenFailed(String),
 
+    #[error("project navigation failed: {0}")]
+    ProjectTreeFailed(String),
+
+    #[error("workspace search failed: {0}")]
+    WorkspaceSearchFailed(String),
+
     #[error("illegal runtime state transition: {from} -> {to}")]
     IllegalTransition { from: String, to: String },
 
@@ -146,6 +152,8 @@ impl CoreError {
             Self::EditorSessionClosed => "EDITOR_SESSION_CLOSED",
             Self::RevertUnavailable(_) => "REVERT_UNAVAILABLE",
             Self::EditorOpenFailed(_) => "EDITOR_OPEN_FAILED",
+            Self::ProjectTreeFailed(_) => "PROJECT_TREE_FAILED",
+            Self::WorkspaceSearchFailed(_) => "WORKSPACE_SEARCH_FAILED",
             Self::IllegalTransition { .. } => "ILLEGAL_STATE_TRANSITION",
             Self::SettingsIo(_) => "SETTINGS_IO",
             Self::Internal(_) => "INTERNAL",

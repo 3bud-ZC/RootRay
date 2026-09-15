@@ -102,7 +102,7 @@ fn is_denied_dir_path(relative_path: &str) -> bool {
         .any(|seg| DENIED_DIRS.contains(&seg.to_ascii_lowercase().as_str()))
 }
 
-fn is_editable_ext(name: &str) -> bool {
+pub(crate) fn is_editable_ext(name: &str) -> bool {
     match name.rsplit('.').next() {
         Some(ext) => EDITABLE_EXTS.contains(&ext.to_ascii_lowercase().as_str()),
         None => false,

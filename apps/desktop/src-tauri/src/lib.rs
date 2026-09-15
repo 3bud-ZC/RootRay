@@ -204,6 +204,41 @@ fn get_editor_state(core: State<'_, Arc<AppCore>>) -> EditorSessionInfo {
     core.editor_session_info()
 }
 
+// --- project navigation -------------------------------------------------------
+//
+// Read-only, root-bounded navigation for the explorer, Quick Open,
+// workspace search and component intelligence collection.
+
+#[tauri::command]
+fn list_project_dir(
+    relative_dir: String,
+    core: State<'_, Arc<AppCore>>,
+) -> CmdResult<rootray_core::filesystem::nav::DirListing> {
+    core.list_project_dir(&relative_dir).map_err(Into::into)
+}
+
+#[tauri::command]
+fn list_project_files(
+    core: State<'_, Arc<AppCore>>,
+) -> CmdResult<rootray_core::filesystem::nav::FileListing> {
+    core.list_project_files().map_err(Into::into)
+}
+
+#[tauri::command]
+fn search_workspace(
+    query: String,
+    core: State<'_, Arc<AppCore>>,
+) -> CmdResult<rootray_core::filesystem::nav::SearchResult> {
+    core.search_workspace(&query).map_err(Into::into)
+}
+
+#[tauri::command]
+fn collect_source_files(
+    core: State<'_, Arc<AppCore>>,
+) -> CmdResult<rootray_core::filesystem::nav::SourceCollection> {
+    core.collect_source_files().map_err(Into::into)
+}
+
 #[tauri::command]
 fn get_settings(core: State<'_, Arc<AppCore>>) -> CmdResult<Settings> {
     core.settings().map_err(Into::into)
@@ -268,6 +303,10 @@ pub fn run() {
             peek_source_file,
             close_source_editor,
             get_editor_state,
+            list_project_dir,
+            list_project_files,
+            search_workspace,
+            collect_source_files,
             get_settings,
             update_settings,
         ])

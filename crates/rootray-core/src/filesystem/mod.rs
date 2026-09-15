@@ -5,6 +5,7 @@
 //! `..`, `.` and symlinks — so traversal and symlink-escape attempts fail
 //! closed.
 
+pub mod nav;
 pub mod preview;
 
 use std::path::{Path, PathBuf};

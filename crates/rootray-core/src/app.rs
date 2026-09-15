@@ -477,6 +477,42 @@ impl AppCore {
         crate::editor::file::read_source_file(&root, relative_path)
     }
 
+    // --- project navigation ---------------------------------------------------
+    //
+    // Read-only, project-root bounded navigation APIs for the explorer,
+    // Quick Open, workspace search and component intelligence. Every call
+    // re-derives the root from the trusted runtime state.
+
+    /// Lists one directory level — lazy explorer rows.
+    pub fn list_project_dir(
+        &self,
+        relative_dir: &str,
+    ) -> CoreResult<crate::filesystem::nav::DirListing> {
+        let root = self.project_root()?;
+        crate::filesystem::nav::list_project_dir(&root, relative_dir)
+    }
+
+    /// Bounded flat listing of editable files — powers Ctrl+P.
+    pub fn list_project_files(&self) -> CoreResult<crate::filesystem::nav::FileListing> {
+        let root = self.project_root()?;
+        crate::filesystem::nav::list_project_files(&root)
+    }
+
+    /// Bounded text search across safe source files.
+    pub fn search_workspace(&self, query: &str) -> CoreResult<crate::filesystem::nav::SearchResult> {
+        let root = self.project_root()?;
+        crate::filesystem::nav::search_workspace(&root, query)
+    }
+
+    /// Bounded collection of JS/TS sources for frontend-side static
+    /// analysis. Returns file contents as data — nothing is executed.
+    pub fn collect_source_files(
+        &self,
+    ) -> CoreResult<crate::filesystem::nav::SourceCollection> {
+        let root = self.project_root()?;
+        crate::filesystem::nav::collect_source_files(&root)
+    }
+
     pub fn editor_session_info(&self) -> EditorSessionInfo {
         match self.project_root() {
             Ok(root) => self.editor.info(&root),

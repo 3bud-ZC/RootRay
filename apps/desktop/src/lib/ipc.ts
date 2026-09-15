@@ -6,15 +6,19 @@
 
 import type {
   DetectedLauncher,
+  DirListing,
   EditorSessionInfo,
+  FileListing,
   InspectorState,
   ProjectAnalysis,
   RootRaySettings,
   RuntimeState,
+  SourceCollection,
   SourceFileHash,
   SourceFileRead,
   SourceFileWrite,
   SourcePreview,
+  WorkspaceSearchResult,
 } from "@rootray/shared";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -93,6 +97,22 @@ export const peekSourceFile = (relativePath: string) =>
 export const closeSourceEditor = () => invoke<void>("close_source_editor");
 
 export const getEditorState = () => invoke<EditorSessionInfo>("get_editor_state");
+
+// --- project navigation --------------------------------------------------------
+//
+// Read-only, root-bounded navigation: lazy dir listing for the explorer,
+// a bounded file list for Quick Open, bounded text search, and the
+// bounded source collection that feeds component intelligence.
+
+export const listProjectDir = (relativeDir: string) =>
+  invoke<DirListing>("list_project_dir", { relativeDir });
+
+export const listProjectFiles = () => invoke<FileListing>("list_project_files");
+
+export const searchWorkspace = (query: string) =>
+  invoke<WorkspaceSearchResult>("search_workspace", { query });
+
+export const collectSourceFiles = () => invoke<SourceCollection>("collect_source_files");
 
 export const getSettings = () => invoke<RootRaySettings>("get_settings");
 

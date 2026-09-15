@@ -111,6 +111,8 @@ export type CoreErrorCode =
   | "SOURCE_WRITE_PERMISSION_DENIED"
   | "EDITOR_SESSION_CLOSED"
   | "REVERT_UNAVAILABLE"
+  | "PROJECT_TREE_FAILED"
+  | "WORKSPACE_SEARCH_FAILED"
   | "INTERNAL";
 
 /** Payload of the `rootray://process-event` Tauri event. */
@@ -147,9 +149,50 @@ export interface ElementFacts {
   textPreview?: string;
 }
 
+// --- style details (selection-time snapshot) --------------------------------
+
+export interface BoxEdges {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+export interface BoxModel {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  margin: BoxEdges;
+  padding: BoxEdges;
+  border: BoxEdges;
+}
+
+export interface CssDeclaration {
+  property: string;
+  value: string;
+  important: boolean;
+}
+
+export interface MatchedCssRule {
+  selector: string;
+  declarations: CssDeclaration[];
+  /** Project-relative stylesheet path — only when reliably resolved. */
+  sourcePath?: string;
+}
+
+export interface StyleDetails {
+  classes: string[];
+  elementId?: string;
+  box: BoxModel;
+  computed: Record<string, string>;
+  matchedRules: MatchedCssRule[];
+}
+
 export interface ElementSelection {
   element: ElementFacts;
   source: SourceLocation;
+  styles?: StyleDetails;
 }
 
 /** Snapshot pushed on `rootray://inspector-state`. */
@@ -250,4 +293,58 @@ export interface EditSession {
   selectedColumn: number | null;
   canRevert: boolean;
   error: CoreErrorPayload | null;
+}
+
+// --- project navigation -------------------------------------------------------
+
+export interface ProjectEntry {
+  name: string;
+  /** Forward-slash path relative to the project root. */
+  relativePath: string;
+  kind: "dir" | "file";
+  /** True when the file passes the Quick Edit source rules. */
+  editable: boolean;
+  sizeBytes: number | null;
+}
+
+/** Result of `list_project_dir` — one directory level, lazy. */
+export interface DirListing {
+  relativePath: string;
+  entries: ProjectEntry[];
+  truncated: boolean;
+}
+
+/** Result of `list_project_files` — powers Quick Open. */
+export interface FileListing {
+  paths: string[];
+  truncated: boolean;
+}
+
+export interface SearchMatch {
+  relativePath: string;
+  line: number;
+  column: number;
+  preview: string;
+}
+
+/** Result of `search_workspace`. */
+export interface WorkspaceSearchResult {
+  query: string;
+  matches: SearchMatch[];
+  filesScanned: number;
+  truncated: boolean;
+}
+
+export interface SourceBlob {
+  relativePath: string;
+  /** LF-normalized text. */
+  content: string;
+  sizeBytes: number;
+}
+
+/** Result of `collect_source_files` — bounded JS/TS sources for analysis. */
+export interface SourceCollection {
+  files: SourceBlob[];
+  truncated: boolean;
+  totalBytes: number;
 }
