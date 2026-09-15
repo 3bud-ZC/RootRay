@@ -1,0 +1,21 @@
+{
+  "name": "@rootray/intelligence",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bounded static analysis of React/JSX sources — component definitions, JSX usages and local import resolution. Source is data only; nothing is executed.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.28.4"
+  },
+  "devDependencies": {
+    "typescript": "5.9.2",
+    "vitest": "3.2.4"
+  }
+}
