@@ -5,9 +5,6 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "dialog:allow-open",
-    "dialog:allow-message",
-    "dialog:allow-ask",
-    "dialog:allow-confirm"
+    "dialog:allow-open"
   ]
 }

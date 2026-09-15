@@ -24,10 +24,11 @@ pub struct InspectorAssets {
 /// Resolution order:
 /// 1. `ROOTRAY_RUNNER_PATH` / `ROOTRAY_PLUGIN_PATH` / `ROOTRAY_RUNTIME_PATH`
 ///    (all three must be set — a partial override is ignored)
-/// 2. the workspace `packages/` directory relative to the crate
-///
-/// In a packaged app these would ship as bundle resources; the env
-/// overrides keep that path testable today.
+/// 2. `ROOTRAY_INSPECTOR_ASSETS_DIR` — one directory containing
+///    `runner.cjs`, `plugin.cjs` and `runtime.js`. The Tauri shell sets
+///    this to the bundle resource dir, so packaged installs work.
+/// 3. the workspace `packages/` directory relative to the crate — the
+///    development path.
 pub fn resolve_assets() -> Option<InspectorAssets> {
     if let (Ok(r), Ok(p), Ok(t)) = (
         std::env::var("ROOTRAY_RUNNER_PATH"),
@@ -38,6 +39,18 @@ pub fn resolve_assets() -> Option<InspectorAssets> {
             runner: PathBuf::from(r),
             plugin: PathBuf::from(p),
             runtime: PathBuf::from(t),
+        };
+        if a.runner.is_file() && a.plugin.is_file() && a.runtime.is_file() {
+            return Some(a);
+        }
+    }
+
+    if let Ok(dir) = std::env::var("ROOTRAY_INSPECTOR_ASSETS_DIR") {
+        let dir = PathBuf::from(dir);
+        let a = InspectorAssets {
+            runner: dir.join("runner.cjs"),
+            plugin: dir.join("plugin.cjs"),
+            runtime: dir.join("runtime.js"),
         };
         if a.runner.is_file() && a.plugin.is_file() && a.runtime.is_file() {
             return Some(a);
