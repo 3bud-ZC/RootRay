@@ -13,6 +13,7 @@ rootray-core (crates/rootray-core)   ← all logic, zero Tauri deps
         │
         ├─ project/     detection + adapter registry + dev-command resolution
         ├─ process/     spawn/supervise/kill dev servers + URL detection
+        │               (+ job.rs — Windows Job Object containment)
         ├─ launcher/    external editor registry + open
         ├─ filesystem/  canonicalized path boundaries
         ├─ state/       runtime state machine (idle…failed)
@@ -53,6 +54,21 @@ idle ──▶ analyzing ──▶ ready ──▶ starting ──▶ running �
   simply replaced.
 - Events are generation-guarded: output from a killed process cannot
   corrupt the state of a newer run.
+
+### Process containment (Windows)
+
+Every dev server RootRay spawns is assigned to a RootRay-owned **Job
+Object** configured with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`:
+
+- Descendants spawned by the dev server (Vite → esbuild → etc.) join the
+  same job automatically.
+- `Stop`/`Restart` still use graceful tree termination — the job is the
+  *abnormal*-exit safety net.
+- If the RootRay process dies (crash, kill, power), Windows closes the job
+  handle and terminates the whole tree — no orphaned dev servers.
+- Only processes RootRay spawned are ever in its job; unrelated user
+  processes are never touched, and nothing is killed "because it used a
+  port".
 
 ## Adding a framework adapter
 

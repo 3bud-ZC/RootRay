@@ -3,130 +3,87 @@
 **Point at the UI. Reach the source.**
 
 RootRay is a lightweight, local-first Windows developer tool that connects a
-rendered web UI back to its editable source code. Open a local web project,
-run it, inspect the UI, and jump from any visible element to the component,
-file, and line that produced it — then open it in your editor of choice.
+rendered web UI back to its editable source code. Open a local React/Vite
+project, run it, point at any element on the page, and RootRay shows you the
+exact file, line, and component that produced it — plus its styles, its
+usages, and a safe in-place editor when you just need a quick fix.
 
 RootRay is not an IDE. It is the missing bridge between *what you see* and
-*where it lives*.
+*where it lives*. Bigger changes belong in your real editor — RootRay opens
+VS Code, Cursor, or Windsurf at the exact location.
 
-## Current capability — Milestone 04 (Project Intelligence & Styling)
+- **Status:** `0.1.0` — MVP release for Windows 10/11 x64
+- **License:** not yet chosen — see [STATUS.md](STATUS.md)
 
-Everything from Milestones 01–03, plus a project-wide intelligence and
-navigation layer:
+## What RootRay does
 
-- **Project Explorer** — a lazy, project-root-bounded file tree.
-  Directories load only when expanded (no recursive full-tree load),
-  generated folders (`node_modules`, `dist`, `target`, `build`,
-  `coverage`, `.e2e-work`, `playwright-report`, `test-results`, `.git`)
-  are hidden, and secret-file rules still apply. Actions are
-  navigation-only: Quick Edit, Open External, Copy Relative Path — no
-  delete/rename/move. A small **Recent files** list (per project,
-  capped at 10, paths only) sits on top.
-- **Quick Open (`Ctrl+P`)** — fuzzy file/path palette over a lazily
-  fetched, bounded project file list. Keyboard navigable, 50-result
-  cap, ignored paths excluded; selection routes through the same safe
-  Quick Edit session (dirty-editor guard included).
-- **Workspace Search (`Ctrl+Shift+F`)** — bounded text search across
-  source files (`.js/.jsx/.ts/.tsx/.css/.scss/.html/.json/.md`).
-  Returns relative path + line + column + preview; skips secrets,
-  binaries, generated dirs; enforces file/size/result caps; results
-  navigate to the exact source location. A monotonic request id drops
-  stale results so a slower earlier search can never clobber a newer
-  one.
-- **Component intelligence** — `Ctrl` is not required: selecting an
-  element now shows its owning component, the definition site, and every
-  resolved caller (`Used by src/…:line`), each clickable into Quick
-  Edit. Analysis is static Babel parsing of `.js/.jsx/.ts/.tsx` sources
-  collected through the bounded native layer — project code is never
-  executed — and covers function / arrow / class components, named +
-  default exports, and relative imports including unambiguous `index`
-  re-exports. Unresolvable relationships are labeled, never guessed.
-- **Style intelligence** — selection now carries the element's class
-  tokens, a full box model (margin/border/padding/size), a curated set
-  of computed styles, and the matched CSS rules discovered through
-  CSSOM. Vite dev hints (`data-vite-dev-id`) map matched rules back to
-  project-relative stylesheet paths, so `src/styles/button.css` opens
-  in Quick Edit or externally. Cross-origin/inaccessible stylesheets
-  are skipped safely; ambiguous selector locations are reported as
-  unresolved, never fabricated. Style data is collected on click only —
-  hover sends nothing extra.
-- **Copy Context** — copies a bounded developer-context block for the
-  selected element: component, source location, tag, classes, resolved
-  callers, matched style sources, and a small source snippet. Relative
-  paths only; capped at ~4 KB.
-- **Invalidation-aware** — a RootRay save, a clean auto-reload, or a
-  detected external change invalidates the cached analysis; the next
-  request rebuilds lazily. Nothing watches or indexes the project
-  continuously.
+```
+Open Project → Run → Inspect UI → point at an element
+  → source file:line:col
+  → owning component + definition + usages
+  → classes, box model, computed styles, matched CSS rules
+  → Quick Edit → safe save → Vite HMR → inspect again
+```
 
-## Previous capability — Milestone 03 (Safe Source Editing)
+- **Inspect Mode** — hover highlights elements and shows
+  `ComponentName  src/file.tsx:line`; click to select. `Escape` cancels.
+- **Component intelligence** — static analysis (Babel parse, never executed)
+  resolves the owning component, its definition site, and every resolved
+  caller. Unresolvable relationships are labeled, never guessed.
+- **Style intelligence** — class tokens, box model, curated computed styles,
+  and matched CSSOM rules mapped back to real project stylesheets.
+- **Project Explorer** — lazy file tree, navigation-only (Quick Edit,
+  Open External, Copy Path). No delete/rename/move.
+- **Quick Open (`Ctrl+P`)** and **Workspace Search (`Ctrl+Shift+F`)** —
+  bounded, keyboard-first, both land in the same guarded Quick Edit session.
+- **Quick Edit** — CodeMirror 6, `Ctrl+S` saves with SHA-256 optimistic
+  concurrency + atomic writes; external changes raise a conflict banner
+  instead of clobbering either side.
+- **Copy Context** — a ≤4 KB block describing the selected element for
+  pasting into issues or chat. Relative paths only.
 
-Everything from Milestones 01–02, plus an in-app **Quick Edit** path:
+## Install (Windows)
 
-- **Quick Edit** — from any inspected element, open its source inside
-  RootRay at the exact line/column. Selecting another element in the same
-  file just refocuses the marker; unsaved edits are never disturbed.
-- **CodeMirror 6 editor** — lazy-loaded (zero cost until first use);
-  JS/JSX/TS/TSX, CSS/SCSS, HTML, JSON, and plain-text fallback. Line
-  numbers, active-line + inspected-line highlight, bracket matching,
-  undo/redo, `Ctrl+S` save, `Ctrl+F` in-file search, dark theme.
-- **Dirty state + review** — `● Modified` indicator, in-app line-diff
-  view ("Changes"), Discard restores the last disk snapshot.
-- **Safe save** — SHA-256 optimistic concurrency: RootRay re-reads the
-  file, compares hashes, and refuses to overwrite anything that changed
-  since you loaded it. Writes go through a same-directory temp file +
-  rename so a failed save can't truncate your source.
-- **External-change protection** — the open file is watched; a foreign
-  write while you have unsaved edits raises a conflict banner
-  (*Reload Disk Version / Compare / keep editing*) instead of clobbering
-  either side. A clean file auto-reloads.
-- **Encoding fidelity** — LF/CRLF convention and UTF-8 BOM are preserved;
-  non-UTF-8 and binary files are refused, not corrupted.
-- **Revert Last Save** — restores the file to before RootRay's last save
-  while the disk still matches that write (refuses otherwise).
-- **Boundaries enforced on every call** — project-relative paths only;
-  `.env*`, keys, `id_rsa`, `credentials*`, `secrets*`, `.git`,
-  `node_modules`, `target`, `dist`, `build` are denied; binary and >2 MiB
-  files are rejected with an actionable message.
-- **Save → HMR → inspect again** — a save is a normal filesystem write,
-  so Vite's own watcher hot-reloads the page with instrumentation intact.
-  A syntax error shows Vite's overlay; RootRay stays fully operational
-  and the next save recovers the app.
+1. Download `RootRay_0.1.0_x64-setup.exe` and its `.sha256` file.
+2. Verify the checksum (optional but recommended):
 
-## Previous capability — Milestone 02 (Inspector Engine)
+   ```powershell
+   Get-FileHash .\RootRay_0.1.0_x64-setup.exe
+   # compare with the hash inside the .sha256 file
+   ```
 
-Everything from Milestone 01 (project detection, managed dev-server
-lifecycle, live logs, editor detection, filesystem boundaries), plus:
+3. Run the installer. It installs per-user to
+   `%LOCALAPPDATA%\RootRay` — no admin required.
+4. Launch **RootRay** from the Start Menu.
 
-- **Inspector-enabled run** — RootRay launches the project's own Vite dev
-  server through a Node runner that merges a development-only
-  instrumentation plugin. No edits to `vite.config.*`, `package.json`, or
-  any source file.
-- **JSX/TSX source instrumentation** — a Babel-based transform stamps
-  `data-rootray-*` source metadata (project-relative file, line, column,
-  component name) onto intrinsic DOM elements during Vite's transform —
-  production builds are never touched.
-- **Browser inspector runtime** — a ~9 KB framework-free client injected
-  via `transformIndexHtml`. Shadow-DOM overlay, `pointer-events: none`,
-  zero layout impact.
-- **Authenticated loopback bridge** — `ws://127.0.0.1:<dynamic-port>/rootray`
-  with a per-session random token and a versioned protocol
-  (`ROOTRAY_PROTOCOL_VERSION = 1`). Wrong tokens, malformed messages, and
-  version mismatches are rejected.
-- **Inspect Mode** — hover highlights the element and shows
-  `ComponentName  src/file.tsx:line`; click selects it, suppresses the
-  app's own click handlers/navigation, and sends the selection to the
-  desktop. `Escape` cancels. Disabling restores normal behavior.
-- **Desktop Inspector panel** — connection state, inspect toggle, selected
-  element card (file + line + column + component), read-only source
-  preview (~13 lines, highlighted target line), and **Open Source** which
-  launches the preferred editor at the exact location (VS Code, Cursor,
-  Windsurf).
-- **HMR preserved** — instrumentation rides Vite's transform pipeline;
-  hot updates keep working and stay instrumented.
+**Unsigned build:** this MVP is not code-signed. Windows SmartScreen or
+Smart App Control may warn on first launch — choose *More info → Run
+anyway* if you trust the source. Signing is planned post-MVP.
 
-### Keyboard shortcuts
+**WebView2:** required. It is preinstalled on most Windows 11 and recent
+Windows 10. If missing, the installer downloads Microsoft's official
+bootstrapper automatically.
+
+## Using RootRay
+
+1. **Open Project** — pick a folder containing a React/Vite project.
+   RootRay detects the framework, package manager (pnpm/npm/yarn via
+   lockfile or `packageManager` field), and `dev` script.
+2. **Run Project** — launches your own Vite dev server through a Node
+   runner that injects a development-only instrumentation plugin.
+   Your `vite.config.*`, `package.json`, and sources are never modified.
+   Live server logs stream into the Runner panel.
+3. **Open the printed localhost URL** — your app loads with a
+   `data-rootray-*` instrumented DOM and the inspector runtime connected.
+4. **Enable Inspect Mode** and point at the UI.
+5. **Quick Edit** or **Open Source** at the exact location.
+6. **Save** — Vite's own watcher hot-reloads; instrumentation survives
+   HMR. Inspect again.
+
+RootRay never starts a dev server on its own — not on launch, not on
+project restore. You press Run.
+
+## Keyboard shortcuts
 
 | Key | Action |
 |---|---|
@@ -137,161 +94,167 @@ lifecycle, live logs, editor detection, filesystem boundaries), plus:
 | `Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y` | Quick Edit — undo / redo |
 | `Escape` | Cancel Inspect Mode / close palettes |
 
-## Prerequisites
+All views, palettes, the explorer tree, and editor controls are fully
+keyboard reachable; focus is always visible.
 
-- Windows 10/11 with **WebView2 Runtime** (preinstalled on most Windows 11)
-- **Rust** (stable, MSVC toolchain) + **Visual Studio Build Tools** (C++
-  workload — provides the linker)
-- **Node.js** ≥ 20 and **pnpm** ≥ 9
-- For the E2E suite: Playwright Chromium (`pnpm --filter @rootray/e2e exec
-  playwright install chromium`)
+## Supported projects
 
-## Install
+- **Framework:** React + Vite (JSX/TSX, including JSX in `.js`)
+- **Package managers:** pnpm, npm, yarn
+- A `"dev"` script must exist; inspector launch handles `vite` plus simple
+  flags (`--host`, `--port`, `--strictPort`, `--mode`, `--force`,
+  `--clearScreen`, `--root`). Anything else runs without the inspector and
+  says so.
+- Unsupported projects (plain Node, Next.js, broken `package.json`,
+  missing `dev` script, Vite without React) are detected and reported —
+  never silently modified or converted.
+
+**Runtime requirements for inspected projects:** the project's own Node.js
+and package manager must be on `PATH` (you need them to run `pnpm dev`
+yourself anyway). RootRay itself needs no global Node/Rust to run.
+
+## External editors
+
+RootRay detects VS Code, Cursor, and Windsurf and can open them at an
+exact file:line:column. Pick your preferred editor in **Settings**. A
+missing/uninstalled editor is reported, never a crash.
+
+## Security & privacy
+
+RootRay is **local-first**:
+
+- No account, no cloud backend, no telemetry, no AI provider. Your source
+  never leaves the machine — the only network listener RootRay opens is a
+  `ws://127.0.0.1` loopback bridge on a dynamic port with an ephemeral
+  per-session token.
+- No generic command API. The UI can only call a narrow set of audited
+  Tauri commands; browser messages are data only and cannot spawn
+  processes, write files, or open editors.
+- Filesystem access is project-relative only: absolute paths, `..`
+  traversal, symlinks escaping the root, `.env*`, keys, credentials,
+  `.git`, `node_modules`, `target`, `dist`, and non-text/oversized files
+  are all refused.
+- Saves use SHA-256 optimistic concurrency and same-directory atomic
+  rename; an external edit is never silently overwritten.
+- Your dev server runs inside a Windows Job Object
+  (`KILL_ON_JOB_CLOSE`): if RootRay dies unexpectedly, the server and its
+  descendants are terminated — no orphaned processes.
+- Copy Diagnostics produces a bounded, secret-free report (version, OS,
+  component states, error codes) — never tokens, paths, or source.
+
+RootRay does *not* claim zero network activity: your own dev server,
+package managers, and the app you are developing may access the network
+normally — RootRay doesn't intercept or proxy any of it.
+
+## Troubleshooting
+
+| Problem | What to try |
+|---|---|
+| SmartScreen / Smart App Control warning | Expected — the MVP is unsigned. *More info → Run anyway*. |
+| Blank window / "WebView2 missing" | Install [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (the installer normally does this automatically). |
+| "unsupported project" | RootRay supports React + Vite only. Next.js, plain Node, and other frameworks are detected and refused. |
+| "no dev script" | Add a `"dev": "vite"` script to `package.json`. |
+| "dependencies appear to be missing" | Run your package manager's install (`pnpm install` / `npm install` / `yarn`) in the project, then Run again. RootRay never installs for you. |
+| Dev server exits immediately | Check the Runner panel log — the project's own output is shown verbatim. Common causes: missing deps, port in use, unsupported dev command flags. |
+| Browser didn't connect / inspector unavailable | Open the exact `localhost` URL RootRay printed (a different port or `127.0.0.1` vs `localhost` mix won't reach the bridge). Re-run with a plain `vite` dev script if yours uses unusual flags. |
+| HMR error overlay after a bad save | Fix the syntax error and save again — Vite recovers on the next write. Rarely, a full browser reload is needed. |
+| "file changed outside RootRay" | Someone (or your editor) wrote the file while you had unsaved edits. Choose Reload Disk Version, Compare, or keep editing — nothing is silently lost. |
+| "editor not available" | The selected launcher isn't on PATH anymore. Pick another in Settings, or re-install it. |
+| Source location missing on an element | Only intrinsic DOM elements carry metadata; custom components resolve through their rendered children. Deeply dynamic/portal UI may show the nearest instrumented ancestor. |
+
+Copy Diagnostics (Settings → Diagnostics, or the crash screen) produces a
+bounded report you can paste into an issue.
+
+## Development
+
+### Prerequisites
+
+- Windows 10/11, Rust stable (MSVC) + Visual Studio Build Tools (C++
+  workload), Node.js ≥ 20, pnpm ≥ 9
+- E2E: `pnpm --filter @rootray/e2e exec playwright install chromium`
+
+### Setup and run
 
 ```sh
 pnpm install
-pnpm -r --if-present build   # builds the inspector runtime + plugin bundles
+pnpm -r --if-present build   # inspector runtime + plugin bundles
+pnpm dev:tauri               # dev build of the desktop app
 ```
 
-## Run the desktop app (development)
+### Test
 
 ```sh
-pnpm dev:tauri
+pnpm test            # Vitest suites + Playwright E2E
+pnpm test:rust       # cargo test -p rootray-core
+pnpm typecheck
+pnpm lint
 ```
 
-Then: Open Project → pick a React/Vite project → Run Project. When the dev
-server is up, open the printed localhost URL — the inspector runtime
-connects automatically and the Inspector panel shows the live state.
-
-## Tests
+### Release build (unsigned)
 
 ```sh
-pnpm test            # Vitest suites + Playwright inspector E2E
-pnpm test:rust       # cargo test -p rootray-core (incl. bridge/auth/preview)
-pnpm typecheck       # tsc --noEmit across the workspace
-pnpm lint            # biome check .
-pnpm --filter @rootray/e2e test   # inspector E2E only (needs Chromium)
+pnpm install --frozen-lockfile
+pnpm -r --if-present build
+pnpm build:tauri
 ```
 
-## Supported projects (Milestone 02)
+Outputs:
 
-- **Framework:** React + Vite (JSX/TSX, including JSX in `.js`)
-- **Package managers:** pnpm, npm, yarn — detected via lockfiles or the
-  `packageManager` field.
-- A `"dev"` script must exist; inspector launch handles `vite` plus simple
-  flags (`--host`, `--port`, `--strictPort`, `--mode`, `--force`,
-  `--clearScreen`, `--root`). Anything else falls back to the plain runner
-  with the inspector marked unavailable.
+- `target/release/rootray-desktop.exe`
+- `target/release/bundle/nsis/RootRay_<version>_x64-setup.exe`
+
+Then verify with the installer smoke test:
+
+```powershell
+pwsh -File scripts/installer-smoke.ps1
+```
+
+It installs silently (current user), verifies files + bundled resources,
+launches the app, confirms no dev server auto-starts, terminates, and
+uninstalls — printing `INSTALLER SMOKE: PASS` at the end.
 
 ## Architecture
 
 ```
-crates/rootray-core        Native core: detection, process lifecycle,
-                           inspector bridge/session, source preview,
-                           editor launch-at-location, safe edit sessions
-                           (hash-checked atomic writes, file watcher),
-                           lazy project tree listing, bounded workspace
-                           search, bounded source collection, fs boundaries.
-apps/desktop               React UI + thin src-tauri command layer;
-                           lazy-loaded CodeMirror Quick Edit panel;
-                           explorer, palettes, intelligence views.
-packages/source-protocol   Versioned wire contract between browser
-                           runtime and the Rust bridge (validated both ways).
+crates/rootray-core        Native core: detection, process lifecycle
+                           (Windows Job Object containment), inspector
+                           bridge/session, source preview, safe edit
+                           sessions (hash-checked atomic writes, watcher),
+                           lazy nav + bounded search + source collection.
+apps/desktop               React 19 UI + thin src-tauri command layer;
+                           lazy-loaded CodeMirror + intelligence chunks.
+packages/source-protocol   Versioned wire contract (validated both ways).
 packages/inspector-runtime Browser client: WS auth/reconnect, Shadow-DOM
-                           overlay, hover/select, click suppression,
-                           on-select style details (classes, box model,
-                           curated computed styles, matched CSS rules).
+                           overlay, hover/select, on-select style details.
 packages/vite-plugin       Babel JSX/TSX instrumentation + dev-server
-                           runner that merges the plugin into the project's
-                           own Vite instance.
-packages/intelligence      Bounded static React source analysis (Babel):
-                           component definitions, JSX usages, local import
-                           resolution. Source is data — never executed.
-fixtures/                  Real projects incl. a multi-file inspector app
-                           with components, local imports and stylesheets.
-tests/e2e                  Playwright suite driving the real fixture.
+                           runner merged into the project's own Vite.
+packages/intelligence      Bounded static React analysis (Babel).
+fixtures/                  Real React/Vite test projects.
+tests/e2e                  Playwright: golden-path, edit, a11y.
+scripts/installer-smoke.ps1  Repeatable install/launch/uninstall test.
 ```
 
-### Inspector data flow
+### Data flow
 
 ```
 Vite transform stamps data-rootray-* on JSX ──▶ rendered DOM
-hover/click ─▶ browser runtime reads metadata ─▶ WS + token
-──▶ Rust bridge validates (version, token, shape, path safety)
-──▶ desktop shows file:line:col ─▶ Open Source launches editor
+hover/click ─▶ runtime reads metadata ─▶ WS + token ─▶ Rust bridge
+validates ─▶ desktop resolves file:line ─▶ Quick Edit / Open Source
+
+save ─▶ SHA-256 check ─▶ temp-file + rename ─▶ Vite watcher ─▶ HMR
 ```
 
-### Safe-edit data flow
+## Known limitations
 
-```
-Quick Edit ─▶ open_source_editor (validate + read + SHA-256 + watch)
-──▶ CodeMirror buffer ─▶ save_source_file(content, expectedHash)
-──▶ disk hash compare → conflict? refuse : temp-file + rename
-──▶ Vite watcher → HMR → updated DOM stays instrumented
-```
-
-### Intelligence data flow
-
-```
-Explorer        list_project_dir(dir)      lazy, per-expanded-dir only
-Ctrl+P          list_project_files()       bounded file list, cached
-Ctrl+Shift+F    search_workspace(query)    capped files/bytes/results
-Click select    element:selected + styles  CSSOM matched rules + curated
-                                           computed styles + box model
-Component panel collect_source_files()     capped count/bytes, then
-                → @rootray/intelligence    Babel parse, defs + usages,
-                (lazy chunk, cached)       import resolution; invalidated
-                                           by any source change
-CSS source      data-vite-dev-id hint → project-relative stylesheet path
-                → Quick Edit / Open External (same safe file layer)
-```
-
-All of it flows through the same boundary-checked native layer — relative
-paths only, secrets and generated directories denied, hard caps on files,
-bytes and results.
-
-## Security model
-
-- No generic `execute(command)` API — only narrow Tauri commands.
-- Browser messages are **data only**: the bridge accepts `runtime:hello`,
-  `runtime:ready`, `inspect:set`, `element:selected`. Nothing a browser
-  sends can spawn a process, write a file, or open an editor.
-- Bridge binds `127.0.0.1` only, on a dynamic port, with an ephemeral
-  per-session token — never persisted, never exposed to the page except
-  through the injected bootstrap.
-- Source metadata uses project-relative forward-slash paths; absolute
-  paths, `..`, and drive letters are rejected at the protocol layer.
-- Preview/open/edit operations re-validate against the canonicalized
-  project root on every call; `.env*`, keys, credentials, `.git`,
-  `node_modules`, `target`, `dist`, `build` and non-text files are refused.
-- Saves are optimistic-concurrency checked (SHA-256) and atomic
-  (temp file + rename) — an external edit is never silently overwritten.
-- Instrumentation never writes to the project — the integrity E2E hashes
-  all source files before and after a session to prove it, and the edit
-  E2E asserts a save changes exactly the intended file.
-
-## Known limitations (Milestone 04)
-
-- Only React + Vite; only intrinsic (lowercase DOM) elements carry
+- React + Vite only; only intrinsic (lowercase DOM) elements carry
   metadata — a custom component's position comes from its rendered DOM.
-- Component names are inferred from function/arrow/class declarations;
-  ambiguous ownership reports no name rather than a guess.
-- Static analysis resolves common import shapes only — aliased paths
-  (`@/…`), barrel cycles, `React.lazy`/dynamic imports, and re-export
-  chains deeper than one unambiguous `index` hop stay *unresolved*
-  (labeled, never guessed).
-- CSS source mapping relies on Vite dev `data-vite-dev-id` hints; rules
-  from runtime-injected or cross-origin stylesheets report a stylesheet
-  hint only when reliable, otherwise "source unresolved".
-- Selector *line* numbers inside a stylesheet are not resolved — matched
-  rules link to the stylesheet file, not a specific line.
-- Playwright E2E drives a protocol-faithful mock bridge; the Rust bridge
-  itself is covered by unit/integration tests, not browser automation.
-  The in-browser edit path mirrors the native save contract — the real
-  `editor::file` implementation is covered by the Rust suite.
-- One Quick Edit session at a time — switching files with unsaved changes
-  prompts instead of offering tabs.
-- No force-overwrite: after a conflict the safe resolutions are
-  Reload Disk Version, Compare, or keep editing.
-- On non-Windows platforms process-tree kill uses `kill` on the direct
-  child only; Windows is the supported target.
+- Static analysis resolves common import shapes — aliased paths (`@/…`),
+  barrel cycles, `React.lazy`, and re-export chains deeper than one
+  unambiguous `index` hop report *unresolved*, never a guess.
+- Matched CSS rules link to the stylesheet file, not the selector's line.
+- One Quick Edit session at a time; switching files with unsaved changes
+  prompts to discard.
+- The installer and executable are unsigned (SmartScreen warning).
+- Windows is the only supported target.
+
+See [STATUS.md](STATUS.md) for the factual milestone/release state.
