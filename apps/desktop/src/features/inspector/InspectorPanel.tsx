@@ -12,6 +12,10 @@ import {
 } from "../../lib/ipc";
 import { useStore } from "../../state/store";
 import { quickEdit } from "../editor/controller";
+import { describeComponent } from "../intelligence/controller";
+import { ComponentSection } from "./ComponentSection";
+import { buildContextBlock } from "./copyContext";
+import { StylesSection } from "./StylesSection";
 
 const PHASE_LABEL: Record<InspectorPhase, string> = {
   inactive: "Inactive",
@@ -23,7 +27,7 @@ const PHASE_LABEL: Record<InspectorPhase, string> = {
   failed: "Unavailable",
 };
 
-export function InspectorPanel() {
+export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void }) {
   const { state, dispatch } = useStore();
   const inspector = state.inspector;
   const sel = inspector.lastSelection;
@@ -101,6 +105,22 @@ export function InspectorPanel() {
       await navigator.clipboard.writeText(
         `${sel.source.relativePath}:${sel.source.line}:${sel.source.column}`,
       );
+    } catch {
+      dispatch({ type: "notice", message: "Copy failed" });
+    }
+  };
+
+  const copyContext = async () => {
+    if (!sel) return;
+    const root = state.runtime.project?.root;
+    let usedBy = null;
+    if (root && sel.source.componentName) {
+      usedBy = await describeComponent(root, sel.source.componentName, sel.source.relativePath)
+        .then((s) => s.usedBy)
+        .catch(() => null);
+    }
+    try {
+      await navigator.clipboard.writeText(buildContextBlock(sel, preview, usedBy));
     } catch {
       dispatch({ type: "notice", message: "Copy failed" });
     }
@@ -209,6 +229,9 @@ export function InspectorPanel() {
           )}
           {previewErr && <p className="muted">Preview unavailable: {previewErr}</p>}
 
+          <ComponentSection source={sel.source} />
+          {sel.styles && <StylesSection styles={sel.styles} onSearch={onSearch} />}
+
           <div className="selection-actions">
             {launchers.length > 1 && (
               <select
@@ -239,6 +262,14 @@ export function InspectorPanel() {
             </button>
             <button type="button" className="btn" onClick={copyPath}>
               Copy Path
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={copyContext}
+              title="Copy a bounded context block for this element"
+            >
+              Copy Context
             </button>
           </div>
         </div>

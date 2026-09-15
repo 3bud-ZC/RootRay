@@ -13,7 +13,9 @@ import {
   revertSourceSave,
   saveSourceFile,
 } from "../../lib/ipc";
+import { pushRecentFile } from "../../lib/recents";
 import type { UiAction, UiState } from "../../state/reducer";
+import { invalidateIntel } from "../intelligence/controller";
 
 type Dispatch = React.Dispatch<UiAction>;
 type GetState = () => UiState;
@@ -48,6 +50,7 @@ export async function quickEdit(
   try {
     const read = await openSourceEditor(relativePath);
     dispatch({ type: "edit-opened", read, source });
+    if (state.runtime.project) pushRecentFile(state.runtime.project.root, relativePath);
   } catch (err) {
     dispatch({ type: "edit-closed" });
     const e = asCoreError(err);
@@ -72,6 +75,7 @@ export async function saveEditor(state: UiState, dispatch: Dispatch) {
   try {
     const write = await saveSourceFile(ed.relativePath, ed.currentContent, ed.baseHash);
     dispatch({ type: "edit-saved", write });
+    invalidateIntel();
   } catch (err) {
     dispatch({ type: "edit-failed", error: asCoreError(err) });
   }
@@ -118,6 +122,7 @@ export async function reloadFromDisk(state: UiState, dispatch: Dispatch) {
   try {
     const read = await reloadSourceFile(ed.relativePath);
     dispatch({ type: "edit-disk-loaded", read });
+    invalidateIntel();
   } catch (err) {
     dispatch({ type: "notice", message: `Reload failed: ${asCoreError(err).message}` });
   }
@@ -173,7 +178,10 @@ export function handleEditorEvent(
     // Auto-reload a clean file; the reducer refuses to clobber if the
     // user managed to type before the reload landed.
     reloadSourceFile(ed.relativePath)
-      .then((read) => dispatch({ type: "edit-disk-loaded", read }))
+      .then((read) => {
+        dispatch({ type: "edit-disk-loaded", read });
+        invalidateIntel();
+      })
       .catch(() => dispatch({ type: "edit-external-change", diskHash: payload.diskHash }));
     return;
   }

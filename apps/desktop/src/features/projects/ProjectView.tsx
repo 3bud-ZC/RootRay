@@ -1,4 +1,5 @@
 import { errorMessage } from "@rootray/shared";
+import { useEffect, useState } from "react";
 import { projectDisplayName } from "../../lib/format";
 import {
   analyzeProject,
@@ -9,7 +10,10 @@ import {
 } from "../../lib/ipc";
 import { useStore } from "../../state/store";
 import { EditorPanel } from "../editor/EditorPanel";
+import { ExplorerPanel } from "../explorer/ExplorerPanel";
 import { InspectorPanel } from "../inspector/InspectorPanel";
+import { QuickOpen } from "../nav/QuickOpen";
+import { SearchPanel } from "../nav/SearchPanel";
 import { LogPanel } from "../runner/LogPanel";
 import { RunnerPanel } from "../runner/RunnerPanel";
 
@@ -17,6 +21,32 @@ export function ProjectView() {
   const { state, dispatch } = useStore();
   const { runtime } = state;
   const project = runtime.project;
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [search, setSearch] = useState<{ open: boolean; query: string }>({
+    open: false,
+    query: "",
+  });
+
+  // Global workspace shortcuts — active only while a project is loaded.
+  // Ctrl+P: quick open · Ctrl+Shift+F: workspace search. CodeMirror's own
+  // Ctrl+S / Ctrl+F keep working inside the editor.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key === "p" && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setSearch({ open: false, query: "" });
+        setQuickOpen((v) => !v);
+      } else if (e.key === "F" && e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setQuickOpen(false);
+        setSearch((s) => ({ open: !s.open, query: s.query }));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   if (!project) return null;
 
   const runningPhases = ["running", "starting", "stopping"] as const;
@@ -153,13 +183,28 @@ export function ProjectView() {
 
       {(isLive || runtime.phase === "stopped" || runtime.phase === "failed") && <RunnerPanel />}
 
-      {isLive &&
-        project.capabilities.inspectorCompatible &&
-        state.inspector.phase !== "inactive" && <InspectorPanel />}
+      <div className="workspace">
+        <ExplorerPanel onSearch={(query) => setSearch({ open: true, query })} />
+        <div className="workspace-main">
+          {isLive &&
+            project.capabilities.inspectorCompatible &&
+            state.inspector.phase !== "inactive" && (
+              <InspectorPanel onSearch={(query) => setSearch({ open: true, query })} />
+            )}
 
-      <EditorPanel />
+          <EditorPanel />
 
-      {(state.logs.length > 0 || isLive) && <LogPanel logs={state.logs} />}
+          {(state.logs.length > 0 || isLive) && <LogPanel logs={state.logs} />}
+        </div>
+      </div>
+
+      {quickOpen && <QuickOpen onClose={() => setQuickOpen(false)} />}
+      {search.open && (
+        <SearchPanel
+          initialQuery={search.query}
+          onClose={() => setSearch((s) => ({ ...s, open: false }))}
+        />
+      )}
     </div>
   );
 }

@@ -997,3 +997,467 @@ body {
   border-color: var(--bad);
   color: var(--bad);
 }
+
+/* --- Project intelligence & navigation (Milestone 04) ---------------------- */
+
+.workspace {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.workspace-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.explorer {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 8px;
+  max-height: 520px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.explorer-head {
+  padding: 0 6px 6px;
+}
+
+.ex-group {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 6px 2px;
+}
+
+.ex-recents {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+}
+
+.ex-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 3px 6px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ex-row:hover {
+  background: var(--bg-inset);
+}
+
+.ex-file {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ex-file:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.ex-file-row {
+  cursor: default;
+}
+
+.ex-file-row .ex-actions {
+  display: none;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.ex-file-row:hover .ex-actions {
+  display: inline-flex;
+}
+
+.ex-caret {
+  display: inline-block;
+  transition: transform 0.12s;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.ex-caret.open {
+  transform: rotate(90deg);
+}
+
+.ex-rel {
+  display: block;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ex-recent {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* --- palette (Quick Open / Workspace Search) --------------------------------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 55%);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 50;
+}
+
+.backdrop-dismiss {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.palette {
+  position: relative;
+  width: 560px;
+  max-width: 92vw;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 50%);
+}
+
+.palette-input {
+  width: 100%;
+  background: var(--bg-inset);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.palette-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.palette-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.palette-item.active,
+.palette-item:hover {
+  background: var(--bg-inset);
+}
+
+.palette-name {
+  font-family: var(--mono);
+  flex-shrink: 0;
+}
+
+.palette-path {
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-loc {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  flex-shrink: 0;
+  min-width: 180px;
+}
+
+.palette-preview {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-empty {
+  padding: 16px 14px;
+  font-size: 12px;
+}
+
+.palette-foot {
+  border-top: 1px solid var(--border);
+  padding: 6px 14px;
+  font-size: 11px;
+}
+
+/* --- inspector intelligence sections ----------------------------------------- */
+
+.intel-section {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.intel-name {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.intel-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin: 2px 0;
+}
+
+.intel-usedby ul {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+.styles-group {
+  margin-top: 8px;
+}
+
+.styles-label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.class-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.class-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 4px 1px 8px;
+  font-size: 11px;
+}
+
+.class-chip code {
+  font-family: var(--mono);
+}
+
+.chip-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 2px;
+}
+
+.chip-btn:hover {
+  color: var(--accent);
+}
+
+/* --- box model --------------------------------------------------------------- */
+
+.boxmodel {
+  font-size: 10px;
+  color: var(--text-dim);
+  max-width: 300px;
+}
+
+.bm-margin,
+.bm-border,
+.bm-padding,
+.bm-content {
+  position: relative;
+  border: 1px dashed var(--border);
+  padding: 14px 26px 18px;
+  text-align: center;
+  margin: 2px;
+}
+
+.bm-margin {
+  background: rgb(210 153 34 / 6%);
+}
+
+.bm-border {
+  background: rgb(139 152 169 / 8%);
+  border-style: solid;
+}
+
+.bm-padding {
+  background: rgb(63 185 80 / 6%);
+}
+
+.bm-content {
+  background: var(--bg-inset);
+  border-style: solid;
+  color: var(--text);
+  font-family: var(--mono);
+  padding: 8px;
+}
+
+.bm-label {
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.bm-v {
+  position: absolute;
+  font-family: var(--mono);
+  font-size: 9px;
+}
+
+.bm-t {
+  top: 1px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.bm-b {
+  bottom: 1px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.bm-l {
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.bm-r {
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.bm-pos {
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+/* --- computed + matched rules -------------------------------------------------- */
+
+.computed-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1px 12px;
+  font-size: 11.5px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.computed-prop {
+  font-family: var(--mono);
+}
+
+.computed-val {
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rule-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 11.5px;
+}
+
+.rule {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  background: var(--bg-inset);
+}
+
+.rule-sel {
+  font-family: var(--mono);
+  color: var(--text);
+}
+
+.rule-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  font-size: 11px;
+}
+
+.rule-decls {
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  word-break: break-all;
+}
