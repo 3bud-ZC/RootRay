@@ -225,7 +225,7 @@ test.beforeAll(async () => {
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
-  appUrl = await waitForRunnerUrl(runner);
+  appUrl = (await waitForRunnerUrl(runner)).replace("localhost", "127.0.0.1");
 });
 
 test.afterAll(async () => {
@@ -236,9 +236,28 @@ test.afterAll(async () => {
 
 // ---------------------------------------------------------------------------
 
-test("runtime injects, authenticates, and reaches ready state", async ({ page }) => {
+/** Dump page state + console errors so CI failures are diagnosable. */
+async function gotoAndWaitForApp(page: import("@playwright/test").Page): Promise<void> {
+  const consoleErrors: string[] = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+  page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
   await page.goto(appUrl);
-  await expect(page.locator("text=Inspector fixture")).toBeVisible();
+  try {
+    await expect(page.locator("text=Inspector fixture")).toBeVisible();
+  } catch (e) {
+    const html = (await page.content()).slice(0, 3000);
+    console.error(
+      `[e2e] app did not render.\nurl=${page.url()}\ntitle=${await page.title()}\n` +
+        `consoleErrors=${JSON.stringify(consoleErrors)}\nhtml=${html}`,
+    );
+    throw e;
+  }
+}
+
+test("runtime injects, authenticates, and reaches ready state", async ({ page }) => {
+  await gotoAndWaitForApp(page);
 
   // Runtime bootstrap + client present in the page.
   const hasRuntime = await page.evaluate(
@@ -255,7 +274,7 @@ test("runtime injects, authenticates, and reaches ready state", async ({ page })
 });
 
 test("inspect → hover → overlay → click → real source selection", async ({ page }) => {
-  await page.goto(appUrl);
+  await gotoAndWaitForApp(page);
   await bridge.waitFor(() => bridge.ready, "runtime:ready");
   bridge.sendInspectSet(true);
 
@@ -305,8 +324,7 @@ test("inspect → hover → overlay → click → real source selection", async 
 });
 
 test("HMR works through RootRay instrumentation and stays instrumented", async ({ page }) => {
-  await page.goto(appUrl);
-  await expect(page.locator("h2", { hasText: "Inspector fixture" })).toBeVisible();
+  await gotoAndWaitForApp(page);
 
   const cardFile = join(workDir, "src", "components", "Card.tsx");
   const original = readFileSync(cardFile, "utf8");
