@@ -13,7 +13,7 @@ RootRay is not an IDE. It is the missing bridge between *what you see* and
 VS Code, Cursor, or Windsurf at the exact location.
 
 - **Status:** `0.1.0` — MVP release for Windows 10/11 x64
-- **License:** not yet chosen — see [STATUS.md](STATUS.md)
+- **License:** MIT — see [LICENSE](LICENSE)
 
 ## What RootRay does
 
@@ -258,3 +258,11 @@ save ─▶ SHA-256 check ─▶ temp-file + rename ─▶ Vite watcher ─▶ H
 - Windows is the only supported target.
 
 See [STATUS.md](STATUS.md) for the factual milestone/release state.
+
+## License
+
+RootRay is open-source software released under the MIT License.
+
+Copyright (c) 2026 Abdallah — ABUD FUN.
+
+See [LICENSE](LICENSE).

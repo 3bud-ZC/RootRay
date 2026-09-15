@@ -2,6 +2,7 @@
   "name": "@rootray/inspector-runtime",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Browser-side RootRay inspector runtime: connects to the local bridge, drives hover/select inspection.",
   "exports": {

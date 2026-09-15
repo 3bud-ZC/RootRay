@@ -12,6 +12,9 @@ Complete
 ## Release Status
 MVP READY
 
+- License: **MIT**
+- Copyright: `Copyright (c) 2026 Abdallah — ABUD FUN`
+
 ## Release Version
 RootRay **0.1.0** — consistent across root `package.json`, all
 `packages/*`, `apps/desktop/package.json`, `tauri.conf.json`, and both
@@ -178,7 +181,7 @@ WebView2 remains environment-limited (no WebView2 test driver).
 
 - **Unsigned Windows binary** — SmartScreen/Smart App Control may warn
   (documented; signing deferred — no cert provided).
-- **No LICENSE selected yet** — owner decision required.
+- ~~No LICENSE selected yet~~ — **resolved: MIT** (see Release Status metadata below).
 - **No public `v0.1.0` tag, no GitHub Release yet** — publish is a human
   decision; everything needed is verified and packaged.
 - Playwright drives a protocol-faithful mock bridge plus a stubbed-IPC

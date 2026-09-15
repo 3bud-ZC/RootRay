@@ -2,6 +2,7 @@
   "name": "rootray",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "RootRay — point at the UI, reach the source.",
   "scripts": {

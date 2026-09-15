@@ -2,6 +2,7 @@
   "name": "@rootray/vite-plugin",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Dev-only Vite plugin that stamps JSX source identity onto DOM nodes and injects the RootRay inspector runtime.",
   "exports": {
