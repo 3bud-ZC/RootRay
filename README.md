@@ -10,7 +10,57 @@ file, and line that produced it — then open it in your editor of choice.
 RootRay is not an IDE. It is the missing bridge between *what you see* and
 *where it lives*.
 
-## Current capability — Milestone 03 (Safe Source Editing)
+## Current capability — Milestone 04 (Project Intelligence & Styling)
+
+Everything from Milestones 01–03, plus a project-wide intelligence and
+navigation layer:
+
+- **Project Explorer** — a lazy, project-root-bounded file tree.
+  Directories load only when expanded (no recursive full-tree load),
+  generated folders (`node_modules`, `dist`, `target`, `build`,
+  `coverage`, `.e2e-work`, `playwright-report`, `test-results`, `.git`)
+  are hidden, and secret-file rules still apply. Actions are
+  navigation-only: Quick Edit, Open External, Copy Relative Path — no
+  delete/rename/move. A small **Recent files** list (per project,
+  capped at 10, paths only) sits on top.
+- **Quick Open (`Ctrl+P`)** — fuzzy file/path palette over a lazily
+  fetched, bounded project file list. Keyboard navigable, 50-result
+  cap, ignored paths excluded; selection routes through the same safe
+  Quick Edit session (dirty-editor guard included).
+- **Workspace Search (`Ctrl+Shift+F`)** — bounded text search across
+  source files (`.js/.jsx/.ts/.tsx/.css/.scss/.html/.json/.md`).
+  Returns relative path + line + column + preview; skips secrets,
+  binaries, generated dirs; enforces file/size/result caps; results
+  navigate to the exact source location. A monotonic request id drops
+  stale results so a slower earlier search can never clobber a newer
+  one.
+- **Component intelligence** — `Ctrl` is not required: selecting an
+  element now shows its owning component, the definition site, and every
+  resolved caller (`Used by src/…:line`), each clickable into Quick
+  Edit. Analysis is static Babel parsing of `.js/.jsx/.ts/.tsx` sources
+  collected through the bounded native layer — project code is never
+  executed — and covers function / arrow / class components, named +
+  default exports, and relative imports including unambiguous `index`
+  re-exports. Unresolvable relationships are labeled, never guessed.
+- **Style intelligence** — selection now carries the element's class
+  tokens, a full box model (margin/border/padding/size), a curated set
+  of computed styles, and the matched CSS rules discovered through
+  CSSOM. Vite dev hints (`data-vite-dev-id`) map matched rules back to
+  project-relative stylesheet paths, so `src/styles/button.css` opens
+  in Quick Edit or externally. Cross-origin/inaccessible stylesheets
+  are skipped safely; ambiguous selector locations are reported as
+  unresolved, never fabricated. Style data is collected on click only —
+  hover sends nothing extra.
+- **Copy Context** — copies a bounded developer-context block for the
+  selected element: component, source location, tag, classes, resolved
+  callers, matched style sources, and a small source snippet. Relative
+  paths only; capped at ~4 KB.
+- **Invalidation-aware** — a RootRay save, a clean auto-reload, or a
+  detected external change invalidates the cached analysis; the next
+  request rebuilds lazily. Nothing watches or indexes the project
+  continuously.
+
+## Previous capability — Milestone 03 (Safe Source Editing)
 
 Everything from Milestones 01–02, plus an in-app **Quick Edit** path:
 
@@ -76,14 +126,16 @@ lifecycle, live logs, editor detection, filesystem boundaries), plus:
 - **HMR preserved** — instrumentation rides Vite's transform pipeline;
   hot updates keep working and stay instrumented.
 
-### Keyboard shortcuts (Quick Edit)
+### Keyboard shortcuts
 
 | Key | Action |
 |---|---|
-| `Ctrl+S` | Save (hash-checked, atomic) |
-| `Ctrl+F` | Find in current file |
-| `Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y` | Undo / redo |
-| `Escape` | Inspector behavior unchanged |
+| `Ctrl+P` | Quick Open — fuzzy file navigation |
+| `Ctrl+Shift+F` | Workspace Search |
+| `Ctrl+S` | Quick Edit — save (hash-checked, atomic) |
+| `Ctrl+F` | Quick Edit — find in current file |
+| `Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y` | Quick Edit — undo / redo |
+| `Escape` | Cancel Inspect Mode / close palettes |
 
 ## Prerequisites
 
@@ -138,17 +190,25 @@ crates/rootray-core        Native core: detection, process lifecycle,
                            inspector bridge/session, source preview,
                            editor launch-at-location, safe edit sessions
                            (hash-checked atomic writes, file watcher),
-                           fs boundaries.
+                           lazy project tree listing, bounded workspace
+                           search, bounded source collection, fs boundaries.
 apps/desktop               React UI + thin src-tauri command layer;
-                           lazy-loaded CodeMirror Quick Edit panel.
+                           lazy-loaded CodeMirror Quick Edit panel;
+                           explorer, palettes, intelligence views.
 packages/source-protocol   Versioned wire contract between browser
                            runtime and the Rust bridge (validated both ways).
 packages/inspector-runtime Browser client: WS auth/reconnect, Shadow-DOM
-                           overlay, hover/select, click suppression.
+                           overlay, hover/select, click suppression,
+                           on-select style details (classes, box model,
+                           curated computed styles, matched CSS rules).
 packages/vite-plugin       Babel JSX/TSX instrumentation + dev-server
                            runner that merges the plugin into the project's
                            own Vite instance.
-fixtures/                  Real projects incl. a multi-file inspector app.
+packages/intelligence      Bounded static React source analysis (Babel):
+                           component definitions, JSX usages, local import
+                           resolution. Source is data — never executed.
+fixtures/                  Real projects incl. a multi-file inspector app
+                           with components, local imports and stylesheets.
 tests/e2e                  Playwright suite driving the real fixture.
 ```
 
@@ -170,6 +230,26 @@ Quick Edit ─▶ open_source_editor (validate + read + SHA-256 + watch)
 ──▶ Vite watcher → HMR → updated DOM stays instrumented
 ```
 
+### Intelligence data flow
+
+```
+Explorer        list_project_dir(dir)      lazy, per-expanded-dir only
+Ctrl+P          list_project_files()       bounded file list, cached
+Ctrl+Shift+F    search_workspace(query)    capped files/bytes/results
+Click select    element:selected + styles  CSSOM matched rules + curated
+                                           computed styles + box model
+Component panel collect_source_files()     capped count/bytes, then
+                → @rootray/intelligence    Babel parse, defs + usages,
+                (lazy chunk, cached)       import resolution; invalidated
+                                           by any source change
+CSS source      data-vite-dev-id hint → project-relative stylesheet path
+                → Quick Edit / Open External (same safe file layer)
+```
+
+All of it flows through the same boundary-checked native layer — relative
+paths only, secrets and generated directories denied, hard caps on files,
+bytes and results.
+
 ## Security model
 
 - No generic `execute(command)` API — only narrow Tauri commands.
@@ -190,12 +270,21 @@ Quick Edit ─▶ open_source_editor (validate + read + SHA-256 + watch)
   all source files before and after a session to prove it, and the edit
   E2E asserts a save changes exactly the intended file.
 
-## Known limitations (Milestone 03)
+## Known limitations (Milestone 04)
 
 - Only React + Vite; only intrinsic (lowercase DOM) elements carry
   metadata — a custom component's position comes from its rendered DOM.
 - Component names are inferred from function/arrow/class declarations;
   ambiguous ownership reports no name rather than a guess.
+- Static analysis resolves common import shapes only — aliased paths
+  (`@/…`), barrel cycles, `React.lazy`/dynamic imports, and re-export
+  chains deeper than one unambiguous `index` hop stay *unresolved*
+  (labeled, never guessed).
+- CSS source mapping relies on Vite dev `data-vite-dev-id` hints; rules
+  from runtime-injected or cross-origin stylesheets report a stylesheet
+  hint only when reliable, otherwise "source unresolved".
+- Selector *line* numbers inside a stylesheet are not resolved — matched
+  rules link to the stylesheet file, not a specific line.
 - Playwright E2E drives a protocol-faithful mock bridge; the Rust bridge
   itself is covered by unit/integration tests, not browser automation.
   The in-browser edit path mirrors the native save contract — the real

@@ -113,3 +113,42 @@ External write on the open file → notify → hash != baseHash →
 it powers the conflict "Compare" view. `revert_source_save` restores the
 bytes before RootRay's last write only while the disk still matches that
 write. The watcher covers exactly the open file — no project indexing.
+
+## Project intelligence & styling (Milestone 04)
+
+```
+Explorer / Quick Open / Search          Component & style intelligence
+        │                                        │
+        ▼                                        ▼
+filesystem/nav.rs (native)            inspector-runtime/styles.ts
+  list_project_dir   — lazy, one dir    (click-select only: classes,
+  list_project_files — bounded walk      box model, curated computed,
+  search_workspace   — capped files/     matched CSSOM rules, Vite
+                       bytes/results     dev-id → relative stylesheet)
+  collect_source_files — bounded text          │
+  corpus for analysis                        ▼
+        │                             Rust bridge: validated, bounded
+        ▼                                        ▼
+  all paths: relative only,           @rootray/intelligence (lazy chunk):
+  canonicalized inside project root,  Babel parse of .js/.jsx/.ts/.tsx →
+  secrets + generated dirs denied,    component defs, JSX usages, local
+  hard caps everywhere                import resolution (incl. unambiguous
+                                      index re-export); cached snapshot,
+                                      invalidated on any source change
+```
+
+- **Navigation is lazy** — directory children are fetched per expand; the
+  file list for Quick Open is one bounded walk, not a watcher.
+- **Search is stale-proof** — the UI tags each request with a monotonic
+  id; a slower earlier result can never overwrite a newer one.
+- **Analysis never executes project code** — Babel treats source as data;
+  there is no `require`, no tsconfig resolution, no module runner.
+- **Unresolved is a first-class result** — missing imports, external
+  packages, and ambiguous re-exports are labeled `unresolved` rather than
+  guessed.
+- **Style payload is curated** — ~20 computed properties, bounded
+  declarations and rules, no full CSSOM dump; collected once per
+  selection, never on hover.
+- **Stylesheet mapping is conservative** — `data-vite-dev-id` paths are
+  normalized to project-relative and rejected if they escape the root;
+  selector-level line resolution is not attempted (reported unresolved).
