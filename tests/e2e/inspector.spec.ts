@@ -225,7 +225,9 @@ test.beforeAll(async () => {
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
-  appUrl = (await waitForRunnerUrl(runner)).replace("localhost", "127.0.0.1");
+  // Keep the host exactly as Vite prints it — hosted runners may bind
+  // localhost to ::1 only, so rewriting to 127.0.0.1 breaks the page load.
+  appUrl = await waitForRunnerUrl(runner);
 });
 
 test.afterAll(async () => {
