@@ -7,6 +7,7 @@
 //! The frontend never gets a generic shell — it only ever sees the narrow
 //! commands in `src-tauri`, which delegate here.
 
+pub mod job;
 pub mod url_detect;
 
 use std::io::{BufRead, BufReader};
@@ -47,10 +48,19 @@ struct Running {
 }
 
 /// Spawns, supervises and kills dev servers. At most one child at a time.
+///
+/// Every spawned process is assigned to a Windows Job Object with
+/// KILL_ON_JOB_CLOSE (see [`job`]). Graceful stop still goes through
+/// `taskkill /T`; the job guarantees that an abnormal RootRay exit —
+/// crash, force-kill — cannot orphan the dev-server tree.
 pub struct ProcessManager {
     running: Mutex<Option<Arc<Running>>>,
     /// How long to wait for a loopback URL before emitting `UrlTimeout`.
     url_timeout: Duration,
+    /// Containment for spawned dev servers. `None` = unavailable (job
+    /// creation failed or non-Windows) — lifecycle still works, the
+    /// abnormal-exit guarantee is just absent.
+    containment: Option<job::Job>,
 }
 
 impl Default for ProcessManager {
@@ -61,7 +71,11 @@ impl Default for ProcessManager {
 
 impl ProcessManager {
     pub fn new() -> Self {
-        Self { running: Mutex::new(None), url_timeout: Duration::from_secs(60) }
+        Self {
+            running: Mutex::new(None),
+            url_timeout: Duration::from_secs(60),
+            containment: job::Job::create(),
+        }
     }
 
     /// Test hook: shorten the URL watchdog.
@@ -104,6 +118,17 @@ impl ProcessManager {
             }
         };
         let pid = child.id();
+
+        // Job containment is best-effort — failure (already in another job,
+        // exotic sandbox) must never block a normal run; taskkill still
+        // covers the graceful path and the UI is told honestly.
+        if let Some(job) = &self.containment {
+            if !job.assign_pid(pid) {
+                sink(ProcessEvent::Stderr {
+                    line: "[rootray] process could not be added to the containment job; abnormal-exit cleanup is unavailable for this run".into(),
+                });
+            }
+        }
 
         let running = Arc::new(Running {
             pid,

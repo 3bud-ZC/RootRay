@@ -12,6 +12,8 @@ mod inspector_bridge;
 mod inspector_launch;
 #[path = "suite/process_lifecycle.rs"]
 mod process_lifecycle;
+#[path = "suite/process_containment.rs"]
+mod process_containment;
 #[path = "suite/project_nav.rs"]
 mod project_nav;
 #[path = "suite/project_analysis.rs"]
