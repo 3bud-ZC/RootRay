@@ -16,15 +16,14 @@ import { type ChildProcess, execSync, spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
   cpSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
@@ -204,9 +203,14 @@ test.describe.configure({ mode: "serial" });
 let integrityBaseline = "";
 
 test.beforeAll(async () => {
-  // realpathSync expands 8.3 short names (hosted runners set TMPDIR to
-  // C:\Users\RUNNER~1\...) — Vite's fs.allow check rejects the short form.
-  workDir = realpathSync(mkdtempSync(join(tmpdir(), "rootray-e2e-")));
+  // The working copy must live inside the repo: hosted runners set TMPDIR
+  // to an 8.3 short path (C:\Users\RUNNER~1\...) that fails Vite's realpath
+  // fs.allow check with a 403. It cannot live under test-results/ or
+  // playwright-report/ — Vite's default watch-ignore list covers those
+  // dirs, which silently disables HMR. .e2e-work/ is gitignored.
+  const workParent = join(REPO_ROOT, ".e2e-work");
+  mkdirSync(workParent, { recursive: true });
+  workDir = mkdtempSync(join(workParent, "fixture-"));
   cpSync(FIXTURE, workDir, { recursive: true });
   npm("install --no-audit --no-fund --loglevel=error", workDir);
   integrityBaseline = projectDigest(workDir);
@@ -330,12 +334,15 @@ test("inspect → hover → overlay → click → real source selection", async 
 
 test("HMR works through RootRay instrumentation and stays instrumented", async ({ page }) => {
   await gotoAndWaitForApp(page);
+  // Let the Vite HMR websocket connect before editing — an update emitted
+  // before the client subscribes is silently dropped.
+  await page.waitForTimeout(1_500);
 
   const cardFile = join(workDir, "src", "components", "Card.tsx");
   const original = readFileSync(cardFile, "utf8");
   writeFileSync(cardFile, original.replace("{title}", "HMR live edit"));
 
-  await expect(page.locator("h2", { hasText: "HMR live edit" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("h2", { hasText: "HMR live edit" })).toBeVisible({ timeout: 30_000 });
 
   // HMR-updated DOM still carries source metadata.
   const heading = page.locator("h2", { hasText: "HMR live edit" });
