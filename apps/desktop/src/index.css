@@ -19,6 +19,22 @@
   box-sizing: border-box;
 }
 
+/* Keyboard users get a visible focus ring; pointer-only users don't. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion must
+       win over every transition regardless of specificity. */
+    transition: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: same reasoning. */
+    animation: none !important;
+  }
+}
+
 html,
 body,
 #root {
@@ -1167,6 +1183,11 @@ body {
   outline: none;
 }
 
+.palette-input:focus-visible {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
 .palette-list {
   max-height: 320px;
   overflow-y: auto;
@@ -1460,4 +1481,47 @@ body {
   font-family: var(--mono);
   font-size: 10.5px;
   word-break: break-all;
+}
+
+/* --- crash / error boundary ------------------------------------------------- */
+
+.crash-view {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  z-index: 100;
+}
+
+.crash-card {
+  max-width: 480px;
+  padding: 28px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.crash-card h1 {
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+
+.crash-actions {
+  display: flex;
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.crash-detail {
+  font-size: 11px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }

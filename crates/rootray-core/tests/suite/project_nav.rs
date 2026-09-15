@@ -5,7 +5,7 @@ use std::fs;
 
 use rootray_core::filesystem::nav::{
     collect_source_files, list_project_dir, list_project_files, search_workspace, EntryKind,
-    MAX_DIR_ENTRIES, MAX_SEARCH_RESULTS,
+    MAX_DIR_ENTRIES, MAX_INTEL_FILES, MAX_LIST_FILES, MAX_SEARCH_FILES, MAX_SEARCH_RESULTS,
 };
 
 fn project() -> tempfile::TempDir {
@@ -234,4 +234,43 @@ fn collection_skips_denied_and_generated() {
     fs::write(dir.path().join("node_modules/lib/index.js"), "x").unwrap();
     let coll = collect_source_files(dir.path()).unwrap();
     assert!(coll.files.is_empty());
+}
+
+// --- large synthetic project ----------------------------------------------------
+//
+// Generated per-test, never committed: thousands of files across nested dirs.
+// RootRay must return bounded, truncated results — never walk unbounded.
+
+fn big_project(file_count: usize) -> tempfile::TempDir {
+    let dir = project();
+    for i in 0..file_count {
+        let sub = format!("src/gen/d{:02}", i % 50);
+        fs::create_dir_all(dir.path().join(&sub)).unwrap();
+        fs::write(
+            dir.path().join(format!("{sub}/f{i:05}.ts")),
+            "export const needle = 1;\n",
+        )
+        .unwrap();
+    }
+    dir
+}
+
+#[test]
+fn large_project_results_are_bounded() {
+    // One corpus over every cap: listing, search-scan and intel collection
+    // must all stop at their limits and flag truncation.
+    let dir = big_project(MAX_LIST_FILES + 300);
+
+    let listing = list_project_files(dir.path()).unwrap();
+    assert_eq!(listing.paths.len(), MAX_LIST_FILES);
+    assert!(listing.truncated);
+
+    let res = search_workspace(dir.path(), "needle").unwrap();
+    assert!(res.matches.len() <= MAX_SEARCH_RESULTS);
+    assert!(res.files_scanned <= MAX_SEARCH_FILES as u32);
+    assert!(res.truncated);
+
+    let coll = collect_source_files(dir.path()).unwrap();
+    assert!(coll.files.len() <= MAX_INTEL_FILES);
+    assert!(coll.truncated);
 }
