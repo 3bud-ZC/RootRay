@@ -63,6 +63,39 @@ pub enum CoreError {
     #[error("source preview failed: {0}")]
     SourcePreviewFailed(String),
 
+    #[error("source file not found: {0}")]
+    SourceFileNotFound(String),
+
+    #[error("source file is not editable inside RootRay: {0}")]
+    SourceFileDenied(String),
+
+    #[error("source file too large to edit safely ({0} bytes)")]
+    SourceFileTooLarge(u64),
+
+    #[error("source file is binary, not text: {0}")]
+    SourceFileBinary(String),
+
+    #[error("source file encoding is not supported: {0}")]
+    SourceFileEncodingUnsupported(String),
+
+    #[error("file changed outside RootRay since it was loaded")]
+    SourceEditConflict { disk_hash: String },
+
+    #[error("file changed outside RootRay (still unsaved content is safe)")]
+    SourceExternalChange { disk_hash: String },
+
+    #[error("source write failed: {0}")]
+    SourceWriteFailed(String),
+
+    #[error("permission denied writing source file: {0}")]
+    SourceWritePermissionDenied(String),
+
+    #[error("no editor session is open")]
+    EditorSessionClosed,
+
+    #[error("revert is not possible: {0}")]
+    RevertUnavailable(String),
+
     #[error("failed to open editor: {0}")]
     EditorOpenFailed(String),
 
@@ -99,6 +132,19 @@ impl CoreError {
             Self::InspectorNotActive => "INSPECTOR_NOT_ACTIVE",
             Self::InspectorSourceNotFound(_) => "INSPECTOR_SOURCE_NOT_FOUND",
             Self::SourcePreviewFailed(_) => "SOURCE_PREVIEW_FAILED",
+            Self::SourceFileNotFound(_) => "SOURCE_FILE_NOT_FOUND",
+            Self::SourceFileDenied(_) => "SOURCE_FILE_DENIED",
+            Self::SourceFileTooLarge(_) => "SOURCE_FILE_TOO_LARGE",
+            Self::SourceFileBinary(_) => "SOURCE_FILE_BINARY",
+            Self::SourceFileEncodingUnsupported(_) => {
+                "SOURCE_FILE_ENCODING_UNSUPPORTED"
+            }
+            Self::SourceEditConflict { .. } => "SOURCE_EDIT_CONFLICT",
+            Self::SourceExternalChange { .. } => "SOURCE_EXTERNAL_CHANGE",
+            Self::SourceWriteFailed(_) => "SOURCE_WRITE_FAILED",
+            Self::SourceWritePermissionDenied(_) => "SOURCE_WRITE_PERMISSION_DENIED",
+            Self::EditorSessionClosed => "EDITOR_SESSION_CLOSED",
+            Self::RevertUnavailable(_) => "REVERT_UNAVAILABLE",
             Self::EditorOpenFailed(_) => "EDITOR_OPEN_FAILED",
             Self::IllegalTransition { .. } => "ILLEGAL_STATE_TRANSITION",
             Self::SettingsIo(_) => "SETTINGS_IO",

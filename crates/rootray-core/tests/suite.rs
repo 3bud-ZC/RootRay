@@ -18,5 +18,7 @@ mod project_analysis;
 mod runtime_state;
 #[path = "suite/settings.rs"]
 mod settings;
+#[path = "suite/source_edit.rs"]
+mod source_edit;
 #[path = "suite/url_detect.rs"]
 mod url_detect;

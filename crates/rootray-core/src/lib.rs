@@ -7,6 +7,7 @@
 //! unit-testable; the `src-tauri` crate is a thin command layer on top.
 
 pub mod app;
+pub mod editor;
 pub mod error;
 pub mod filesystem;
 pub mod inspector;

@@ -8,6 +8,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use crate::editor::{EditorEvent, EditorManager, EditorSessionInfo};
 use crate::error::{CommandError, CoreError, CoreResult};
 use crate::inspector::{InspectorManager, InspectorState};
 use crate::launcher::{self, DetectedLauncher};
@@ -21,6 +22,7 @@ pub struct AppCore {
     processes: Arc<ProcessManager>,
     settings: SettingsStore,
     inspector: InspectorManager,
+    editor: EditorManager,
     /// Monotonic run id — guards against events from a previous process
     /// generation landing on a newer run.
     generation: Arc<Mutex<u64>>,
@@ -33,6 +35,7 @@ impl AppCore {
             processes: Arc::new(ProcessManager::new()),
             settings: SettingsStore::new(settings_dir),
             inspector: InspectorManager::new(),
+            editor: EditorManager::new(),
             generation: Arc::new(Mutex::new(0)),
         }
     }
@@ -398,6 +401,94 @@ impl AppCore {
     ) -> CoreResult<crate::filesystem::preview::SourcePreview> {
         let root = self.project_root()?;
         crate::filesystem::preview::read_source_preview(&root, relative_path, line)
+    }
+
+    // --- quick editor ------------------------------------------------------
+
+    /// Registers the host callback fired on editor events (external
+    /// change notifications for the open file).
+    pub fn set_editor_notify(&self, notify: Arc<dyn Fn(&EditorEvent) + Send + Sync>) {
+        self.editor.set_notify(notify);
+    }
+
+    /// Opens a project source file for Quick Edit: validates, reads,
+    /// hashes and starts watching it for external changes.
+    pub fn open_source_editor(
+        &self,
+        relative_path: &str,
+    ) -> CoreResult<crate::editor::SourceFileRead> {
+        let root = self.project_root()?;
+        self.editor.open(&root, relative_path)
+    }
+
+    /// Optimistic-concurrency save through the open edit session.
+    pub fn save_source_file(
+        &self,
+        relative_path: &str,
+        content: &str,
+        expected_hash: &str,
+    ) -> CoreResult<crate::editor::SourceFileWrite> {
+        let root = self.project_root()?;
+        self.editor.save(&root, relative_path, content, expected_hash)
+    }
+
+    /// Current disk hash for the open file.
+    pub fn check_source_file(
+        &self,
+        relative_path: &str,
+    ) -> CoreResult<crate::editor::SourceFileHash> {
+        let root = self.project_root()?;
+        self.editor.check(&root, relative_path)
+    }
+
+    /// Re-reads the open file and rebases the session ("Reload Disk
+    /// Version" — for clean auto-reload and conflict resolution alike).
+    pub fn reload_source_file(
+        &self,
+        relative_path: &str,
+    ) -> CoreResult<crate::editor::SourceFileRead> {
+        let root = self.project_root()?;
+        self.editor.reload(&root, relative_path)
+    }
+
+    /// Restores the bytes that preceded RootRay's last save — refused if
+    /// the disk has since diverged from RootRay's last write.
+    pub fn revert_source_save(
+        &self,
+        relative_path: &str,
+    ) -> CoreResult<crate::editor::SourceFileRead> {
+        let root = self.project_root()?;
+        self.editor.revert_last_save(&root, relative_path)
+    }
+
+    /// Closes the edit session and stops the watcher.
+    pub fn close_source_editor(&self) {
+        self.editor.close();
+    }
+
+    /// Read-only fetch of a project source file that does NOT touch the
+    /// edit session — used by the conflict "Compare" view so unsaved
+    /// editor content and the save baseline stay intact.
+    pub fn peek_source_file(
+        &self,
+        relative_path: &str,
+    ) -> CoreResult<crate::editor::SourceFileRead> {
+        let root = self.project_root()?;
+        crate::editor::file::read_source_file(&root, relative_path)
+    }
+
+    pub fn editor_session_info(&self) -> EditorSessionInfo {
+        match self.project_root() {
+            Ok(root) => self.editor.info(&root),
+            Err(_) => EditorSessionInfo {
+                open: false,
+                relative_path: None,
+                base_hash: None,
+                disk_hash: None,
+                watching: false,
+                can_revert: false,
+            },
+        }
     }
 
     fn project_root(&self) -> CoreResult<std::path::PathBuf> {
