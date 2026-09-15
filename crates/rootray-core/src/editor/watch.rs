@@ -26,7 +26,15 @@ impl FileWatcher {
     /// Watches `file`'s parent dir; calls `on_change` (debounced) whenever
     /// the file's content may have changed. Events stop when dropped.
     pub fn watch(file: &Path, on_change: impl Fn() + Send + 'static) -> Result<Self, notify::Error> {
-        let parent = file.parent().unwrap_or_else(|| Path::new(".")).to_path_buf();
+        // Canonicalize BOTH sides: canonicalize() expands 8.3 short names
+        // (C:\Users\RUNNER~1 → runneradmin on hosted runners). Watching a
+        // non-canonical parent makes ReadDirectoryChangesW report short
+        // paths that would never match the long-path target.
+        let parent = file
+            .parent()
+            .and_then(|p| p.canonicalize().ok())
+            .or_else(|| file.parent().map(|p| p.to_path_buf()))
+            .unwrap_or_else(|| Path::new(".").to_path_buf());
         let target = file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
 
         let (tx, rx) = channel::<()>();
