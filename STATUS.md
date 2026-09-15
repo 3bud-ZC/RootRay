@@ -1,16 +1,19 @@
 # RootRay Status
 
 ## Overall Progress
-100%
+99%
 
 ## Current Milestone
 Milestone 05 — Release Hardening, Windows Packaging & MVP Final Acceptance
 
 ## Milestone Status
-Complete
+Release Candidate
 
 ## Release Status
-MVP READY
+Remote release verification pending — local release build, installer
+smoke test and full regression suite are green; awaiting a successful
+remote run of `.github/workflows/release.yml` (workflow_dispatch) before
+`MVP READY` can be claimed.
 
 ## Release Version
 RootRay **0.1.0** — consistent across root `package.json`, all
