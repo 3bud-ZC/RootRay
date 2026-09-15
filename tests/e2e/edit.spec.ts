@@ -221,6 +221,9 @@ test("external modification blocks save; unsaved buffer survives", async ({ page
   expect(unsaved).toContain("UnsavedEdit");
 
   // The "Reload Disk Version" path re-bases, then a save succeeds.
+  // Give chokidar a beat between the foreign write and our rename —
+  // back-to-back event bursts can coalesce on slow runners.
+  await page.waitForTimeout(1_000);
   const reloaded = safeRead(abs);
   expect(reloaded.content).toBe(external.replaceAll("\r\n", "\n"));
   const merged = reloaded.content.replace("ExternalEdit {count}", "MergedEdit {count}");
