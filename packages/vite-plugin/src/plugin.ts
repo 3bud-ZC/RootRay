@@ -68,6 +68,7 @@ export default function rootrayInspector(opts: RootRayInspectorOptions): Plugin 
           bridgeUrl: opts.bridgeUrl,
           sessionId: opts.sessionId,
           token: opts.sessionToken,
+          projectRoot: opts.projectRoot,
         }),
       ).replace(/</g, "\\u003c");
       return {

@@ -14,6 +14,7 @@ interface RootRayBootstrap {
   sessionId?: string;
   token?: string;
   version?: number;
+  projectRoot?: string;
 }
 
 const cfg = (window as unknown as { __ROOTRAY__?: RootRayBootstrap }).__ROOTRAY__;
@@ -30,6 +31,7 @@ if (
       sessionId: cfg.sessionId,
       token: cfg.token,
       protocolVersion: cfg.version ?? ROOTRAY_PROTOCOL_VERSION,
+      ...(typeof cfg.projectRoot === "string" ? { projectRoot: cfg.projectRoot } : {}),
     },
     socketFactory: (url) => new WebSocket(url) as unknown as import("./runtime").BridgeSocket,
   });

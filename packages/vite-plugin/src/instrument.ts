@@ -263,12 +263,15 @@ export interface RuntimeBootstrap {
   sessionId: string;
   token: string;
   version: number;
+  /** Absolute project root — lets the runtime relativize stylesheet hints. */
+  projectRoot: string;
 }
 
 export function bootstrapConfig(opts: {
   bridgeUrl: string;
   sessionId: string;
   token: string;
+  projectRoot: string;
 }): RuntimeBootstrap {
   return { ...opts, version: ROOTRAY_PROTOCOL_VERSION };
 }

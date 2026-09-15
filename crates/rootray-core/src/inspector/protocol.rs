@@ -13,6 +13,64 @@ pub const BRIDGE_PATH: &str = "/rootray";
 const MAX_STRING: usize = 4096;
 const MAX_TAG: usize = 64;
 const MAX_TEXT_PREVIEW: usize = 200;
+const MAX_STYLE_CLASSES: usize = 32;
+const MAX_STYLE_RULES: usize = 24;
+const MAX_STYLE_DECLS: usize = 32;
+const MAX_STYLE_COMPUTED: usize = 24;
+const MAX_STYLE_STRING: usize = 512;
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoxEdges {
+    pub top: f64,
+    pub right: f64,
+    pub bottom: f64,
+    pub left: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoxModel {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub margin: BoxEdges,
+    pub padding: BoxEdges,
+    pub border: BoxEdges,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CssDeclaration {
+    pub property: String,
+    pub value: String,
+    pub important: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MatchedCssRule {
+    pub selector: String,
+    pub declarations: Vec<CssDeclaration>,
+    /// Project-relative stylesheet path — present only when the runtime
+    /// resolved it reliably. Absolute paths are rejected at parse time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+}
+
+/// Bounded style snapshot the browser runtime attaches to a selection.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StyleDetails {
+    pub classes: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element_id: Option<String>,
+    #[serde(rename = "box")]
+    pub box_model: BoxModel,
+    pub computed: std::collections::BTreeMap<String, String>,
+    pub matched_rules: Vec<MatchedCssRule>,
+}
 
 /// Project-relative source identity of a rendered element.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -37,11 +95,15 @@ pub struct ElementFacts {
     pub text_preview: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ElementSelection {
     pub element: ElementFacts,
     pub source: SourceLocation,
+    /// Style snapshot — optional; malformed styles degrade to `None`,
+    /// never to a rejected selection.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub styles: Option<StyleDetails>,
 }
 
 /// Validated runtime → bridge messages.
@@ -143,9 +205,10 @@ pub fn parse_runtime_message(raw: &str) -> Result<RuntimeMessage, ProtocolError>
                 .ok_or(ProtocolError::InvalidElement)?;
             let source = parse_source_location(obj.get("source"))
                 .ok_or(ProtocolError::InvalidSource)?;
+            let styles = parse_style_details(obj.get("styles"));
             Ok(RuntimeMessage::ElementSelected {
                 session_id,
-                selection: ElementSelection { element, source },
+                selection: ElementSelection { element, source, styles },
             })
         }
         _ => Err(ProtocolError::UnknownType),
@@ -201,6 +264,110 @@ fn parse_source_location(v: Option<&Value>) -> Option<SourceLocation> {
         column: column as u32,
         component_name: optional_str(obj.get("componentName")),
     })
+}
+
+fn finite_f64(v: Option<&Value>) -> Option<f64> {
+    v.and_then(Value::as_f64).filter(|n| n.is_finite())
+}
+
+fn parse_edges(v: Option<&Value>) -> Option<BoxEdges> {
+    let obj = v?.as_object()?;
+    Some(BoxEdges {
+        top: finite_f64(obj.get("top"))?,
+        right: finite_f64(obj.get("right"))?,
+        bottom: finite_f64(obj.get("bottom"))?,
+        left: finite_f64(obj.get("left"))?,
+    })
+}
+
+fn bounded_str(v: Option<&Value>, max: usize) -> Option<String> {
+    let s = v?.as_str()?;
+    if s.len() > max {
+        return None;
+    }
+    Some(s.to_string())
+}
+
+/// Validates a style snapshot. Any malformed field → `None`; the caller
+/// keeps the selection itself.
+fn parse_style_details(v: Option<&Value>) -> Option<StyleDetails> {
+    let obj = v?.as_object()?;
+
+    let classes_v = obj.get("classes")?.as_array()?;
+    if classes_v.len() > MAX_STYLE_CLASSES {
+        return None;
+    }
+    let mut classes = Vec::with_capacity(classes_v.len());
+    for c in classes_v {
+        let s = c.as_str()?;
+        if s.is_empty() || s.len() > MAX_STYLE_STRING {
+            return None;
+        }
+        classes.push(s.to_string());
+    }
+    let element_id = match obj.get("elementId") {
+        Some(v) => Some(bounded_str(Some(v), MAX_STYLE_STRING)?),
+        None => None,
+    };
+
+    let b = obj.get("box")?.as_object()?;
+    let box_model = BoxModel {
+        x: finite_f64(b.get("x"))?,
+        y: finite_f64(b.get("y"))?,
+        width: finite_f64(b.get("width"))?,
+        height: finite_f64(b.get("height"))?,
+        margin: parse_edges(b.get("margin"))?,
+        padding: parse_edges(b.get("padding"))?,
+        border: parse_edges(b.get("border"))?,
+    };
+
+    let computed_v = obj.get("computed")?.as_object()?;
+    if computed_v.len() > MAX_STYLE_COMPUTED {
+        return None;
+    }
+    let mut computed = std::collections::BTreeMap::new();
+    for (k, val) in computed_v {
+        if k.len() > MAX_STYLE_STRING {
+            return None;
+        }
+        computed.insert(k.clone(), bounded_str(Some(val), MAX_STYLE_STRING)?);
+    }
+
+    let rules_v = obj.get("matchedRules")?.as_array()?;
+    if rules_v.len() > MAX_STYLE_RULES {
+        return None;
+    }
+    let mut matched_rules = Vec::with_capacity(rules_v.len());
+    for r in rules_v {
+        let ro = r.as_object()?;
+        let selector = bounded_str(ro.get("selector"), MAX_STYLE_STRING)?;
+        let decls_v = ro.get("declarations")?.as_array()?;
+        if decls_v.len() > MAX_STYLE_DECLS {
+            return None;
+        }
+        let mut declarations = Vec::with_capacity(decls_v.len());
+        for d in decls_v {
+            let d_obj = d.as_object()?;
+            declarations.push(CssDeclaration {
+                property: bounded_str(d_obj.get("property"), MAX_STYLE_STRING)?,
+                value: bounded_str(d_obj.get("value"), MAX_STYLE_STRING)?,
+                important: d_obj.get("important").and_then(Value::as_bool).unwrap_or(false),
+            });
+        }
+        let source_path = match ro.get("sourcePath") {
+            Some(v) => {
+                let p = v.as_str()?;
+                if !is_safe_relative_path(p) {
+                    return None;
+                }
+                Some(p.to_string())
+            }
+            None => None,
+        };
+        matched_rules.push(MatchedCssRule { selector, declarations, source_path });
+    }
+
+    Some(StyleDetails { classes, element_id, box_model, computed, matched_rules })
 }
 
 /// Project-relative path contract: forward slashes, no escapes, no drive

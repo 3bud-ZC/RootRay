@@ -38,6 +38,57 @@ export interface ElementFacts {
   textPreview?: string;
 }
 
+// --- style details (collected on selection only — never on hover) ---------
+
+/** Four CSS box edges in px. */
+export interface BoxEdges {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/** Geometry + box model of the selected element. */
+export interface BoxModel {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  margin: BoxEdges;
+  padding: BoxEdges;
+  border: BoxEdges;
+}
+
+export interface CssDeclaration {
+  property: string;
+  value: string;
+  important: boolean;
+}
+
+/** A CSS rule that actually matched the selected element. */
+export interface MatchedCssRule {
+  selector: string;
+  declarations: CssDeclaration[];
+  /**
+   * Project-relative stylesheet path when it could be resolved
+   * reliably (e.g. a Vite `data-vite-dev-id` hint). Omitted when
+   * the rule's source is ambiguous — never a guess.
+   */
+  sourcePath?: string;
+}
+
+/** Bounded style snapshot attached to an element selection. */
+export interface StyleDetails {
+  /** Actual class tokens on the element (max 32). */
+  classes: string[];
+  elementId?: string;
+  box: BoxModel;
+  /** Curated computed-style subset (max 24 entries). */
+  computed: Record<string, string>;
+  /** Matching CSSOM rules (max 24), cross-origin sheets skipped. */
+  matchedRules: MatchedCssRule[];
+}
+
 // --- runtime → bridge ---------------------------------------------------------
 
 export interface RuntimeHelloMessage {
@@ -61,6 +112,8 @@ export interface ElementSelectedMessage {
   sessionId: string;
   element: ElementFacts;
   source: SourceLocation;
+  /** Style snapshot — present when the runtime could collect it. */
+  styles?: StyleDetails;
 }
 
 /**
@@ -114,14 +167,17 @@ export function elementSelectedMessage(
   sessionId: string,
   element: ElementFacts,
   source: SourceLocation,
+  styles?: StyleDetails,
 ): ElementSelectedMessage {
-  return {
+  const msg: ElementSelectedMessage = {
     version: ROOTRAY_PROTOCOL_VERSION,
     type: "element:selected",
     sessionId,
     element,
     source,
   };
+  if (styles) msg.styles = styles;
+  return msg;
 }
 
 export function inspectSetMessage(enabled: boolean): InspectSetMessage {
@@ -184,6 +240,111 @@ export function parseElementFacts(v: unknown): ElementFacts | null {
   return out;
 }
 
+const MAX_STYLE_CLASSES = 32;
+const MAX_STYLE_RULES = 24;
+const MAX_STYLE_DECLS = 32;
+const MAX_STYLE_COMPUTED = 24;
+const MAX_STYLE_STRING = 512;
+
+function isFiniteNum(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v);
+}
+
+function parseEdges(v: unknown): BoxEdges | null {
+  if (!isRecord(v)) return null;
+  const { top, right, bottom, left } = v;
+  if (!isFiniteNum(top) || !isFiniteNum(right) || !isFiniteNum(bottom) || !isFiniteNum(left)) {
+    return null;
+  }
+  return { top, right, bottom, left };
+}
+
+/**
+ * Validates a style snapshot. Returns null on ANY malformed field — the
+ * caller treats that as "no styles", never as a reason to drop the whole
+ * selection.
+ */
+export function parseStyleDetails(v: unknown): StyleDetails | null {
+  if (!isRecord(v)) return null;
+  if (!Array.isArray(v.classes) || v.classes.length > MAX_STYLE_CLASSES) return null;
+  const classes: string[] = [];
+  for (const c of v.classes) {
+    if (typeof c !== "string" || c.length === 0 || c.length > MAX_STYLE_STRING) return null;
+    classes.push(c);
+  }
+  if (
+    v.elementId !== undefined &&
+    (typeof v.elementId !== "string" || v.elementId.length > MAX_STYLE_STRING)
+  )
+    return null;
+
+  const box = v.box;
+  if (!isRecord(box)) return null;
+  if (
+    !isFiniteNum(box.x) ||
+    !isFiniteNum(box.y) ||
+    !isFiniteNum(box.width) ||
+    !isFiniteNum(box.height)
+  ) {
+    return null;
+  }
+  const margin = parseEdges(box.margin);
+  const padding = parseEdges(box.padding);
+  const border = parseEdges(box.border);
+  if (!margin || !padding || !border) return null;
+
+  if (!isRecord(v.computed)) return null;
+  const computedEntries = Object.entries(v.computed);
+  if (computedEntries.length > MAX_STYLE_COMPUTED) return null;
+  const computed: Record<string, string> = {};
+  for (const [k, val] of computedEntries) {
+    if (typeof val !== "string" || val.length > MAX_STYLE_STRING) return null;
+    if (k.length > MAX_STYLE_STRING) return null;
+    computed[k] = val;
+  }
+
+  if (!Array.isArray(v.matchedRules) || v.matchedRules.length > MAX_STYLE_RULES) return null;
+  const matchedRules: MatchedCssRule[] = [];
+  for (const r of v.matchedRules) {
+    if (!isRecord(r)) return null;
+    if (typeof r.selector !== "string" || r.selector.length > MAX_STYLE_STRING) return null;
+    if (!Array.isArray(r.declarations) || r.declarations.length > MAX_STYLE_DECLS) return null;
+    const declarations: CssDeclaration[] = [];
+    for (const d of r.declarations) {
+      if (!isRecord(d)) return null;
+      if (typeof d.property !== "string" || d.property.length > MAX_STYLE_STRING) return null;
+      if (typeof d.value !== "string" || d.value.length > MAX_STYLE_STRING) return null;
+      declarations.push({ property: d.property, value: d.value, important: d.important === true });
+    }
+    const rule: MatchedCssRule = { selector: r.selector, declarations };
+    // sourcePath must satisfy the same project-relative contract.
+    if (r.sourcePath !== undefined) {
+      if (
+        typeof r.sourcePath !== "string" ||
+        r.sourcePath.length === 0 ||
+        r.sourcePath.length > MAX_STYLE_STRING ||
+        r.sourcePath.includes("..") ||
+        r.sourcePath.includes("\\") ||
+        /^[a-zA-Z]:/.test(r.sourcePath) ||
+        r.sourcePath.startsWith("/")
+      ) {
+        return null;
+      }
+      rule.sourcePath = r.sourcePath;
+    }
+    matchedRules.push(rule);
+  }
+
+  const out: StyleDetails = {
+    classes,
+    box: { x: box.x, y: box.y, width: box.width, height: box.height, margin, padding, border },
+    computed,
+    matchedRules,
+  };
+  if (typeof v.elementId === "string" && v.elementId) out.elementId = v.elementId;
+  return out;
+}
+
 /** Parses and validates a runtime→bridge message. Unknown data is rejected. */
 export function parseRuntimeMessage(raw: string): ParseResult<RuntimeMessage> {
   let data: unknown;
@@ -242,16 +403,18 @@ export function parseRuntimeMessage(raw: string): ParseResult<RuntimeMessage> {
       const source = parseSourceLocation(data.source);
       if (!element) return { ok: false, reason: "element:selected has invalid element" };
       if (!source) return { ok: false, reason: "element:selected has invalid source" };
-      return {
-        ok: true,
-        message: {
-          version: ROOTRAY_PROTOCOL_VERSION,
-          type: "element:selected",
-          sessionId: data.sessionId,
-          element,
-          source,
-        },
+      const message: ElementSelectedMessage = {
+        version: ROOTRAY_PROTOCOL_VERSION,
+        type: "element:selected",
+        sessionId: data.sessionId,
+        element,
+        source,
       };
+      // Optional payload — malformed styles degrade to absent, never to
+      // a rejected selection.
+      const styles = parseStyleDetails(data.styles);
+      if (styles) message.styles = styles;
+      return { ok: true, message };
     }
     default:
       return { ok: false, reason: "unknown message type" };

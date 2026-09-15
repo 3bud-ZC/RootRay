@@ -18,12 +18,18 @@ import {
 } from "@rootray/source-protocol";
 import { elementFacts, findInstrumentedElement, readSourceLocation } from "./metadata";
 import { InspectorOverlay } from "./overlay";
+import { collectStyleDetails } from "./styles";
 
 export interface RuntimeConfig {
   bridgeUrl: string;
   sessionId: string;
   token: string;
   protocolVersion: number;
+  /**
+   * Canonical project root — used only to relativize stylesheet source
+   * hints before they leave the page. Never sent to the bridge.
+   */
+  projectRoot?: string;
 }
 
 /** Minimal socket contract — `WebSocket` satisfies this structurally. */
@@ -269,8 +275,12 @@ export class InspectorRuntime {
     const source = readSourceLocation(el);
     if (!source) return;
     this.overlay.show(el, elementFacts(el), source);
+    // Style details are collected on selection only — never on hover.
+    const styles = collectStyleDetails(el, this.cfg.projectRoot ?? "") ?? undefined;
     this.send(
-      serializeMessage(elementSelectedMessage(this.cfg.sessionId, elementFacts(el), source)),
+      serializeMessage(
+        elementSelectedMessage(this.cfg.sessionId, elementFacts(el), source, styles),
+      ),
     );
   };
 
