@@ -125,3 +125,11 @@ export interface SettingsPatch {
 
 export const updateSettings = (update: SettingsPatch) =>
   invoke<RootRaySettings>("update_settings", { update });
+
+export interface DiagnosticsInfo {
+  version: string;
+  os: string;
+  arch: string;
+}
+
+export const getDiagnostics = () => invoke<DiagnosticsInfo>("get_diagnostics");

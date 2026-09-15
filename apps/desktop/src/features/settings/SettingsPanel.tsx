@@ -1,11 +1,12 @@
 import type { DetectedLauncher, RootRaySettings } from "@rootray/shared";
 import { errorMessage } from "@rootray/shared";
 import { useEffect, useState } from "react";
+import { buildDiagnostics } from "../../lib/diagnostics";
 import { detectEditors, getSettings, updateSettings } from "../../lib/ipc";
 import { useStore } from "../../state/store";
 
 export function SettingsPanel() {
-  const { dispatch } = useStore();
+  const { state, dispatch } = useStore();
   const [settings, setSettings] = useState<RootRaySettings | null>(null);
   const [launchers, setLaunchers] = useState<DetectedLauncher[]>([]);
 
@@ -27,6 +28,15 @@ export function SettingsPanel() {
   };
 
   const close = () => dispatch({ type: "toggle-settings", open: false });
+
+  const copyDiagnostics = async () => {
+    try {
+      await navigator.clipboard.writeText(await buildDiagnostics(state));
+      dispatch({ type: "notice", message: "Diagnostics copied", isError: false });
+    } catch {
+      dispatch({ type: "notice", message: "Copy failed" });
+    }
+  };
 
   return (
     <div className="settings-overlay" role="dialog" aria-label="Settings">
@@ -89,6 +99,16 @@ export function SettingsPanel() {
             onClick={() => patch({ clearRecentProjects: true }, "Failed to clear recents")}
           >
             Clear recent projects
+          </button>
+        </section>
+
+        <section className="settings-section">
+          <h3 className="section-title">Support</h3>
+          <p className="muted">
+            Version, platform and runtime state only — never tokens, env vars or source code.
+          </p>
+          <button type="button" className="btn" onClick={copyDiagnostics}>
+            Copy Diagnostics
           </button>
         </section>
       </div>

@@ -70,6 +70,8 @@ export interface RootRaySettings {
   recentProjects: string[];
   preferredLauncher: string | null;
   openBrowserAutomatically: boolean;
+  /** Last successfully analyzed project — restored read-only on launch. */
+  lastProject?: string | null;
 }
 
 export interface CoreErrorPayload {

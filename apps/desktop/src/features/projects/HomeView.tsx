@@ -10,10 +10,34 @@ export function HomeView() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    let live = true;
     getSettings()
-      .then(setSettings)
+      .then(async (s) => {
+        if (!live) return;
+        setSettings(s);
+        // Session recovery: re-analyze the last open project (read-only —
+        // the dev server is never started automatically). A deleted or
+        // invalid project degrades back to this home view with a notice.
+        if (!s.lastProject) return;
+        setBusy(true);
+        try {
+          await analyzeProject(s.lastProject);
+        } catch (e) {
+          if (live) {
+            dispatch({
+              type: "notice",
+              message: `Could not restore last project — ${errorMessage(e)}`,
+            });
+          }
+        } finally {
+          if (live) setBusy(false);
+        }
+      })
       .catch(() => {});
-  }, []);
+    return () => {
+      live = false;
+    };
+  }, [dispatch]);
 
   const openProject = async (path?: string) => {
     const dir = path ?? (await pickProjectDirectory());

@@ -16,6 +16,10 @@ pub struct Settings {
     pub recent_projects: Vec<PathBuf>,
     pub preferred_launcher: Option<String>,
     pub open_browser_automatically: bool,
+    /// Last successfully analyzed project — used to restore context on
+    /// the next launch. Read-only restore: nothing is ever started
+    /// automatically.
+    pub last_project: Option<PathBuf>,
 }
 
 /// JSON-file-backed settings store. The path is injected so tests can use
@@ -65,11 +69,13 @@ impl SettingsStore {
     }
 
     /// Records `project` as most-recent (deduped, capped at 10) and saves.
+    /// Also becomes the last-opened project for session restore.
     pub fn push_recent_project(&self, project: &Path) -> CoreResult<Settings> {
         let mut s = self.load()?;
         s.recent_projects.retain(|p| p != project);
         s.recent_projects.insert(0, project.to_path_buf());
         s.recent_projects.truncate(MAX_RECENT_PROJECTS);
+        s.last_project = Some(project.to_path_buf());
         self.save(&s)?;
         Ok(s)
     }

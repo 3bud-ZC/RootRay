@@ -28,6 +28,8 @@ export interface UiState {
   settingsOpen: boolean;
   /** Transient user-facing error from the last failed action. */
   notice: string | null;
+  /** Last few error strings, newest first — powers Copy Diagnostics. */
+  recentErrors: string[];
 }
 
 export const emptyRuntime: RuntimeState = {
@@ -63,6 +65,7 @@ export const initialUiState: UiState = {
   logs: [],
   settingsOpen: false,
   notice: null,
+  recentErrors: [],
 };
 
 export type UiAction =
@@ -70,7 +73,7 @@ export type UiAction =
   | { type: "inspector"; state: InspectorState }
   | { type: "process-event"; event: ProcessEventPayload }
   | { type: "toggle-settings"; open?: boolean }
-  | { type: "notice"; message: string | null }
+  | { type: "notice"; message: string | null; isError?: boolean }
   // --- quick editor -----------------------------------------------------------
   | { type: "edit-open"; relativePath: string; source: SourceLocation }
   | { type: "edit-opened"; read: SourceFileRead; source: SourceLocation }
@@ -130,8 +133,13 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
     }
     case "toggle-settings":
       return { ...state, settingsOpen: action.open ?? !state.settingsOpen };
-    case "notice":
-      return { ...state, notice: action.message };
+    case "notice": {
+      const recentErrors =
+        action.message && action.isError !== false
+          ? [action.message.slice(0, 160), ...state.recentErrors].slice(0, 5)
+          : state.recentErrors;
+      return { ...state, notice: action.message, recentErrors };
+    }
 
     // --- quick editor ---------------------------------------------------------
 

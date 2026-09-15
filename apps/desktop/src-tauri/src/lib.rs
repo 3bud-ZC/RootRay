@@ -239,6 +239,25 @@ fn collect_source_files(
     core.collect_source_files().map_err(Into::into)
 }
 
+/// Safe shell metadata for Copy Diagnostics — version and platform only.
+/// No tokens, no paths, no environment variables.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DiagnosticsInfo {
+    version: &'static str,
+    os: &'static str,
+    arch: &'static str,
+}
+
+#[tauri::command]
+fn get_diagnostics() -> DiagnosticsInfo {
+    DiagnosticsInfo {
+        version: env!("CARGO_PKG_VERSION"),
+        os: std::env::consts::OS,
+        arch: std::env::consts::ARCH,
+    }
+}
+
 #[tauri::command]
 fn get_settings(core: State<'_, Arc<AppCore>>) -> CmdResult<Settings> {
     core.settings().map_err(Into::into)
@@ -264,6 +283,15 @@ pub fn run() {
                 .unwrap_or_else(|_| PathBuf::from("."));
             let core = Arc::new(AppCore::new(&dir));
             app.manage(core.clone());
+
+            // Packaged installs ship the inspector bundles as resources —
+            // point the core at them. Dev workspaces fall back to packages/.
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                let assets = resource_dir.join("inspector-assets");
+                if assets.is_dir() {
+                    std::env::set_var("ROOTRAY_INSPECTOR_ASSETS_DIR", &assets);
+                }
+            }
 
             // Inspector state changes are pushed as full snapshots.
             let handle = app.handle().clone();
@@ -307,6 +335,7 @@ pub fn run() {
             list_project_files,
             search_workspace,
             collect_source_files,
+            get_diagnostics,
             get_settings,
             update_settings,
         ])
