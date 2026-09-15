@@ -19,6 +19,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -203,7 +204,9 @@ test.describe.configure({ mode: "serial" });
 let integrityBaseline = "";
 
 test.beforeAll(async () => {
-  workDir = mkdtempSync(join(tmpdir(), "rootray-e2e-"));
+  // realpathSync expands 8.3 short names (hosted runners set TMPDIR to
+  // C:\Users\RUNNER~1\...) — Vite's fs.allow check rejects the short form.
+  workDir = realpathSync(mkdtempSync(join(tmpdir(), "rootray-e2e-")));
   cpSync(FIXTURE, workDir, { recursive: true });
   npm("install --no-audit --no-fund --loglevel=error", workDir);
   integrityBaseline = projectDigest(workDir);
