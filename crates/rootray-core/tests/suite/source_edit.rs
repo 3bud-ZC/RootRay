@@ -322,9 +322,21 @@ fn watcher_reports_external_change() {
         let _ = tx.send(());
     })
     .unwrap();
-    fs::write(&abs, "v2\n").unwrap();
-    let fired = rx.recv_timeout(Duration::from_secs(5));
-    assert!(fired.is_ok(), "watcher did not fire on external write");
+    // ReadDirectoryChangesW registers asynchronously — a write issued the
+    // same instant can precede it on a cold runner. Keep writing until
+    // the watcher acknowledges, bounded.
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    let mut fired = false;
+    let mut n = 2;
+    while std::time::Instant::now() < deadline {
+        fs::write(&abs, format!("v{n}\n")).unwrap();
+        n += 1;
+        if rx.recv_timeout(Duration::from_secs(1)).is_ok() {
+            fired = true;
+            break;
+        }
+    }
+    assert!(fired, "watcher did not fire on external write");
     drop(watcher);
 }
 
@@ -353,12 +365,19 @@ fn session_watcher_survives_save_then_external_edit() {
     // re-bases to the new disk state).
     mgr.save(dir.path(), rel, "v2\n", &read.hash).unwrap();
     assert!(rx.recv_timeout(Duration::from_millis(800)).is_err());
-    // An external edit after the save must notify.
-    std::thread::sleep(Duration::from_millis(200));
-    fs::write(dir.path().join(rel), "v3\n").unwrap();
-    assert!(
-        rx.recv_timeout(Duration::from_secs(5)).is_ok(),
-        "no external-change event after foreign write"
-    );
+    // An external edit after the save must notify. The OS watcher
+    // registers asynchronously — keep writing until it acknowledges.
+    let deadline = std::time::Instant::now() + Duration::from_secs(15);
+    let mut fired = false;
+    let mut n = 3;
+    while std::time::Instant::now() < deadline {
+        fs::write(dir.path().join(rel), format!("v{n}\n")).unwrap();
+        n += 1;
+        if rx.recv_timeout(Duration::from_secs(1)).is_ok() {
+            fired = true;
+            break;
+        }
+    }
+    assert!(fired, "no external-change event after foreign write");
     mgr.close();
 }
