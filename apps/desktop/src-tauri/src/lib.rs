@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use rootray_core::app::SettingsUpdate;
+use rootray_core::editor::{EditorSessionInfo, SourceFileHash, SourceFileRead, SourceFileWrite};
 use rootray_core::filesystem::preview::SourcePreview;
 use rootray_core::inspector::InspectorState;
 use rootray_core::launcher::DetectedLauncher;
@@ -22,6 +23,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 const EVENT_PROCESS: &str = "rootray://process-event";
 const EVENT_STATE: &str = "rootray://state";
 const EVENT_INSPECTOR: &str = "rootray://inspector-state";
+const EVENT_EDITOR: &str = "rootray://editor-event";
 
 type CmdResult<T> = Result<T, CommandError>;
 
@@ -132,6 +134,76 @@ fn read_source_preview(
     core.read_source_preview(&relative_path, line).map_err(Into::into)
 }
 
+// --- quick editor -------------------------------------------------------------
+//
+// The frontend passes only project-relative paths; every operation is
+// re-validated inside the analyzed project root by the core. A browser
+// message can never reach these — they are explicit UI-initiated calls.
+
+#[tauri::command]
+fn open_source_editor(
+    relative_path: String,
+    core: State<'_, Arc<AppCore>>,
+) -> CmdResult<SourceFileRead> {
+    core.open_source_editor(&relative_path).map_err(Into::into)
+}
+
+#[tauri::command]
+fn save_source_file(
+    relative_path: String,
+    content: String,
+    expected_hash: String,
+    core: State<'_, Arc<AppCore>>,
+) -> CmdResult<SourceFileWrite> {
+    core.save_source_file(&relative_path, &content, &expected_hash)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+fn check_source_file(
+    relative_path: String,
+    core: State<'_, Arc<AppCore>>,
+) -> CmdResult<SourceFileHash> {
+    core.check_source_file(&relative_path).map_err(Into::into)
+}
+
+#[tauri::command]
+fn reload_source_file(
+    relative_path: String,
+    core: State<'_, Arc<AppCore>>,
+) -> CmdResult<SourceFileRead> {
+    core.reload_source_file(&relative_path).map_err(Into::into)
+}
+
+#[tauri::command]
+fn revert_source_save(
+    relative_path: String,
+    core: State<'_, Arc<AppCore>>,
+) -> CmdResult<SourceFileRead> {
+    core.revert_source_save(&relative_path).map_err(Into::into)
+}
+
+/// Read-only fetch that leaves the edit session untouched — powers the
+/// conflict "Compare" view.
+#[tauri::command]
+fn peek_source_file(
+    relative_path: String,
+    core: State<'_, Arc<AppCore>>,
+) -> CmdResult<SourceFileRead> {
+    core.peek_source_file(&relative_path).map_err(Into::into)
+}
+
+#[tauri::command]
+fn close_source_editor(core: State<'_, Arc<AppCore>>) -> CmdResult<()> {
+    core.close_source_editor();
+    Ok(())
+}
+
+#[tauri::command]
+fn get_editor_state(core: State<'_, Arc<AppCore>>) -> EditorSessionInfo {
+    core.editor_session_info()
+}
+
 #[tauri::command]
 fn get_settings(core: State<'_, Arc<AppCore>>) -> CmdResult<Settings> {
     core.settings().map_err(Into::into)
@@ -165,6 +237,12 @@ pub fn run() {
                 let _ = handle.emit(EVENT_INSPECTOR, core_for_notify.inspector_state());
             }));
 
+            // Editor events (external file changes) go straight to the UI.
+            let handle2 = app.handle().clone();
+            core.set_editor_notify(Arc::new(move |event| {
+                let _ = handle2.emit(EVENT_EDITOR, event);
+            }));
+
             // If the window closes, make sure no dev server is orphaned.
             Ok(())
         })
@@ -182,6 +260,14 @@ pub fn run() {
             set_inspection,
             clear_inspector_selection,
             read_source_preview,
+            open_source_editor,
+            save_source_file,
+            check_source_file,
+            reload_source_file,
+            revert_source_save,
+            peek_source_file,
+            close_source_editor,
+            get_editor_state,
             get_settings,
             update_settings,
         ])

@@ -6,10 +6,14 @@
 
 import type {
   DetectedLauncher,
+  EditorSessionInfo,
   InspectorState,
   ProjectAnalysis,
   RootRaySettings,
   RuntimeState,
+  SourceFileHash,
+  SourceFileRead,
+  SourceFileWrite,
   SourcePreview,
 } from "@rootray/shared";
 import { invoke } from "@tauri-apps/api/core";
@@ -57,6 +61,38 @@ export const clearInspectorSelection = () => invoke<void>("clear_inspector_selec
 
 export const readSourcePreview = (relativePath: string, line: number) =>
   invoke<SourcePreview>("read_source_preview", { relativePath, line });
+
+// --- quick editor --------------------------------------------------------------
+//
+// All paths are project-relative; the native layer re-validates them against
+// the selected project root on every call.
+
+export const openSourceEditor = (relativePath: string) =>
+  invoke<SourceFileRead>("open_source_editor", { relativePath });
+
+export const saveSourceFile = (relativePath: string, content: string, expectedHash: string) =>
+  invoke<SourceFileWrite>("save_source_file", {
+    relativePath,
+    content,
+    expectedHash,
+  });
+
+export const checkSourceFile = (relativePath: string) =>
+  invoke<SourceFileHash>("check_source_file", { relativePath });
+
+export const reloadSourceFile = (relativePath: string) =>
+  invoke<SourceFileRead>("reload_source_file", { relativePath });
+
+export const revertSourceSave = (relativePath: string) =>
+  invoke<SourceFileRead>("revert_source_save", { relativePath });
+
+/** Read-only fetch that leaves the edit session untouched — conflict compare. */
+export const peekSourceFile = (relativePath: string) =>
+  invoke<SourceFileRead>("peek_source_file", { relativePath });
+
+export const closeSourceEditor = () => invoke<void>("close_source_editor");
+
+export const getEditorState = () => invoke<EditorSessionInfo>("get_editor_state");
 
 export const getSettings = () => invoke<RootRaySettings>("get_settings");
 

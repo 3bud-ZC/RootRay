@@ -100,6 +100,17 @@ export type CoreErrorCode =
   | "INSPECTOR_SOURCE_NOT_FOUND"
   | "SOURCE_PREVIEW_FAILED"
   | "EDITOR_OPEN_FAILED"
+  | "SOURCE_FILE_NOT_FOUND"
+  | "SOURCE_FILE_DENIED"
+  | "SOURCE_FILE_TOO_LARGE"
+  | "SOURCE_FILE_BINARY"
+  | "SOURCE_FILE_ENCODING_UNSUPPORTED"
+  | "SOURCE_EDIT_CONFLICT"
+  | "SOURCE_EXTERNAL_CHANGE"
+  | "SOURCE_WRITE_FAILED"
+  | "SOURCE_WRITE_PERMISSION_DENIED"
+  | "EDITOR_SESSION_CLOSED"
+  | "REVERT_UNAVAILABLE"
   | "INTERNAL";
 
 /** Payload of the `rootray://process-event` Tauri event. */
@@ -165,4 +176,78 @@ export interface SourcePreview {
   startLine: number;
   endLine: number;
   lines: SourcePreviewLine[];
+}
+
+// --- quick editor ---------------------------------------------------------------
+
+export type SourceLineEnding = "lf" | "crlf";
+
+/** Result of `open_source_editor` / `reload_source_file` / `revert_source_save`. */
+export interface SourceFileRead {
+  relativePath: string;
+  /** LF-normalized file text — the editor works on LF; disk keeps its convention. */
+  content: string;
+  /** SHA-256 of the raw on-disk bytes — the optimistic-concurrency token. */
+  hash: string;
+  lineEnding: SourceLineEnding;
+  bom: boolean;
+  sizeBytes: number;
+}
+
+/** Result of `save_source_file`. */
+export interface SourceFileWrite {
+  relativePath: string;
+  hash: string;
+}
+
+/** Result of `check_source_file`. */
+export interface SourceFileHash {
+  relativePath: string;
+  hash: string;
+  sizeBytes: number;
+}
+
+/** Snapshot of the native-side editor session (`get_editor_state`). */
+export interface EditorSessionInfo {
+  open: boolean;
+  relativePath: string | null;
+  baseHash: string | null;
+  diskHash: string | null;
+  watching: boolean;
+  canRevert: boolean;
+}
+
+/** Payload of the `rootray://editor-event` Tauri event. */
+export type EditorEventPayload = {
+  kind: "externalChange";
+  relativePath: string;
+  diskHash: string;
+};
+
+/** Frontend-side Quick Edit session status. */
+export type EditSessionStatus =
+  | "closed"
+  | "loading"
+  | "clean"
+  | "dirty"
+  | "saving"
+  | "conflict"
+  | "save_failed";
+
+/** The UI-owned half of an editing session. */
+export interface EditSession {
+  relativePath: string;
+  /** Text as last read from / written to disk (LF-normalized). */
+  diskContent: string;
+  /** Current editor text (LF-normalized). */
+  currentContent: string;
+  /** Hash of `diskContent`'s raw on-disk bytes — sent as expected_hash on save. */
+  baseHash: string;
+  lineEnding: SourceLineEnding;
+  bom: boolean;
+  status: EditSessionStatus;
+  selectedLine: number | null;
+  selectedColumn: number | null;
+  canRevert: boolean;
+  error: CoreErrorPayload | null;
 }

@@ -780,3 +780,220 @@ body {
   font: inherit;
   font-size: 12px;
 }
+
+/* --- Quick Edit (Milestone 03) ------------------------------------------- */
+
+.qeditor {
+  position: relative;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.qe-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.qe-head .icon-btn {
+  margin-left: auto;
+}
+
+.qe-file {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.qe-dot {
+  color: var(--accent);
+  margin-left: 6px;
+  font-size: 10px;
+  vertical-align: middle;
+}
+
+.qe-path {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.qe-status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.qe-status-dirty,
+.qe-status-save_failed {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.qe-status-conflict {
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
+.qe-status-clean {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.qe-body {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  height: 340px;
+}
+
+.qe-cm-host {
+  height: 100%;
+}
+
+.qe-cm-host .cm-editor {
+  height: 100%;
+}
+
+.qe-loading {
+  padding: 20px;
+}
+
+.qe-conflict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--bad);
+  border-radius: 6px;
+  background: rgb(248 81 73 / 8%);
+  font-size: 12px;
+}
+
+.qe-conflict-text {
+  flex: 1;
+  color: var(--bad);
+}
+
+.qe-error {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--bad);
+  border-radius: 6px;
+  color: var(--bad);
+  font-size: 12px;
+}
+
+.qe-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.qe-foot-right {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.qe-diff {
+  height: 100%;
+  overflow: auto;
+  background: var(--bg-inset);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.qe-diff-legend {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  position: sticky;
+  top: 0;
+  background: var(--bg-inset);
+}
+
+.qe-diff-key.removed {
+  color: var(--bad);
+}
+
+.qe-diff-key.added {
+  color: var(--ok);
+}
+
+.qe-diff-body {
+  margin: 0;
+  padding: 6px 0;
+}
+
+.qe-diff-line {
+  display: flex;
+  white-space: pre;
+  line-height: 1.55;
+}
+
+.qe-diff-line.added {
+  background: rgb(63 185 80 / 10%);
+  color: #a9f0b6;
+}
+
+.qe-diff-line.removed {
+  background: rgb(248 81 73 / 10%);
+  color: #ffb3ad;
+}
+
+.qe-diff-sign {
+  width: 18px;
+  text-align: center;
+  user-select: none;
+}
+
+.qe-diff-n {
+  width: 3.2em;
+  text-align: right;
+  padding-right: 10px;
+  color: var(--text-dim);
+  user-select: none;
+}
+
+.qe-diff-t {
+  padding-right: 12px;
+}
+
+.qe-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 55%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  z-index: 20;
+}
+
+.qe-modal {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 22px;
+  max-width: 380px;
+}
+
+.qe-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.btn-danger {
+  border-color: var(--bad);
+  color: var(--bad);
+}

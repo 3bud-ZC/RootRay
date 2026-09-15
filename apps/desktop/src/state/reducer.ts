@@ -1,10 +1,28 @@
-import type { InspectorState, LogLine, ProcessEventPayload, RuntimeState } from "@rootray/shared";
+import type {
+  CoreErrorPayload,
+  EditSession,
+  InspectorState,
+  LogLine,
+  ProcessEventPayload,
+  RuntimeState,
+  SourceFileRead,
+  SourceFileWrite,
+  SourceLocation,
+} from "@rootray/shared";
 
 export const LOG_CAP = 500;
 
 export interface UiState {
   runtime: RuntimeState;
   inspector: InspectorState;
+  /** Quick Edit session — null when no source file is open in-app. */
+  editor: EditSession | null;
+  /** Disk text fetched during a conflict, for the compare view. */
+  conflictDiskContent: string | null;
+  /** True while the user asked to see the unsaved-changes close prompt. */
+  editorClosePrompt: boolean;
+  /** A Quick Edit request deferred behind the unsaved-changes prompt. */
+  pendingOpen: { relativePath: string; source: SourceLocation } | null;
   /** Live-appended log tail (mirrors backend recentLogs, streams realtime). */
   logs: LogLine[];
   settingsOpen: boolean;
@@ -38,6 +56,10 @@ export const emptyInspector: InspectorState = {
 export const initialUiState: UiState = {
   runtime: emptyRuntime,
   inspector: emptyInspector,
+  editor: null,
+  conflictDiskContent: null,
+  editorClosePrompt: false,
+  pendingOpen: null,
   logs: [],
   settingsOpen: false,
   notice: null,
@@ -48,7 +70,44 @@ export type UiAction =
   | { type: "inspector"; state: InspectorState }
   | { type: "process-event"; event: ProcessEventPayload }
   | { type: "toggle-settings"; open?: boolean }
-  | { type: "notice"; message: string | null };
+  | { type: "notice"; message: string | null }
+  // --- quick editor -----------------------------------------------------------
+  | { type: "edit-open"; relativePath: string; source: SourceLocation }
+  | { type: "edit-opened"; read: SourceFileRead; source: SourceLocation }
+  | { type: "edit-changed"; content: string }
+  | { type: "edit-save-start" }
+  | { type: "edit-saved"; write: SourceFileWrite }
+  | { type: "edit-failed"; error: CoreErrorPayload }
+  | { type: "edit-external-change"; diskHash: string }
+  | { type: "edit-disk-loaded"; read: SourceFileRead }
+  | { type: "edit-discard" }
+  | { type: "edit-focus"; source: SourceLocation }
+  | { type: "edit-reverted"; read: SourceFileRead }
+  | { type: "edit-close-request" }
+  | { type: "edit-close-cancel" }
+  | { type: "edit-closed" }
+  | { type: "edit-conflict-compare"; diskContent: string }
+  | { type: "edit-conflict-compare-close" };
+
+function sessionFromRead(
+  read: SourceFileRead,
+  source: SourceLocation | null,
+  prev: EditSession | null,
+): EditSession {
+  return {
+    relativePath: read.relativePath,
+    diskContent: read.content,
+    currentContent: read.content,
+    baseHash: read.hash,
+    lineEnding: read.lineEnding,
+    bom: read.bom,
+    status: "clean",
+    selectedLine: source?.line ?? null,
+    selectedColumn: source?.column ?? null,
+    canRevert: prev?.relativePath === read.relativePath ? prev.canRevert : false,
+    error: null,
+  };
+}
 
 export function uiReducer(state: UiState, action: UiAction): UiState {
   switch (action.type) {
@@ -73,5 +132,186 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
       return { ...state, settingsOpen: action.open ?? !state.settingsOpen };
     case "notice":
       return { ...state, notice: action.message };
+
+    // --- quick editor ---------------------------------------------------------
+
+    case "edit-open": {
+      const existing = state.editor;
+      // Same file already open → keep the session (and any dirty edits),
+      // just move the focus marker.
+      if (existing && existing.relativePath === action.relativePath) {
+        return {
+          ...state,
+          editor: {
+            ...existing,
+            selectedLine: action.source.line,
+            selectedColumn: action.source.column,
+          },
+        };
+      }
+      // Dirty file + different target → hold the request behind the
+      // unsaved-changes prompt instead of silently replacing.
+      if (existing && existing.status !== "clean" && existing.status !== "closed") {
+        return {
+          ...state,
+          editorClosePrompt: true,
+          pendingOpen: { relativePath: action.relativePath, source: action.source },
+        };
+      }
+      return {
+        ...state,
+        conflictDiskContent: null,
+        editor: {
+          relativePath: action.relativePath,
+          diskContent: "",
+          currentContent: "",
+          baseHash: "",
+          lineEnding: "lf",
+          bom: false,
+          status: "loading",
+          selectedLine: action.source.line,
+          selectedColumn: action.source.column,
+          canRevert: false,
+          error: null,
+        },
+      };
+    }
+    case "edit-opened": {
+      if (state.editor?.relativePath !== action.read.relativePath) {
+        return state;
+      }
+      return {
+        ...state,
+        editor: sessionFromRead(action.read, action.source, state.editor),
+      };
+    }
+    case "edit-changed": {
+      const ed = state.editor;
+      if (!ed || ed.status === "saving" || ed.status === "loading") return state;
+      const status = action.content === ed.diskContent ? "clean" : "dirty";
+      return {
+        ...state,
+        editor: { ...ed, currentContent: action.content, status },
+      };
+    }
+    case "edit-save-start": {
+      const ed = state.editor;
+      if (!ed || (ed.status !== "dirty" && ed.status !== "save_failed")) return state;
+      return { ...state, editor: { ...ed, status: "saving", error: null } };
+    }
+    case "edit-saved": {
+      const ed = state.editor;
+      if (!ed || ed.relativePath !== action.write.relativePath) return state;
+      return {
+        ...state,
+        editor: {
+          ...ed,
+          diskContent: ed.currentContent,
+          baseHash: action.write.hash,
+          status: "clean",
+          canRevert: true,
+          error: null,
+        },
+      };
+    }
+    case "edit-failed": {
+      const ed = state.editor;
+      if (!ed) return state;
+      if (action.error.code === "SOURCE_EDIT_CONFLICT") {
+        return {
+          ...state,
+          conflictDiskContent: null,
+          editor: { ...ed, status: "conflict", error: action.error },
+        };
+      }
+      return {
+        ...state,
+        editor: { ...ed, status: "save_failed", error: action.error },
+      };
+    }
+    case "edit-external-change": {
+      const ed = state.editor;
+      if (!ed) return state;
+      // Clean sessions auto-reload — the store issues `edit-disk-loaded`.
+      if (ed.status === "clean" || ed.status === "loading") return state;
+      return {
+        ...state,
+        conflictDiskContent: null,
+        editor: { ...ed, status: "conflict" },
+      };
+    }
+    case "edit-disk-loaded": {
+      const ed = state.editor;
+      if (!ed || ed.relativePath !== action.read.relativePath) return state;
+      // The user typed while a clean auto-reload was in flight — don't
+      // clobber the edit; surface the divergence as a conflict instead.
+      if (ed.status !== "clean" && ed.status !== "loading") {
+        return {
+          ...state,
+          conflictDiskContent: action.read.content,
+          editor: { ...ed, status: "conflict" },
+        };
+      }
+      return { ...state, editor: sessionFromRead(action.read, null, ed) };
+    }
+    case "edit-reverted": {
+      const ed = state.editor;
+      if (!ed || ed.relativePath !== action.read.relativePath) return state;
+      return { ...state, editor: sessionFromRead(action.read, null, ed) };
+    }
+    case "edit-discard": {
+      const ed = state.editor;
+      if (!ed) return state;
+      return {
+        ...state,
+        editor: {
+          ...ed,
+          currentContent: ed.diskContent,
+          status: "clean",
+          error: null,
+        },
+        conflictDiskContent: null,
+      };
+    }
+    case "edit-focus": {
+      const ed = state.editor;
+      if (!ed || ed.relativePath !== action.source.relativePath) return state;
+      return {
+        ...state,
+        editor: {
+          ...ed,
+          selectedLine: action.source.line,
+          selectedColumn: action.source.column,
+        },
+      };
+    }
+    case "edit-close-request": {
+      const ed = state.editor;
+      if (!ed) return { ...state, pendingOpen: null };
+      if (ed.status === "dirty" || ed.status === "save_failed" || ed.status === "conflict") {
+        return { ...state, editorClosePrompt: true };
+      }
+      return {
+        ...state,
+        editor: null,
+        conflictDiskContent: null,
+        editorClosePrompt: false,
+        pendingOpen: null,
+      };
+    }
+    case "edit-close-cancel":
+      return { ...state, editorClosePrompt: false, pendingOpen: null };
+    case "edit-closed":
+      return {
+        ...state,
+        editor: null,
+        conflictDiskContent: null,
+        editorClosePrompt: false,
+        pendingOpen: null,
+      };
+    case "edit-conflict-compare":
+      return { ...state, conflictDiskContent: action.diskContent };
+    case "edit-conflict-compare-close":
+      return { ...state, conflictDiskContent: null };
   }
 }

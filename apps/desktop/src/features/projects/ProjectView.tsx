@@ -8,6 +8,7 @@ import {
   startDevServer,
 } from "../../lib/ipc";
 import { useStore } from "../../state/store";
+import { EditorPanel } from "../editor/EditorPanel";
 import { InspectorPanel } from "../inspector/InspectorPanel";
 import { LogPanel } from "../runner/LogPanel";
 import { RunnerPanel } from "../runner/RunnerPanel";
@@ -155,6 +156,8 @@ export function ProjectView() {
       {isLive &&
         project.capabilities.inspectorCompatible &&
         state.inspector.phase !== "inactive" && <InspectorPanel />}
+
+      <EditorPanel />
 
       {(state.logs.length > 0 || isLive) && <LogPanel logs={state.logs} />}
     </div>

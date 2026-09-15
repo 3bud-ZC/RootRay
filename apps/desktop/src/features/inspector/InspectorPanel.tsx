@@ -11,6 +11,7 @@ import {
   updateSettings,
 } from "../../lib/ipc";
 import { useStore } from "../../state/store";
+import { quickEdit } from "../editor/controller";
 
 const PHASE_LABEL: Record<InspectorPhase, string> = {
   inactive: "Inactive",
@@ -228,9 +229,12 @@ export function InspectorPanel() {
             <button
               type="button"
               className="btn btn-primary"
-              disabled={!editorId}
-              onClick={openSource}
+              onClick={() => quickEdit(state, dispatch, sel.source.relativePath, sel.source)}
+              title="Open this source inside RootRay"
             >
+              Quick Edit
+            </button>
+            <button type="button" className="btn" disabled={!editorId} onClick={openSource}>
               Open Source
             </button>
             <button type="button" className="btn" onClick={copyPath}>
