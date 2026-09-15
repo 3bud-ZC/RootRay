@@ -34,6 +34,11 @@ impl PackageManager {
         }
     }
 
+    /// Human-facing name used in messages, e.g. "run `pnpm install`".
+    pub fn display_name(&self) -> &'static str {
+        pm_name(*self)
+    }
+
     /// Arguments that run the named script, e.g. `run dev`.
     pub fn run_args(&self, script: &str) -> Vec<String> {
         match self {

@@ -295,6 +295,22 @@ impl AppCore {
                                     if *clean {
                                         s.transition_unchecked(RuntimePhase::Stopped);
                                     } else {
+                                        // Missing node_modules is the most common
+                                        // early-exit cause — tell the user the
+                                        // expected fix command, never run it.
+                                        let deps_hint = s.project.as_ref().and_then(|p| {
+                                            (!p.root.join("node_modules").is_dir()).then(|| {
+                                                format!(
+                                                    "[rootray] dependencies appear to be \
+                                                     missing — run `{} install` in this \
+                                                     project, then try again",
+                                                    p.package_manager.display_name()
+                                                )
+                                            })
+                                        });
+                                        if let Some(hint) = deps_hint {
+                                            s.push_log(LogStream::Stderr, hint);
+                                        }
                                         s.set_error(CommandError::from(
                                             CoreError::ProcessExited(*code),
                                         ));
