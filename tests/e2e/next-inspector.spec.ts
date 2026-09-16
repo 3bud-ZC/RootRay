@@ -197,8 +197,8 @@ test("quick-edit save → fast refresh → still instrumented", async ({ page })
 test("instrumentation never touches project source", async () => {
   // The StatusChip edit above was a deliberate user-style edit; every other
   // file must be byte-identical to the pristine fixture and no RootRay
-  // artifact may live in the project tree — only the session entry under
-  // node_modules/.cache/rootray-<sid>/ is ours.
+  // artifact may live in the project tree — only the stable session entry
+  // under node_modules/.cache/rootray/ is ours.
   const edited = "components/StatusChip.tsx";
   const compare = (rel: string) => {
     const a = readFileSync(join(FIXTURE, rel), "utf8");

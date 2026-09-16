@@ -135,32 +135,41 @@ impl InspectorAdapter {
     /// Builds the instrumented dev command. `Err` carries a factual reason
     /// the inspector cannot launch (caller runs the plain dev server and
     /// reports the reason).
-    ///
-    /// The second tuple item lists session scratch dirs the caller must
-    /// clean up when the session ends.
     pub fn dev_command(
         &self,
         target: &ProjectTarget,
         info: &InspectorLaunchInfo,
         assets: &InspectorAssets,
-    ) -> Result<(DevCommand, Vec<PathBuf>), String> {
+    ) -> Result<(DevCommand, LaunchArtifacts), String> {
         match self {
-            Self::ViteReact => vite_dev_command(target, info, assets).map(|c| (c, Vec::new())),
+            Self::ViteReact => vite_dev_command(target, info, assets)
+                .map(|c| (c, LaunchArtifacts::default())),
             Self::NextJs => next_dev_command(target, info, assets),
         }
     }
 }
 
+/// Filesystem artifacts an instrumented launch created:
+/// - `scratch` — session dirs removed entirely on session end.
+/// - `stubs` — stable-path files (like the Next session entry) that are
+///   rewritten to an inert stub on session end rather than deleted, so
+///   stale bundler-cache imports still resolve.
+#[derive(Debug, Default)]
+pub struct LaunchArtifacts {
+    pub scratch: Vec<PathBuf>,
+    pub stubs: Vec<PathBuf>,
+}
+
 /// Builds the inspector-enabled dev command.
 /// `Ok(None)` — no adapter exists for this framework (silent fallback).
 /// `Err(reason)` — an adapter exists but cannot launch it (reported).
-/// The scratch list is returned alongside so the session manager can
-/// delete adapter-owned temp files on stop.
+/// `LaunchArtifacts` is returned alongside so the session manager can
+/// unwind adapter-owned temp files on stop.
 pub fn inspector_dev_command(
     target: &ProjectTarget,
     info: &InspectorLaunchInfo,
     assets: &InspectorAssets,
-) -> Result<Option<(DevCommand, Vec<PathBuf>)>, String> {
+) -> Result<Option<(DevCommand, LaunchArtifacts)>, String> {
     match InspectorAdapter::for_framework(&target.framework) {
         Some(adapter) => adapter.dev_command(target, info, assets).map(Some),
         None => Ok(None),
@@ -312,21 +321,32 @@ fn find_next_bin(target_root: &Path, workspace_root: &Path) -> Option<PathBuf> {
     None
 }
 
-/// Session scratch dir for the generated inspector entry module.
+/// Stable path of the generated inspector entry module:
+/// `<nm>/.cache/rootray/entry.js` — inside the target's own
+/// `node_modules/.cache/` (the conventional, gitignored tool-cache
+/// location that is always inside the bundler root).
 ///
-/// Turbopack cannot resolve modules outside its root, so the entry lives
-/// inside the target's own `node_modules/.cache/` — the conventional,
-/// gitignored tool-cache location that is always inside the bundler root
-/// (it sits next to `next` itself). `<sid>` keeps sessions distinct.
-fn next_session_scratch(next_bin: &Path, session_id: &str) -> PathBuf {
-    // <nm>/next/dist/bin/next → ancestors: bin, dist, next, node_modules
+/// The path deliberately carries *no* session id: bundler persistent
+/// caches (webpack `.next/cache`, turbopack FS cache) outlive a session,
+/// and a cached instrumented module would otherwise import a deleted
+/// `rootray-<sid>` entry — breaking even a later *unshimmed* `next dev`.
+/// A fixed path always resolves; RootRay rewrites it per session and
+/// leaves an inert stub behind on stop.
+fn next_entry_path(next_bin: &Path) -> PathBuf {
+    // <nm>/next/dist/bin/next → ancestors: self(file), bin, dist, next, <nm>
     let nm = next_bin
         .ancestors()
-        .nth(3)
+        .nth(4)
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("node_modules"));
-    nm.join(".cache").join(format!("rootray-{session_id}"))
+    nm.join(".cache").join("rootray").join("entry.js")
 }
+
+/// Inert module left behind in place of the session entry on stop —
+/// keeps stale bundler-cache imports resolvable without booting a
+/// runtime against a dead bridge.
+pub(crate) const NEXT_ENTRY_STUB: &str =
+    "if (typeof window !== \"undefined\") { /* rootray: inspector session ended */ }\n";
 
 /// Removes stale `rootray-*` scratch dirs left behind by crashed sessions.
 fn sweep_stale_scratch(cache_dir: &Path, keep: &Path) {
@@ -347,7 +367,7 @@ fn sweep_stale_scratch(cache_dir: &Path, keep: &Path) {
 /// the bundled inspector runtime, guarded so it is a no-op in the
 /// server/edge module graphs where `window` does not exist.
 fn write_next_entry(
-    scratch: &Path,
+    entry: &Path,
     info: &InspectorLaunchInfo,
     assets: &InspectorAssets,
 ) -> Result<PathBuf, String> {
@@ -368,17 +388,18 @@ fn write_next_entry(
         "if (typeof window !== \"undefined\") {{\nwindow.__ROOTRAY__={};\n{}}}\n",
         config, runtime
     );
-    std::fs::create_dir_all(scratch).map_err(|e| format!("cannot create session dir: {e}"))?;
-    let entry = scratch.join("entry.js");
-    std::fs::write(&entry, body).map_err(|e| format!("cannot write session entry: {e}"))?;
-    Ok(entry)
+    if let Some(dir) = entry.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("cannot create entry dir: {e}"))?;
+    }
+    std::fs::write(entry, body).map_err(|e| format!("cannot write session entry: {e}"))?;
+    Ok(entry.to_path_buf())
 }
 
 fn next_dev_command(
     target: &ProjectTarget,
     info: &InspectorLaunchInfo,
     assets: &InspectorAssets,
-) -> Result<(DevCommand, Vec<PathBuf>), String> {
+) -> Result<(DevCommand, LaunchArtifacts), String> {
     let script = target.dev_script.as_deref().unwrap_or("");
     let next_args = next_dev_args_from_script(script)?;
     let node = find_executable_on_path("node").ok_or_else(|| "node is not on PATH".to_string())?;
@@ -391,12 +412,13 @@ fn next_dev_command(
         "next binary not found under node_modules — install project dependencies".to_string()
     })?;
 
-    // Session scratch dir + entry module (cleaned on session end).
-    let scratch = next_session_scratch(&next_bin, &info.session_id);
-    if let Some(cache) = scratch.parent() {
-        sweep_stale_scratch(cache, &scratch);
+    // Stable entry module (stubbed, not deleted, on session end) + sweep
+    // of any legacy session-scoped `rootray-*` dirs in the same cache.
+    let entry = next_entry_path(&next_bin);
+    if let Some(cache) = entry.parent().and_then(|p| p.parent()) {
+        sweep_stale_scratch(cache, Path::new(""));
     }
-    let entry = write_next_entry(&scratch, info, assets)?;
+    let entry = write_next_entry(&entry, info, assets)?;
 
     // `node -r <shim> <next-bin> dev <args>`: argv `-r` avoids NODE_OPTIONS
     // whitespace splitting (spaces in paths are safe) and confines the
@@ -432,6 +454,9 @@ fn next_dev_command(
             cwd: target.absolute_root.clone(),
             env,
         },
-        vec![scratch],
+        LaunchArtifacts {
+            scratch: Vec::new(),
+            stubs: vec![entry],
+        },
     ))
 }

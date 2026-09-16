@@ -186,7 +186,19 @@ export function safeSave(absPath: string, content: string, expectedHash: string)
   const tmp = join(dir, `.${name}.rootray-${randomBytes(4).toString("hex")}.tmp`);
   try {
     writeFileSync(tmp, bytes);
-    renameSync(tmp, absPath);
+    // Windows: a dev server's file watcher can hold a transient handle on the
+    // target, making rename-over-existing fail with EPERM/EBUSY. Retry on a
+    // bounded backoff — the mirror should behave like the production writer.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        renameSync(tmp, absPath);
+        break;
+      } catch (e) {
+        const code = (e as NodeJS.ErrnoException).code;
+        if ((code !== "EPERM" && code !== "EBUSY") || attempt >= 20) throw e;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+      }
+    }
   } finally {
     if (existsSync(tmp)) rmSync(tmp, { force: true });
   }
@@ -306,7 +318,8 @@ export async function startFixture(vitePort: number): Promise<FixtureRun> {
 // ---------------------------------------------------------------------------
 // Next.js launch — mirrors crates/rootray-core/src/inspector/launch.rs:
 // `node --require <next-shim.cjs> <next-bin> dev <args>` with the shim env
-// contract and a session entry written under node_modules/.cache/rootray-*.
+// contract and the session entry at node_modules/.cache/rootray/entry.js
+// (stable path — bundler caches may still import it after a session ends).
 // ---------------------------------------------------------------------------
 
 export const NEXT_SHIM = join(REPO_ROOT, "packages", "next-adapter", "dist", "next-shim.cjs");
@@ -342,7 +355,7 @@ export async function startNextFixture(
   const bridge = new MockBridge();
   await bridge.start();
 
-  const scratchDir = join(workDir, "node_modules", ".cache", `rootray-${SESSION_ID}`);
+  const scratchDir = join(workDir, "node_modules", ".cache", "rootray");
   mkdirSync(scratchDir, { recursive: true });
   const runtime = readFileSync(RUNTIME_BUNDLE, "utf8");
   const config = JSON.stringify({

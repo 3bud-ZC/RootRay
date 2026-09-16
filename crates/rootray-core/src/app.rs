@@ -241,9 +241,12 @@ impl AppCore {
             .map_err(|e| format!("bridge failed: {e}"))?;
         info.target_root = Some(target.absolute_root.clone());
         info.workspace_root = Some(workspace_root.to_path_buf());
+        self.inspector
+            .set_session_roots(target.absolute_root.clone(), workspace_root.to_path_buf());
         match crate::inspector::launch::inspector_dev_command(target, &info, &assets) {
-            Ok(Some((cmd, scratch))) => {
-                self.inspector.register_scratch(scratch);
+            Ok(Some((cmd, artifacts))) => {
+                self.inspector.register_scratch(artifacts.scratch);
+                self.inspector.register_entry_stubs(artifacts.stubs);
                 Ok(Some(cmd))
             }
             Ok(None) => {
@@ -251,6 +254,9 @@ impl AppCore {
                 Ok(None)
             }
             Err(reason) => {
+                // Tear down the just-started session so no scratch dirs,
+                // bridge handle or session roots linger.
+                self.inspector.on_process_exit();
                 self.inspector.fail(&reason);
                 Err(reason)
             }

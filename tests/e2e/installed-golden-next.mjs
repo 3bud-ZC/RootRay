@@ -250,12 +250,19 @@ async function main() {
     await sleep(2500); // Next spawns worker processes — give the tree a beat
     const kids = childProcs(appProc.pid).filter((n) => /node|npm|next|cmd/i.test(n));
     assert.deepEqual(kids, [], `dev process tree still alive: ${kids.join(", ")}`);
+    // Probe the TCP listener directly — a browser navigation can be served
+    // by a service worker / cache with the server already dead.
     let urlDead = false;
-    try {
-      await devPage.goto(appUrl, { timeout: 5000 });
-    } catch {
-      urlDead = true;
-    }
+    const urlDeadline = Date.now() + 6000;
+    do {
+      try {
+        await fetch(appUrl, { signal: AbortSignal.timeout(2000) });
+      } catch {
+        urlDead = true;
+        break;
+      }
+      await sleep(250);
+    } while (Date.now() < urlDeadline);
     assert.ok(urlDead, "dev server still responds after Stop");
     console.log("  ok  next dev stopped; owned process tree exited; URL dead");
 

@@ -271,12 +271,39 @@ pub fn atomic_replace(abs: &Path, bytes: &[u8]) -> CoreResult<()> {
             .and_then(|_| f.sync_all())
             .map_err(|e| CoreError::SourceWriteFailed(format!("temp write: {e}")))?;
         drop(f);
-        std::fs::rename(&tmp, abs).map_err(|e| match e.kind() {
-            std::io::ErrorKind::PermissionDenied => {
-                CoreError::SourceWritePermissionDenied(abs.display().to_string())
+        // Windows: a dev server's watcher (Turbopack, AV scan, indexer) can
+        // hold a transient handle on the target, so rename-over-existing can
+        // fail with PermissionDenied. Retry on a bounded backoff before
+        // reporting the write as permission-denied.
+        let mut last_err = None;
+        for attempt in 0..20u8 {
+            match std::fs::rename(&tmp, abs) {
+                Ok(()) => {
+                    last_err = None;
+                    break;
+                }
+                Err(e) => {
+                    let retryable = matches!(
+                        e.kind(),
+                        std::io::ErrorKind::PermissionDenied
+                    ) || e.raw_os_error() == Some(32); // ERROR_SHARING_VIOLATION
+                    last_err = Some(e);
+                    if !retryable || attempt == 19 {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
             }
-            _ => CoreError::SourceWriteFailed(format!("replace: {e}")),
-        })
+        }
+        if let Some(e) = last_err {
+            return match e.kind() {
+                std::io::ErrorKind::PermissionDenied => Err(
+                    CoreError::SourceWritePermissionDenied(abs.display().to_string()),
+                ),
+                _ => Err(CoreError::SourceWriteFailed(format!("replace: {e}"))),
+            };
+        }
+        Ok(())
     })();
 
     if write_result.is_err() {

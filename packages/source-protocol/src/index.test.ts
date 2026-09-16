@@ -113,6 +113,52 @@ describe("source location validation", () => {
       parseSourceLocation({ relativePath: "src/components/deep/Card.tsx", line: 10, column: 4 }),
     ).toEqual({ relativePath: "src/components/deep/Card.tsx", line: 10, column: 4 });
   });
+
+  it("accepts a v1 payload with no confidence (backward compatible)", () => {
+    expect(parseSourceLocation({ relativePath: "src/App.tsx", line: 1, column: 1 })).toEqual({
+      relativePath: "src/App.tsx",
+      line: 1,
+      column: 1,
+    });
+  });
+
+  it("accepts all confidence values (additive v1 extension)", () => {
+    for (const confidence of ["exact", "approximate", "component"] as const) {
+      const loc = parseSourceLocation({
+        relativePath: "src/App.tsx",
+        line: 1,
+        column: 1,
+        confidence,
+      });
+      expect(loc?.confidence).toBe(confidence);
+    }
+  });
+
+  it("rejects an unknown confidence value", () => {
+    expect(
+      parseSourceLocation({
+        relativePath: "src/App.tsx",
+        line: 1,
+        column: 1,
+        confidence: "guessed",
+      }),
+    ).toBeNull();
+    // …and at the message level the selection is rejected, not degraded.
+    const msg = JSON.parse(selection);
+    msg.source.confidence = "guessed";
+    expect(parseRuntimeMessage(JSON.stringify(msg)).ok).toBe(false);
+  });
+
+  it("rejects a present-but-invalid confidence (null is not 'absent')", () => {
+    expect(
+      parseSourceLocation({
+        relativePath: "src/App.tsx",
+        line: 1,
+        column: 1,
+        confidence: null,
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("bridge message parsing", () => {

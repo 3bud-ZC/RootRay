@@ -188,6 +188,214 @@ fn selection_with_escaping_path_is_dropped() {
     mgr.shutdown();
 }
 
+fn send_selection(ws: &mut Ws, session_id: &str, source_json: &str, styles_json: &str) {
+    ws.send(Message::text(format!(
+        r#"{{"version":1,"type":"element:selected","sessionId":"{session_id}",
+            "element":{{"tagName":"button"}},
+            "source":{source_json}{styles_json}}}"#
+    )))
+    .unwrap();
+}
+
+fn connected_ws(info: &rootray_core::inspector::SessionInfo) -> Ws {
+    let mut ws = connect_ws(info.port);
+    ws.send(Message::text(hello(&info.session_id, &info.token))).unwrap();
+    read_json(&mut ws);
+    read_json(&mut ws);
+    ws
+}
+
+#[test]
+fn selection_without_confidence_is_accepted() {
+    // Original v1 payload shape — `confidence` never existed; must parse.
+    let (mgr, info, _states) = start_manager();
+    let mut ws = connected_ws(&info);
+    send_selection(
+        &mut ws,
+        &info.session_id,
+        r#"{"relativePath":"src/App.tsx","line":1,"column":1}"#,
+        "",
+    );
+    assert!(wait_for(|| mgr.state().last_selection.is_some(), 3000));
+    let sel = mgr.state().last_selection.unwrap();
+    assert_eq!(sel.source.relative_path, "src/App.tsx");
+    assert!(sel.source.confidence.is_none());
+    mgr.shutdown();
+}
+
+#[test]
+fn selection_with_exact_confidence_is_accepted() {
+    // Additive v1 extension — known value is carried through.
+    let (mgr, info, _states) = start_manager();
+    let mut ws = connected_ws(&info);
+    send_selection(
+        &mut ws,
+        &info.session_id,
+        r#"{"relativePath":"src/App.tsx","line":1,"column":1,"confidence":"exact"}"#,
+        "",
+    );
+    assert!(wait_for(|| mgr.state().last_selection.is_some(), 3000));
+    assert_eq!(
+        mgr.state().last_selection.unwrap().source.confidence.as_deref(),
+        Some("exact")
+    );
+    mgr.shutdown();
+}
+
+#[test]
+fn selection_with_approximate_or_component_confidence_is_accepted() {
+    // The remaining defined levels — same additive-extension contract.
+    let (mgr, info, _states) = start_manager();
+    let mut ws = connected_ws(&info);
+    for confidence in ["approximate", "component"] {
+        send_selection(
+            &mut ws,
+            &info.session_id,
+            &format!(
+                r#"{{"relativePath":"src/App.tsx","line":1,"column":1,"confidence":"{confidence}"}}"#
+            ),
+            "",
+        );
+        assert!(wait_for(
+            || mgr.state()
+                .last_selection
+                .as_ref()
+                .is_some_and(|s| s.source.confidence.as_deref() == Some(confidence)),
+            3000
+        ));
+    }
+    mgr.shutdown();
+}
+
+#[test]
+fn selection_with_null_confidence_is_dropped() {
+    // `null` is a present-but-invalid value — the TypeScript parser rejects
+    // it; only an absent field is backward-compatible.
+    let (mgr, info, _states) = start_manager();
+    let mut ws = connected_ws(&info);
+    send_selection(
+        &mut ws,
+        &info.session_id,
+        r#"{"relativePath":"src/App.tsx","line":1,"column":1,"confidence":null}"#,
+        "",
+    );
+    std::thread::sleep(Duration::from_millis(400));
+    assert!(mgr.state().last_selection.is_none());
+    mgr.shutdown();
+}
+
+#[test]
+fn selection_with_unknown_confidence_is_dropped() {
+    // "guessed" is not a defined level — the whole selection is rejected,
+    // matching the TypeScript parser exactly.
+    let (mgr, info, _states) = start_manager();
+    let mut ws = connected_ws(&info);
+    send_selection(
+        &mut ws,
+        &info.session_id,
+        r#"{"relativePath":"src/App.tsx","line":1,"column":1,"confidence":"guessed"}"#,
+        "",
+    );
+    std::thread::sleep(Duration::from_millis(400));
+    assert!(mgr.state().last_selection.is_none());
+    mgr.shutdown();
+}
+
+#[test]
+fn source_location_serialization_omits_none_confidence() {
+    use rootray_core::inspector::protocol::SourceLocation;
+    let loc_none = SourceLocation {
+        relative_path: "src/App.tsx".into(),
+        line: 1,
+        column: 1,
+        component_name: None,
+        confidence: None,
+    };
+    let json_none = serde_json::to_value(&loc_none).unwrap();
+    assert_eq!(
+        json_none,
+        serde_json::json!({
+            "relativePath": "src/App.tsx",
+            "line": 1,
+            "column": 1
+        })
+    );
+
+    let loc_exact = SourceLocation {
+        relative_path: "src/App.tsx".into(),
+        line: 1,
+        column: 1,
+        component_name: None,
+        confidence: Some("exact".into()),
+    };
+    let json_exact = serde_json::to_value(&loc_exact).unwrap();
+    assert_eq!(
+        json_exact,
+        serde_json::json!({
+            "relativePath": "src/App.tsx",
+            "line": 1,
+            "column": 1,
+            "confidence": "exact"
+        })
+    );
+}
+
+#[test]
+fn selection_rebases_target_relative_to_workspace_relative() {
+    // Monorepo: target apps/web inside workspace — the stamped path is
+    // target-relative; the stored selection must be workspace-relative so
+    // file ops (bounded by the workspace security root) resolve correctly.
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path().to_path_buf();
+    let target = workspace.join("apps").join("web");
+
+    let (mgr, info, _states) = start_manager();
+    mgr.set_session_roots(target, workspace);
+    let mut ws = connected_ws(&info);
+    send_selection(
+        &mut ws,
+        &info.session_id,
+        r#"{"relativePath":"app/page.tsx","line":3,"column":5,"confidence":"exact"}"#,
+        r#","styles":{"classes":["btn"],"box":{"x":0,"y":0,"width":1,"height":1,
+            "margin":{"top":0,"right":0,"bottom":0,"left":0},
+            "padding":{"top":0,"right":0,"bottom":0,"left":0},
+            "border":{"top":0,"right":0,"bottom":0,"left":0}},
+            "computed":{"color":"red"},
+            "matchedRules":[{"selector":".btn","declarations":[{"property":"color","value":"red"}],
+            "sourcePath":"styles/a.module.css"}]}"#,
+    );
+    assert!(wait_for(|| mgr.state().last_selection.is_some(), 3000));
+    let sel = mgr.state().last_selection.unwrap();
+    assert_eq!(sel.source.relative_path, "apps/web/app/page.tsx");
+    assert_eq!(
+        sel.styles.unwrap().matched_rules[0].source_path.as_deref(),
+        Some("apps/web/styles/a.module.css")
+    );
+    mgr.shutdown();
+}
+
+#[test]
+fn selection_at_workspace_root_is_unchanged() {
+    // Single-package workspace: target == root — no prefixing.
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().to_path_buf();
+    let (mgr, info, _states) = start_manager();
+    mgr.set_session_roots(root.clone(), root);
+    let mut ws = connected_ws(&info);
+    send_selection(
+        &mut ws,
+        &info.session_id,
+        r#"{"relativePath":"src/App.tsx","line":1,"column":1}"#,
+        "",
+    );
+    assert!(wait_for(|| mgr.state().last_selection.is_some(), 3000));
+    assert_eq!(
+        mgr.state().last_selection.unwrap().source.relative_path,
+        "src/App.tsx"
+    );
+    mgr.shutdown();
+}
+
 #[test]
 fn disconnect_updates_session_state() {
     let (mgr, info, _states) = start_manager();

@@ -44,10 +44,19 @@ struct ManagerInner {
     state: Mutex<InspectorState>,
     bridge: Mutex<Option<BridgeHandle>>,
     notify: Mutex<Option<Notify>>,
-    /// Session-owned scratch dirs (e.g. the Next adapter's generated
-    /// entry under `node_modules/.cache/rootray-<sid>`). Removed on
+    /// Session-owned scratch dirs the adapter created. Removed on
     /// shutdown and swept before the next session starts.
     scratch: Mutex<Vec<std::path::PathBuf>>,
+    /// Stable-path entry files (e.g. the Next adapter's
+    /// `node_modules/.cache/rootray/entry.js`). On session end each is
+    /// rewritten to an inert stub — never deleted, because bundler
+    /// persistent caches may still import the path on a later run.
+    stubs: Mutex<Vec<std::path::PathBuf>>,
+    /// (target root, workspace root) for the live session — selections
+    /// arrive target-relative and are re-based to the workspace root
+    /// before they reach the UI, so every reported path resolves under
+    /// the filesystem security root.
+    session_roots: Mutex<Option<(std::path::PathBuf, std::path::PathBuf)>>,
 }
 
 impl Default for InspectorManager {
@@ -91,6 +100,8 @@ impl InspectorManager {
                 bridge: Mutex::new(None),
                 notify: Mutex::new(None),
                 scratch: Mutex::new(Vec::new()),
+                stubs: Mutex::new(Vec::new()),
+                session_roots: Mutex::new(None),
             }),
         }
     }
@@ -124,12 +135,56 @@ impl InspectorManager {
             .unwrap_or_default()
     }
 
+    /// Records the session's (target root, workspace root) so selections
+    /// can be re-based from target-relative to workspace-relative paths.
+    pub fn set_session_roots(
+        &self,
+        target_root: std::path::PathBuf,
+        workspace_root: std::path::PathBuf,
+    ) {
+        if let Ok(mut slot) = self.inner.session_roots.lock() {
+            *slot = Some((target_root, workspace_root));
+        }
+    }
+
+    /// Re-bases a runtime-reported, target-relative path onto the
+    /// workspace root. Identity when the target is the workspace root;
+    /// never escapes forward (a prefix containing `..` is refused).
+    fn workspace_relative(
+        inner: &ManagerInner,
+        rel: &str,
+    ) -> String {
+        let roots = inner.session_roots.lock().ok().and_then(|g| g.clone());
+        let Some((target, workspace)) = roots else {
+            return rel.to_string();
+        };
+        let Ok(prefix) = target.strip_prefix(&workspace) else {
+            return rel.to_string();
+        };
+        if prefix.as_os_str().is_empty() {
+            return rel.to_string();
+        }
+        let prefix = prefix.to_string_lossy().replace('\\', "/");
+        if prefix.is_empty() || prefix.split('/').any(|seg| seg == "..") {
+            return rel.to_string();
+        }
+        format!("{prefix}/{rel}")
+    }
+
     /// Registers adapter-owned scratch dirs for removal when the session
     /// ends. Never used for project files — only dirs the adapter itself
-    /// created (node_modules/.cache/rootray-*, .next/rootray-*).
+    /// created (node_modules/.cache/rootray-*).
     pub fn register_scratch(&self, dirs: Vec<std::path::PathBuf>) {
         if let Ok(mut slot) = self.inner.scratch.lock() {
             slot.extend(dirs);
+        }
+    }
+
+    /// Registers stable-path entry files that must be rewritten to an
+    /// inert stub (not deleted) when the session ends.
+    pub fn register_entry_stubs(&self, files: Vec<std::path::PathBuf>) {
+        if let Ok(mut slot) = self.inner.stubs.lock() {
+            slot.extend(files);
         }
     }
 
@@ -137,7 +192,7 @@ impl InspectorManager {
     fn cleanup_scratch(inner: &ManagerInner) {
         let dirs = match inner.scratch.lock() {
             Ok(mut slot) => std::mem::take(&mut *slot),
-            Err(_) => return,
+            Err(_) => Vec::new(),
         };
         for d in dirs {
             // Only ever remove RootRay-named dirs — a misregistered path
@@ -148,6 +203,26 @@ impl InspectorManager {
                 .is_some_and(|n| n.starts_with("rootray-"));
             if ours {
                 let _ = std::fs::remove_dir_all(&d);
+            }
+        }
+        // Stub out stable entry files: a bundler's persistent cache can
+        // keep serving a module that imports this path — the stub keeps
+        // that import resolvable without booting a dead-bridge runtime.
+        let stubs = match inner.stubs.lock() {
+            Ok(mut slot) => std::mem::take(&mut *slot),
+            Err(_) => Vec::new(),
+        };
+        for f in stubs {
+            let ours = f
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n == "rootray")
+                && f.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+                    n == "entry.js"
+                });
+            if ours {
+                let _ = std::fs::write(&f, launch::NEXT_ENTRY_STUB);
             }
         }
     }
@@ -220,7 +295,19 @@ impl InspectorManager {
                         s.phase = InspectorPhase::Disconnected;
                     }
                 }
-                BridgeEvent::Selection(sel) => {
+                BridgeEvent::Selection(mut sel) => {
+                    // Re-base stamped paths (target-relative) onto the
+                    // workspace root — every downstream file operation
+                    // resolves against the workspace security root.
+                    sel.source.relative_path =
+                        Self::workspace_relative(inner, &sel.source.relative_path);
+                    if let Some(styles) = sel.styles.as_mut() {
+                        for rule in &mut styles.matched_rules {
+                            if let Some(p) = rule.source_path.take() {
+                                rule.source_path = Some(Self::workspace_relative(inner, &p));
+                            }
+                        }
+                    }
                     s.last_selection = Some(sel);
                 }
                 BridgeEvent::InspectRequested { enabled } => {
@@ -303,6 +390,9 @@ impl InspectorManager {
     /// `last_selection` is retained so the UI keeps showing context.
     pub fn shutdown(&self) {
         Self::cleanup_scratch(&self.inner);
+        if let Ok(mut slot) = self.inner.session_roots.lock() {
+            *slot = None;
+        }
         if let Ok(mut slot) = self.inner.bridge.lock() {
             if let Some(b) = slot.take() {
                 b.shutdown();

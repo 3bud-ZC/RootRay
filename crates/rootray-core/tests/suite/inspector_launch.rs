@@ -184,7 +184,7 @@ fn next_adapter_builds_shimmed_dev_command() {
     let info = test_info(43210, &target_root, tmp.path());
     let target = test_target(&target_root, Framework::NextJs, "next dev --webpack -p 3010");
 
-    let (cmd, scratch) = InspectorAdapter::NextJs
+    let (cmd, artifacts) = InspectorAdapter::NextJs
         .dev_command(&target, &info, &assets)
         .expect("next adapter command");
 
@@ -205,9 +205,8 @@ fn next_adapter_builds_shimmed_dev_command() {
     assert!(!cmd_env(&cmd, "ROOTRAY_NEXT_LOADER").is_empty());
     assert_eq!(cmd_env(&cmd, "ROOTRAY_SESSION_ID"), "rs-test");
     let entry = PathBuf::from(cmd_env(&cmd, "ROOTRAY_NEXT_ENTRY"));
-    // Entry is generated inside node_modules/.cache/rootray-<sid>/
-    assert!(entry.to_string_lossy().contains(".cache"));
-    assert!(entry.to_string_lossy().contains("rootray-rs-test"));
+    // Stable entry path — no session id — inside node_modules/.cache/rootray/
+    assert_eq!(entry, target_root.join("node_modules/.cache/rootray/entry.js"));
     assert!(entry.is_file());
     // The entry sets window.__ROOTRAY__ and inlines the runtime.
     let body = std::fs::read_to_string(&entry).unwrap();
@@ -215,9 +214,17 @@ fn next_adapter_builds_shimmed_dev_command() {
     assert!(body.contains("rs-test"));
     assert!(body.contains("ws://127.0.0.1:43210/rootray"));
     assert!(body.contains("typeof window"));
-    // Scratch registered for session cleanup.
-    assert_eq!(scratch.len(), 1);
-    assert!(scratch[0].is_dir());
+    // Entry is a stable path under the target's own
+    // node_modules/.cache/rootray/ — no session id, never inside the
+    // `next` package dir (which may be a junction into a shared pnpm
+    // store). Registered as a stub: rewritten in place on session end so
+    // stale bundler-cache imports keep resolving.
+    assert!(artifacts.scratch.is_empty());
+    assert_eq!(
+        artifacts.stubs,
+        [target_root.join("node_modules/.cache/rootray/entry.js")]
+    );
+    assert!(artifacts.stubs[0].is_file());
 }
 
 fn cmd_env(cmd: &rootray_core::project::DevCommand, key: &str) -> String {
@@ -241,14 +248,17 @@ fn next_adapter_finds_hoisted_bin_and_uses_target_cwd() {
     let info = test_info(43210, &target_root, ws);
     let target = test_target(&target_root, Framework::NextJs, "next dev");
 
-    let (cmd, scratch) = InspectorAdapter::NextJs
+    let (cmd, artifacts) = InspectorAdapter::NextJs
         .dev_command(&target, &info, &assets)
         .unwrap();
     assert_eq!(cmd.cwd, target_root);
     assert!(cmd.args[2].contains("node_modules"));
-    // Scratch lives under the hoisted node_modules — inside the turbopack
+    // Entry lives under the hoisted node_modules — inside the turbopack
     // root, which is the workspace root here.
-    assert!(scratch[0].starts_with(ws.join("node_modules")));
+    assert_eq!(
+        artifacts.stubs,
+        [ws.join("node_modules/.cache/rootray/entry.js")]
+    );
 }
 
 #[test]
@@ -300,6 +310,29 @@ fn scratch_cleanup_removes_only_rootray_dirs() {
         foreign.exists(),
         "non-rootray dirs must never be deleted by cleanup"
     );
+}
+
+#[test]
+fn entry_stubs_are_rewritten_in_place_never_deleted() {
+    use rootray_core::inspector::InspectorManager;
+    let tmp = tempfile::tempdir().unwrap();
+    let entry = tmp.path().join("node_modules/.cache/rootray/entry.js");
+    std::fs::create_dir_all(entry.parent().unwrap()).unwrap();
+    std::fs::write(&entry, "window.__ROOTRAY__={live:true}").unwrap();
+    // A path outside the `rootray/` convention must never be written to.
+    let foreign = tmp.path().join("node_modules/.cache/other/entry.js");
+    std::fs::create_dir_all(foreign.parent().unwrap()).unwrap();
+    std::fs::write(&foreign, "keep").unwrap();
+
+    let mgr = InspectorManager::new();
+    mgr.register_entry_stubs(vec![entry.clone(), foreign.clone()]);
+    mgr.shutdown();
+
+    assert!(entry.exists(), "stable entry must remain on disk");
+    let body = std::fs::read_to_string(&entry).unwrap();
+    assert!(body.contains("session ended"), "stub body: {body}");
+    assert!(!body.contains("__ROOTRAY__="));
+    assert_eq!(std::fs::read_to_string(&foreign).unwrap(), "keep");
 }
 
 /// `resolve_assets` feeds its paths to Node — as a script argument and via

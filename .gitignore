@@ -4,6 +4,7 @@ target/
 **/src-tauri/target/
 fixtures/*/node_modules/
 fixtures/*/.next/
+**/.next/
 *.log
 .DS_Store
 Thumbs.db

@@ -266,10 +266,23 @@ fn parse_source_location(v: Option<&Value>) -> Option<SourceLocation> {
         line: line as u32,
         column: column as u32,
         component_name: optional_str(obj.get("componentName")),
-        confidence: optional_str(obj.get("confidence")).filter(|c| {
-            matches!(c.as_str(), "exact" | "approximate" | "component")
-        }),
+        confidence: parse_confidence(obj.get("confidence"))?,
     })
+}
+
+/// `confidence` is an optional, additive v1 extension: absent is fine, a
+/// known value is kept, any other present value (including `null`)
+/// invalidates the location — the TypeScript mirror does the same.
+fn parse_confidence(v: Option<&Value>) -> Option<Option<String>> {
+    match v {
+        None => Some(None),
+        Some(Value::String(s))
+            if matches!(s.as_str(), "exact" | "approximate" | "component") =>
+        {
+            Some(Some(s.clone()))
+        }
+        Some(_) => None,
+    }
 }
 
 fn finite_f64(v: Option<&Value>) -> Option<f64> {

@@ -42,15 +42,40 @@
   reconstructable (`next dev` + plain flags); component-intelligence is
   **partial** (server-component ownership is static). Complex/wrapped
   scripts still run — inspection reports the reason instead.
-- **Installed-app verification — PASS**
-  (`tests/e2e/installed-golden-next.mjs`, real `rootray-desktop.exe`):
-  analyze → `Next.js 16.2.12 · npm · npm run dev` → Run → real
-  `next dev` (Turbopack) → `http://localhost:3000/` → bridge connected →
-  Inspect UI → select → `components/ActionButton.tsx` L9 C5,
-  `ActionButton` → component + style intelligence → Quick Edit → Saved →
-  Fast Refresh applied in the page → re-inspection resolves the same
-  source → About-link navigation stays instrumented → Stop → owned
-  process tree exited, URL dead. Vite installed golden path re-run: PASS.
+- **Protocol v1 backward compatibility — PASS**:
+  `ROOTRAY_PROTOCOL_VERSION` remains 1. The additive `source.confidence` field
+  ("exact" | "approximate" | "component") is backward-compatible. Deterministic
+  tests in TypeScript (`@rootray/source-protocol`) and Rust (`rootray-core`)
+  prove: (a) old v1 payloads without confidence are accepted, (b) new v1 payloads
+  with valid confidence levels are accepted, (c) unknown levels like "guessed"
+  and `null` values are rejected, and (d) serialization omits `confidence` when
+  absent.
+- **Installed-app verification — PASS**:
+  - **ClientFlow-CRM (real Next.js 16.2.12 application)**:
+    Real installed `rootray-desktop.exe` → auto-analyze → `Next.js 16.2.12 · npm · npm run dev` →
+    Run → `http://localhost:3000/` → bridge connected → 4 real authored elements mapped:
+    `<h1>` → `src/app/(auth)/login/page.tsx:41:13` (`LoginPage`),
+    `<div>` → `src/components/ui/card.tsx:11:5` (`Card`),
+    `<form>` → `src/components/ui/label.tsx:9:5` (`Label`),
+    `<input>` → `src/components/auth/login-form.tsx:46:11` (`LoginForm`).
+    Style intelligence (box model) rendered for all selections. Stop confirmed via direct
+    network probe. ClientFlow repo remained pristine (`git status --porcelain` identical to baseline).
+    *Discovered test issue*: `page.goto(appUrl)` was an invalid server-death check on PWA apps because
+    ClientFlow's Service Worker (`public/sw.js`) served offline fallback content even after the Next
+    server was dead. All installed tests now use direct loopback network probes outside the browser context.
+  - **Nested Next Monorepo (`fixtures/pnpm-monorepo`)**:
+    Demonstrates `workspaceRoot != activeTargetRoot`. Workspace root = `fixtures/pnpm-monorepo`,
+    active target = `fixtures/pnpm-monorepo/apps/web` (cwd = target root).
+    Open monorepo root → detected as `pnpm workspace` → `apps/web` active (`pnpm run dev`) →
+    Run → URL detected → bridge connected → click `<h1>` in `Banner.tsx` →
+    selection reports workspace-relative `apps/web/components/Banner.tsx:4:10` (never `src/...` or absolute `C:\...`).
+    Quick Edit opens `apps/web/components/Banner.tsx` without saving.
+    Explorer remains rooted at workspace root (`apps/` + `packages/` visible).
+    Workspace Search covers entire workspace (finds `apps/api/src/index.js` outside active target;
+    opening it verifies security root = workspace root). Stop verified via direct network probe;
+    stable entry stubbed; zero scratch dirs left behind.
+  - **Next.js Fixture (`tests/e2e/installed-golden-next.mjs`)**: PASS.
+  - **React+Vite Fixture (`tests/e2e/installed-golden.mjs`)**: PASS.
 
 ### What changed (v0.2.0, Milestone 01)
 
@@ -112,25 +137,29 @@
 
 ### v0.2.0 verification
 
-- `cargo test -p rootray-core` — 163 passed, 0 failed, 1 ignored
+- `cargo test -p rootray-core` — 172 passed, 0 failed, 1 ignored
   (`golden_path_real_vite_server` — real `npm run dev` run, passes with
   `--ignored`).
-- `pnpm -r test` — Vitest 133 green (shared 7, source-protocol 14,
+- `pnpm -r test` — Vitest 137 green (shared 7, source-protocol 18,
   intelligence 17, jsx-instrument 19, vite-plugin 3, inspector-runtime
   16, next-adapter 5, desktop 52).
 - `pnpm --filter @rootray/e2e test` — Playwright 31 e2e green (22 prior
   + 9 Next: turbopack full flow 7, webpack 16+15 fallback 2).
 - `pnpm -r typecheck`, `pnpm exec biome check .`, `cargo check` (both
   crates), `cargo build -p rootray-desktop` — green.
-- `pnpm build:tauri` — release build + NSIS bundle green;
-  `scripts/installer-smoke.ps1` — PASS (all five inspector assets ship).
-- **Installed-app golden paths — PASS** (`installed-golden.mjs` Vite,
-  `installed-golden-next.mjs` Next.js — both drive the real installed
-  `rootray-desktop.exe` via WebView2 CDP + a controlled Chromium page).
+- `pnpm build:tauri` — release build + NSIS bundle green (`RootRay_0.2.0_x64-setup.exe`).
+- **Installed-app golden paths — ALL PASS** (all drive the real installed
+  `rootray-desktop.exe` via WebView2 CDP + a controlled Chromium page with direct
+  network probes for server shutdown):
+  - `installed-verify-clientflow.mjs` (ClientFlow-CRM, Next.js 16.2.12): PASS
+  - `installed-golden-monorepo.mjs` (pnpm monorepo nested Next target): PASS
+  - `installed-golden-next.mjs` (Next.js fixture): PASS
+  - `installed-golden.mjs` (React+Vite fixture): PASS
 - Real-repo validation: `ClientFlow-CRM` live shimmed `next dev` renders
-  `data-rootray-*` on real SSR output (`/login`, 200);
-  `ELHABAK-Construction-System-V1` monorepo → 8 targets, `apps/web`
-  Next.js 16.0.3 auto-selected with runtime caps available.
+  `data-rootray-*` on real SSR output (`/login`, 200) and passes 4-element
+  source mapping with style intelligence; `ELHABAK-Construction-System-V1`
+  monorepo → 8 targets, `apps/web` Next.js 16.0.3 auto-selected with runtime
+  caps available.
 
 ---
 
