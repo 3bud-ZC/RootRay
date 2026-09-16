@@ -42,8 +42,14 @@ published v0.1.0 build:
 - **Audit:** other synchronous state mutations checked — `stop_dev_server`
   state reaches the frontend through the process-event sink; no other
   command had the same missing-emission bug.
-- **Status:** prepared on `main`, pending installed-app verification and
-  CI; no `v0.1.1` tag or release exists yet.
+- **Installed-app verification: PASS** — the real `0.1.1` NSIS installer
+  was installed and the exact reported flow exercised: Open Project →
+  native picker → React + Vite fixture → picker closed → ProjectView
+  with name, framework, package manager, and dev command.
+- **CI:** run `35038504057` on `1beff63` — **success**.
+- **Status:** ready for publication on `main` at
+  `1beff6324b6dce43223bd91f7bf8b2dc4fbf89e1`; no `v0.1.1` tag or release
+  exists yet.
 
 ## Release Version
 Working tree is **0.1.1** (patch in progress) — consistent across root
