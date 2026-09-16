@@ -334,3 +334,36 @@ fn metrics_are_real_and_bounded() {
     assert!(!a.discovery.truncated);
     assert!(a.discovery.metadata_bytes > 0);
 }
+
+// ---- installed-verification fixture guard ------------------------------------
+//
+// `vite-react-inspector` is the fixture the installed app must actually Run.
+// If it ever loses its package-manager evidence (package-lock.json) the
+// detector correctly reports Unknown and the runner silently disappears —
+// this test makes that regression loud instead of a dead "Run" capability.
+
+#[test]
+fn vite_react_inspector_fixture_resolves_a_real_runner() {
+    let a = analyze_workspace(&fixtures().join("vite-react-inspector")).unwrap();
+    let t = a.active_target().expect("fixture must have an active target");
+
+    assert_eq!(t.framework, Framework::ViteReact);
+    assert_eq!(t.package_manager, PackageManager::Npm); // package-lock.json
+    assert_eq!(t.dev_script.as_deref(), Some("vite"));
+
+    let runner = t
+        .selected_runner
+        .as_ref()
+        .expect("fixture must resolve `npm run dev` — check package-lock.json exists");
+    assert_eq!(runner.display, "npm run dev");
+    assert_eq!(runner.cwd, t.absolute_root);
+
+    let c = &t.capabilities;
+    assert!(c.run.is_available());
+    assert!(c.source_mapping.is_available());
+    assert!(c.dom_inspect.is_available());
+    assert!(c.style_inspect.is_available());
+    assert!(c.component_intelligence.is_available());
+    assert!(c.hmr_aware.is_available());
+    assert!(c.browser_open.is_available());
+}

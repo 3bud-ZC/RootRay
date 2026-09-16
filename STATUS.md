@@ -66,20 +66,42 @@
 
 ### v0.2.0 verification
 
-- `cargo test -p rootray-core` — 151 passed, 0 failed (was ~130 at v0.1.1).
-- `pnpm -r test` — Vitest 59 + desktop 52 green; Playwright 22 e2e green
-  (19 → +3 workspace specs).
+- `cargo test -p rootray-core` — 154 passed, 0 failed, 1 ignored
+  (`golden_path_real_vite_server` — real `npm run dev` run, passes with
+  `--ignored`).
+- `pnpm -r test` — Vitest 123 green (shared 7, source-protocol 14,
+  intelligence 17, vite-plugin 19, inspector-runtime 14, desktop 52);
+  Playwright 22 e2e green — e2e now spawns the runner with
+  `cwd == --root`, matching production.
 - `pnpm -r typecheck`, `pnpm exec biome check .`, `cargo check` (both
   crates), `cargo build -p rootray-desktop` — green.
 - `pnpm build:tauri` — release build + NSIS bundle green;
   `scripts/installer-smoke.ps1` — PASS.
-- **Installed-app verification** (`scripts/verify-installed.ps1` — seeds
-  `lastProject`, launches the real installed binary, screenshots the
-  analyzed workspace):
+- **Installed-app golden path — PASS** (`tests/e2e/installed-golden.mjs`
+  drives the real installed `rootray-desktop.exe` via WebView2 CDP +
+  a controlled Chromium page):
+  - Fixture: `fixtures/vite-react-inspector`; package-manager evidence =
+    generated `package-lock.json` (npm).
+  - Binary: `C:\Users\Abud\AppData\Local\RootRay\rootray-desktop.exe`
+    (fresh `RootRay_0.2.0_x64-setup.exe` install).
+  - Analysis → `React + Vite 7.1.0 · npm · npm run dev` resolved and
+    displayed.
+  - Run → real Vite dev server spawned by the app →
+    `http://localhost:5173/` detected from stdout.
+  - Inspector bridge connected; rendered page inspected in Chromium.
+  - Source mapping: `src/components/ActionButton.tsx` L7 C5 · component
+    `ActionButton`; component + style intelligence rendered.
+  - Quick Edit → save → Vite HMR applied in the rendered page →
+    re-inspection resolved the same source.
+  - Stop → owned process tree exited; URL dead.
+  - Three latent defects this exposed are fixed: verbatim `\\?\` asset
+    paths reaching Node (`resolve_assets` now strips them), the runner
+    rejecting a valid `--root` equal to its cwd (`runner.ts`), and
+    `.cmd` dev commands receiving args twice (`process/mod.rs`).
   - `fixtures/nextjs-basic` → Next.js 16.2.12, `npm run dev`, partial
-    runtime support, all workspace capabilities green.
-  - `fixtures/vite-react-inspector` → React+Vite 7.1.0, full runtime
-    support, all inspection capabilities green (regression-free).
+    runtime support, all workspace capabilities green (analysis-level
+    check via `scripts/verify-installed.ps1`; its `node_modules` are not
+    installed locally, so no live `next dev` run — Milestone 02 scope).
   - `ELHABAK-Construction-System-V1` (real pnpm monorepo) → 8 targets,
     `apps/web` Next.js 16.0.3 auto-selected, `pnpm run dev`, target
     selector live.

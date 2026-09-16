@@ -270,7 +270,13 @@ export async function startFixture(vitePort: number): Promise<FixtureRun> {
   const workParent = join(REPO_ROOT, ".e2e-work");
   mkdirSync(workParent, { recursive: true });
   const workDir = mkdtempSync(join(workParent, "edit-"));
-  cpSync(FIXTURE, workDir, { recursive: true });
+  // The fixture now carries a real package-lock.json + node_modules for the
+  // installed-app golden path; the temp copy must not inherit node_modules —
+  // `npm install` below rebuilds it deterministically from the lockfile.
+  cpSync(FIXTURE, workDir, {
+    recursive: true,
+    filter: (src) => !src.includes("node_modules"),
+  });
   npm("install --no-audit --no-fund --loglevel=error", workDir);
 
   const bridge = new MockBridge();
@@ -279,6 +285,8 @@ export async function startFixture(vitePort: number): Promise<FixtureRun> {
     process.execPath,
     [RUNNER, "--root", workDir, "--port", String(vitePort), "--strictPort"],
     {
+      // cwd == --root mirrors how RootRay launches the runner for real.
+      cwd: workDir,
       env: {
         ...process.env,
         ROOTRAY_PROJECT_ROOT: workDir,
@@ -297,7 +305,23 @@ export async function startFixture(vitePort: number): Promise<FixtureRun> {
 
 export async function stopFixture(run: FixtureRun | undefined): Promise<void> {
   if (!run) return;
+  // The runner's cwd is the work dir — Windows holds a lock on it until the
+  // process tree is fully gone, so wait for exit before removing.
+  const exited = run.runner
+    ? new Promise<void>((r) => run.runner.once("exit", () => r()))
+    : Promise.resolve();
   run.runner?.kill("SIGTERM");
+  await Promise.race([exited, new Promise((r) => setTimeout(r, 10_000))]);
   await run.bridge?.stop();
-  if (run.workDir) rmSync(run.workDir, { recursive: true, force: true });
+  if (run.workDir) {
+    for (let i = 0; i < 20; i++) {
+      try {
+        rmSync(run.workDir, { recursive: true, force: true });
+        break;
+      } catch (e) {
+        if (i === 19) throw e;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    }
+  }
 }

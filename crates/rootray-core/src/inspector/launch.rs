@@ -35,18 +35,18 @@ pub fn resolve_assets() -> Option<InspectorAssets> {
         std::env::var("ROOTRAY_PLUGIN_PATH"),
         std::env::var("ROOTRAY_RUNTIME_PATH"),
     ) {
-        let a = InspectorAssets {
+        let a = normalize(InspectorAssets {
             runner: PathBuf::from(r),
             plugin: PathBuf::from(p),
             runtime: PathBuf::from(t),
-        };
+        });
         if a.runner.is_file() && a.plugin.is_file() && a.runtime.is_file() {
             return Some(a);
         }
     }
 
     if let Ok(dir) = std::env::var("ROOTRAY_INSPECTOR_ASSETS_DIR") {
-        let dir = PathBuf::from(dir);
+        let dir = crate::filesystem::strip_verbatim_pub(&PathBuf::from(dir));
         let a = InspectorAssets {
             runner: dir.join("runner.cjs"),
             plugin: dir.join("plugin.cjs"),
@@ -58,12 +58,23 @@ pub fn resolve_assets() -> Option<InspectorAssets> {
     }
 
     let packages = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packages");
-    let a = InspectorAssets {
+    let a = normalize(InspectorAssets {
         runner: packages.join("vite-plugin/dist/runner.cjs"),
         plugin: packages.join("vite-plugin/dist/plugin.cjs"),
         runtime: packages.join("inspector-runtime/dist/runtime.js"),
-    };
+    });
     (a.runner.is_file() && a.plugin.is_file() && a.runtime.is_file()).then_some(a)
+}
+
+/// Asset paths are handed to Node verbatim — the `\\?\` prefix Windows
+/// canonicalization adds (e.g. Tauri's `resource_dir()`) is rejected by
+/// Node's module loader, so it is stripped before the paths leave Rust.
+fn normalize(a: InspectorAssets) -> InspectorAssets {
+    InspectorAssets {
+        runner: crate::filesystem::strip_verbatim_pub(&a.runner),
+        plugin: crate::filesystem::strip_verbatim_pub(&a.plugin),
+        runtime: crate::filesystem::strip_verbatim_pub(&a.runtime),
+    }
 }
 
 /// Session credentials handed to the runner via environment.

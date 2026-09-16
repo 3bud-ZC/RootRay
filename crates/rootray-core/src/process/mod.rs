@@ -264,7 +264,9 @@ fn build_command(cmd: &DevCommand) -> Command {
             let mut c = Command::new("cmd");
             // `/s` makes cmd treat the whole remainder literally; Rust adds
             // quoting only where the executable path itself needs it.
-            c.arg("/d").arg("/s").arg("/c").arg(&cmd.executable).args(&cmd.args);
+            // `configure` appends `cmd.args` — adding them here too would
+            // spawn `npm run dev run dev`.
+            c.arg("/d").arg("/s").arg("/c").arg(&cmd.executable);
             return configure(c, cmd);
         }
         return configure(Command::new(&cmd.executable), cmd);

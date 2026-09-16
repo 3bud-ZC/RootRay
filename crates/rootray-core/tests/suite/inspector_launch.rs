@@ -35,6 +35,36 @@ fn vite_script_args_are_extracted() {
     assert_eq!(vite_args_from_dev_script("vite --unknown-flag"), None);
 }
 
+/// `resolve_assets` feeds its paths to Node — as a script argument and via
+/// `ROOTRAY_*_PATH` env vars. Tauri's `resource_dir()` canonicalizes, so on
+/// Windows the assets dir arrives `\\?\`-verbatim; Node rejects verbatim
+/// script paths (`lstat 'C:'` / "Cannot find module"), so the prefix must
+/// be stripped before paths leave Rust.
+#[cfg(windows)]
+#[test]
+fn resolve_assets_strips_windows_verbatim_prefix() {
+    let dir = tempfile::tempdir().unwrap();
+    for f in ["runner.cjs", "plugin.cjs", "runtime.js"] {
+        std::fs::write(dir.path().join(f), b"x").unwrap();
+    }
+    // canonicalize() produces `\\?\C:\...` — the shape resource_dir() returns.
+    let verbatim = dir.path().canonicalize().unwrap();
+    assert!(verbatim.to_string_lossy().starts_with(r"\\?\"));
+    for k in ["ROOTRAY_RUNNER_PATH", "ROOTRAY_PLUGIN_PATH", "ROOTRAY_RUNTIME_PATH"] {
+        std::env::remove_var(k);
+    }
+    std::env::set_var("ROOTRAY_INSPECTOR_ASSETS_DIR", &verbatim);
+    let assets = rootray_core::inspector::resolve_assets().unwrap();
+    std::env::remove_var("ROOTRAY_INSPECTOR_ASSETS_DIR");
+    for p in [&assets.runner, &assets.plugin, &assets.runtime] {
+        assert!(
+            !p.to_string_lossy().starts_with(r"\\?\"),
+            "verbatim path leaked to Node boundary: {p:?}"
+        );
+        assert!(p.is_file());
+    }
+}
+
 #[test]
 fn preview_reads_lines_around_selection() {
     let root = fixtures().join("vite-react-typescript");

@@ -113,10 +113,19 @@ function parseArgs(argv: string[]): { root: string | undefined; flags: ViteFlags
 async function main(): Promise<void> {
   const { root: rootArg, flags } = parseArgs(process.argv.slice(2));
 
-  const projectRoot = resolve(rootArg ?? process.env.ROOTRAY_PROJECT_ROOT ?? "");
-  if (!projectRoot || projectRoot === resolve(".")) {
+  const rootInput = rootArg ?? process.env.ROOTRAY_PROJECT_ROOT;
+  if (!rootInput) {
     fail("no project root provided (ROOTRAY_PROJECT_ROOT or --root)");
   }
+  // RootRay spawns this runner with cwd == project root, so a root that
+  // resolves to "." is the *normal* case — never a missing value.
+  // Strip a Windows `\\?\` verbatim prefix if one leaks in: Node/Vite do
+  // not consistently accept verbatim paths downstream.
+  const projectRoot = resolve(
+    rootInput.startsWith("\\\\?\\UNC\\")
+      ? `\\\\${rootInput.slice(8)}`
+      : rootInput.replace(/^\\\\\?\\/, ""),
+  );
   const bridgeUrl = process.env.ROOTRAY_BRIDGE_URL ?? fail("ROOTRAY_BRIDGE_URL is not set");
   const sessionId = process.env.ROOTRAY_SESSION_ID ?? fail("ROOTRAY_SESSION_ID is not set");
   const sessionToken =

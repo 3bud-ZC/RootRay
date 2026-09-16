@@ -122,7 +122,9 @@ fn strip_verbatim(path: &Path) -> PathBuf {
 /// `pub(crate)` twin of `strip_verbatim` for the workspace discovery engine.
 pub(crate) fn strip_verbatim_pub(path: &Path) -> PathBuf {
     let s = path.to_string_lossy();
-    if let Some(stripped) = s.strip_prefix(r"\\?\") {
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(stripped) = s.strip_prefix(r"\\?\") {
         PathBuf::from(stripped)
     } else {
         path.to_path_buf()

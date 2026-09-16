@@ -161,6 +161,36 @@ fn restart_after_failed_start_works() {
     pm.stop().unwrap();
 }
 
+/// `.cmd`/`.bat` shims spawn through `cmd.exe /c`; the dev command's args
+/// must reach the shim exactly once — duplicated args turn
+/// `npm run dev` into `vite run dev` (Vite then serves `run/` as root).
+#[cfg(windows)]
+#[test]
+fn cmd_shim_args_are_not_duplicated() {
+    let dir = tempfile::tempdir().unwrap();
+    let bat = dir.path().join("shim.bat");
+    std::fs::write(&bat, "@echo %*\r\n").unwrap();
+    let cmd = DevCommand {
+        executable: bat.to_string_lossy().to_string(),
+        args: vec!["alpha".to_string(), "beta".to_string()],
+        display: "shim".into(),
+        cwd: std::env::temp_dir(),
+        env: Vec::new(),
+    };
+    let pm = ProcessManager::new();
+    let (seen, sink) = recorder();
+    pm.start(&cmd, sink).unwrap();
+    assert!(
+        wait_for(
+            &seen,
+            |e| matches!(e, ProcessEvent::Stdout { line } if line.trim() == "alpha beta"),
+            T
+        ),
+        "shim must receive args exactly once"
+    );
+    pm.stop().ok();
+}
+
 #[test]
 fn url_watchdog_times_out() {
     let pm = ProcessManager::new().with_url_timeout(Duration::from_millis(200));
