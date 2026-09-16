@@ -46,6 +46,41 @@ fn analyze_bad_project_sets_failed() {
     assert_eq!(core.state().phase, RuntimePhase::Failed);
 }
 
+/// Regression for the v0.1.0 Open-Project bug: `analyze` mutated
+/// RuntimeState but nothing told the host to push a fresh snapshot —
+/// the UI stayed on HomeView. The state-notify hook is the contract the
+/// Tauri layer subscribes to; it must fire on success AND failure, after
+/// the final state is committed.
+#[test]
+fn analyze_notifies_state_change_on_success_and_failure() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let (core, _tmp) = core();
+    let count = Arc::new(AtomicUsize::new(0));
+    let c = count.clone();
+    core.set_state_notify(Arc::new(move || {
+        c.fetch_add(1, Ordering::SeqCst);
+    }));
+
+    // Success path: notify fires once, snapshot carries ready + project.
+    core.analyze(&fixtures().join("vite-react-basic")).unwrap();
+    assert_eq!(count.load(Ordering::SeqCst), 1);
+    let s = core.state();
+    assert_eq!(s.phase, RuntimePhase::Ready);
+    assert!(s.project.is_some());
+
+    // Failure path: notify still fires; snapshot carries failed + error
+    // and a cleared project.
+    let dir = tempfile::tempdir().unwrap();
+    let e = core.analyze(dir.path()).unwrap_err();
+    assert_eq!(e.code(), "PACKAGE_JSON_NOT_FOUND");
+    assert_eq!(count.load(Ordering::SeqCst), 2);
+    let s = core.state();
+    assert_eq!(s.phase, RuntimePhase::Failed);
+    assert!(s.project.is_none());
+    assert!(s.error.is_some());
+}
+
 #[test]
 fn start_requires_project() {
     let (core, _tmp) = core();

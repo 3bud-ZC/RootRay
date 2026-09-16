@@ -119,82 +119,99 @@ const CANNED: Record<string, unknown> = {
 
 /** Installs a minimal Tauri IPC stub before any app code runs. */
 async function stubTauri(page: Page) {
-  await page.addInitScript((canned: Record<string, unknown>) => {
-    const w = window as unknown as Record<string, unknown>;
-    const callbacks = new Map<number, (e: unknown) => void>();
-    const listeners = new Map<string, number>();
-    let nextId = 1;
-    const calls: { cmd: string; args: unknown }[] = [];
-    w.__RR_CALLS__ = calls;
-    w.__RR_EMIT__ = (event: string, payload: unknown) => {
-      const id = listeners.get(event);
-      const cb = id !== undefined ? callbacks.get(id) : undefined;
-      cb?.({ event, payload });
-    };
-    w.__TAURI_INTERNALS__ = {
-      invoke: (cmd: string, args: Record<string, unknown>) => {
-        calls.push({ cmd, args });
-        if (cmd === "plugin:event|listen") {
-          const handler = args.handler as number;
-          listeners.set(args.event as string, handler);
-          return Promise.resolve(nextId++);
-        }
-        if (cmd === "list_project_dir") {
-          // Path-aware canned listing — a static value can't be used because
-          // expanding "src" would then re-render "src" (same relativePath).
-          const rel = args.relativeDir as string;
-          return Promise.resolve(
-            rel === ""
-              ? {
-                  relativePath: "",
-                  truncated: false,
-                  entries: [
-                    {
-                      name: "src",
-                      relativePath: "src",
-                      kind: "dir",
-                      editable: false,
-                      sizeBytes: null,
-                    },
-                    {
-                      name: "package.json",
-                      relativePath: "package.json",
-                      kind: "file",
-                      editable: true,
-                      sizeBytes: 512,
-                    },
-                  ],
-                }
-              : {
-                  relativePath: rel,
-                  truncated: false,
-                  entries: [
-                    {
-                      name: "App.tsx",
-                      relativePath: `${rel}/App.tsx`,
-                      kind: "file",
-                      editable: true,
-                      sizeBytes: 1024,
-                    },
-                  ],
-                },
-          );
-        }
-        return Promise.resolve(canned[cmd]);
-      },
-      transformCallback: (cb: (e: unknown) => void) => {
-        const id = nextId++;
-        callbacks.set(id, cb);
-        return id;
-      },
-      unregisterCallback: (id: number) => callbacks.delete(id),
-      runCallback: (id: number, payload: unknown) => callbacks.get(id)?.(payload),
-      callbacks,
-      convertFileSrc: (p: string) => p,
-      metadata: {},
-      plugins: {},
-    };
-  }, CANNED);
+  await page.addInitScript(
+    (args: { canned: Record<string, unknown>; runtime: unknown }) => {
+      const { canned, runtime } = args;
+      const w = window as unknown as Record<string, unknown>;
+      const callbacks = new Map<number, (e: unknown) => void>();
+      const listeners = new Map<string, number>();
+      let nextId = 1;
+      const calls: { cmd: string; args: unknown }[] = [];
+      w.__RR_CALLS__ = calls;
+      w.__RR_EMIT__ = (event: string, payload: unknown) => {
+        const id = listeners.get(event);
+        const cb = id !== undefined ? callbacks.get(id) : undefined;
+        cb?.({ event, payload });
+      };
+      w.__TAURI_INTERNALS__ = {
+        invoke: (cmd: string, args: Record<string, unknown>) => {
+          calls.push({ cmd, args });
+          if (cmd === "plugin:event|listen") {
+            const handler = args.handler as number;
+            listeners.set(args.event as string, handler);
+            return Promise.resolve(nextId++);
+          }
+          if (cmd === "list_project_dir") {
+            // Path-aware canned listing — a static value can't be used because
+            // expanding "src" would then re-render "src" (same relativePath).
+            const rel = args.relativeDir as string;
+            return Promise.resolve(
+              rel === ""
+                ? {
+                    relativePath: "",
+                    truncated: false,
+                    entries: [
+                      {
+                        name: "src",
+                        relativePath: "src",
+                        kind: "dir",
+                        editable: false,
+                        sizeBytes: null,
+                      },
+                      {
+                        name: "package.json",
+                        relativePath: "package.json",
+                        kind: "file",
+                        editable: true,
+                        sizeBytes: 512,
+                      },
+                    ],
+                  }
+                : {
+                    relativePath: rel,
+                    truncated: false,
+                    entries: [
+                      {
+                        name: "App.tsx",
+                        relativePath: `${rel}/App.tsx`,
+                        kind: "file",
+                        editable: true,
+                        sizeBytes: 1024,
+                      },
+                    ],
+                  },
+            );
+          }
+          if (cmd === "plugin:dialog|open") {
+            return Promise.resolve("C:/fixture/project");
+          }
+          if (cmd === "analyze_project") {
+            // Mirrors the FIXED Tauri contract: the command emits a fresh
+            // rootray://state snapshot after mutating RuntimeState, then
+            // resolves the analysis. v0.1.0 skipped the emit — the UI
+            // stayed on HomeView.
+            const id = listeners.get("rootray://state");
+            const cb = id !== undefined ? callbacks.get(id) : undefined;
+            cb?.({ event: "rootray://state", payload: runtime });
+            return Promise.resolve(canned.analyze_project);
+          }
+          return Promise.resolve(canned[cmd]);
+        },
+        transformCallback: (cb: (e: unknown) => void) => {
+          const id = nextId++;
+          callbacks.set(id, cb);
+          return id;
+        },
+        unregisterCallback: (id: number) => callbacks.delete(id),
+        runCallback: (id: number, payload: unknown) => callbacks.get(id)?.(payload),
+        callbacks,
+        convertFileSrc: (p: string) => p,
+        metadata: {},
+        plugins: {},
+      };
+    },
+    { canned: CANNED, runtime: RUNTIME_WITH_PROJECT },
+  );
 }
 
 async function emitRuntime(page: Page) {
@@ -333,4 +350,44 @@ test("malformed backend payload never blanks the shell", async ({ page }) => {
   await expect(page.locator("body")).not.toBeEmpty();
   // The project view (or boundary recovery) must still be present.
   await expect(page.locator(".app-shell, .crash-view").first()).toBeVisible();
+});
+
+// ---- v0.1.1 regression: Open Project must reach the project view ---------
+
+test("Open Project transitions to ProjectView when state is emitted", async ({ page }) => {
+  await stubTauri(page);
+  await page.goto(URL);
+  await expect(page.locator("text=Open a project")).toBeVisible();
+
+  await page.getByRole("button", { name: "Open Project" }).click();
+
+  // The emitted rootray://state snapshot must switch the shell.
+  await expect(page.locator("text=demo-app")).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("text=vite-react")).toBeVisible();
+  await expect(page.getByText("pnpm", { exact: true })).toBeVisible();
+  await expect(page.locator("text=pnpm run dev")).toBeVisible();
+});
+
+test("Change Project re-analysis updates the visible project", async ({ page }) => {
+  await stubTauri(page);
+  await page.goto(URL);
+  await emitRuntime(page);
+  await expect(page.locator("text=demo-app")).toBeVisible();
+
+  // "Change project" re-picks a directory and re-analyzes — the stub emits
+  // the new project snapshot before resolving.
+  const change = page.getByRole("button", { name: "Change…" });
+  await expect(change).toBeVisible();
+  await change.click();
+  await expect(page.locator("text=demo-app")).toBeVisible({ timeout: 10_000 });
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __RR_CALLS__: { cmd: string }[] }).__RR_CALLS__.filter(
+            (c) => c.cmd === "analyze_project",
+          ).length,
+      ),
+    )
+    .toBe(1); // emitRuntime bypassed analyze; the change click is call #1
 });

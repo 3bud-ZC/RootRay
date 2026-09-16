@@ -306,6 +306,14 @@ pub fn run() {
                 let _ = handle2.emit(EVENT_EDITOR, event);
             }));
 
+            // Synchronous state mutations without a process-event path
+            // (project analysis) still push a fresh snapshot to the UI.
+            let handle3 = app.handle().clone();
+            let core_for_state = core.clone();
+            core.set_state_notify(Arc::new(move || {
+                let _ = handle3.emit(EVENT_STATE, core_for_state.state());
+            }));
+
             // If the window closes, make sure no dev server is orphaned.
             Ok(())
         })

@@ -26,6 +26,10 @@ pub struct AppCore {
     /// Monotonic run id — guards against events from a previous process
     /// generation landing on a newer run.
     generation: Arc<Mutex<u64>>,
+    /// Host hook fired after synchronous RuntimeState mutations that have
+    /// no process-event path (e.g. project analysis) — the Tauri layer
+    /// re-emits the state snapshot so the frontend never goes stale.
+    state_notify: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
 }
 
 impl AppCore {
@@ -37,6 +41,7 @@ impl AppCore {
             inspector: InspectorManager::new(),
             editor: EditorManager::new(),
             generation: Arc::new(Mutex::new(0)),
+            state_notify: Mutex::new(None),
         }
     }
 
@@ -91,14 +96,35 @@ impl AppCore {
                     s.transition(RuntimePhase::Ready)?;
                 }
                 let _ = self.settings.push_recent_project(&analysis.root);
+                self.notify_state_changed();
                 Ok(analysis)
             }
             Err(e) => {
-                let mut s = self.lock_state()?;
-                s.project = None;
-                s.set_error(CommandError::from(&e));
-                let _ = s.transition(RuntimePhase::Failed);
+                {
+                    let mut s = self.lock_state()?;
+                    s.project = None;
+                    s.set_error(CommandError::from(&e));
+                    let _ = s.transition(RuntimePhase::Failed);
+                }
+                self.notify_state_changed();
                 Err(e)
+            }
+        }
+    }
+
+    /// Registers the host hook fired after synchronous state mutations.
+    /// Must be called after the lock is released — the host re-reads
+    /// `state()` inside the callback.
+    pub fn set_state_notify(&self, notify: Arc<dyn Fn() + Send + Sync>) {
+        if let Ok(mut n) = self.state_notify.lock() {
+            *n = Some(notify);
+        }
+    }
+
+    fn notify_state_changed(&self) {
+        if let Ok(n) = self.state_notify.lock() {
+            if let Some(f) = n.as_ref() {
+                f();
             }
         }
     }

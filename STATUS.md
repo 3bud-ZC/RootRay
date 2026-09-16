@@ -19,11 +19,37 @@ MVP READY — **published**
 - License: **MIT**
 - Copyright: `Copyright (c) 2026 Abdallah — ABUD FUN`
 
+## Patch In Progress — v0.1.1 (not yet published)
+
+A release-blocking bug was found during first-user testing of the
+published v0.1.0 build:
+
+- **Bug:** `Open Project` → pick a valid React + Vite directory → picker
+  closes → UI stays on "Open a project".
+- **Root cause:** `AppCore::analyze` correctly updated the native
+  `RuntimeState` (`analyzing` → `ready`, `project = Some(..)`), but the
+  `analyze_project` Tauri command never emitted `rootray://state`, so the
+  frontend kept seeing `runtime.project === null`. Same path affected
+  `Change…` in ProjectView.
+- **Fix:** `AppCore` gained a narrow `set_state_notify` hook (same
+  pattern as the existing inspector/editor notifies); `analyze` fires it
+  after its synchronous state mutation, and the Tauri shell wires it to
+  emit `rootray://state` on both success and failure.
+- **Regression tests:** Rust test proves the host notification fires on
+  both success and failure with the correct phase/error state; Playwright
+  tests prove the stubbed `analyze_project` emit drives HomeView →
+  ProjectView and that `Change…` re-analysis updates the view.
+- **Audit:** other synchronous state mutations checked — `stop_dev_server`
+  state reaches the frontend through the process-event sink; no other
+  command had the same missing-emission bug.
+- **Status:** prepared on `main`, pending installed-app verification and
+  CI; no `v0.1.1` tag or release exists yet.
+
 ## Release Version
-RootRay **0.1.0** — consistent across root `package.json`, all
-`packages/*`, `apps/desktop/package.json`, `tauri.conf.json`, and both
-`Cargo.toml` manifests. No tag or public GitHub Release has been created;
-publishing `v0.1.0` is a human decision.
+Working tree is **0.1.1** (patch in progress) — consistent across root
+`package.json`, all `packages/*`, `apps/desktop/package.json`,
+`tauri.conf.json`, and both `Cargo.toml` manifests. The published release
+remains `v0.1.0`; `v0.1.1` has no tag or GitHub Release yet.
 
 ## Implemented (Milestone 05 additions)
 
@@ -245,4 +271,4 @@ It is newer than the release source SHA by documentation changes only;
 the installer was NOT built from it.
 
 ## Last Updated
-2026-09-15
+2026-09-16
