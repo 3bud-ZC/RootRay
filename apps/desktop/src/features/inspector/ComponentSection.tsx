@@ -11,7 +11,7 @@ import { type ComponentSummary, describeComponent } from "../intelligence/contro
  */
 export function ComponentSection({ source }: { source: SourceLocation }) {
   const { state, dispatch } = useStore();
-  const root = state.runtime.project?.root ?? "";
+  const root = state.runtime.workspace?.root ?? "";
   const [summary, setSummary] = useState<ComponentSummary | null>(null);
   const [failed, setFailed] = useState(false);
 

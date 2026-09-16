@@ -116,6 +116,11 @@ fn normalize(path: &Path) -> PathBuf {
 /// Removes the `\\?\` verbatim prefix Windows adds on canonicalization so
 /// serialized paths look normal to users.
 fn strip_verbatim(path: &Path) -> PathBuf {
+    strip_verbatim_pub(path)
+}
+
+/// `pub(crate)` twin of `strip_verbatim` for the workspace discovery engine.
+pub(crate) fn strip_verbatim_pub(path: &Path) -> PathBuf {
     let s = path.to_string_lossy();
     if let Some(stripped) = s.strip_prefix(r"\\?\") {
         PathBuf::from(stripped)

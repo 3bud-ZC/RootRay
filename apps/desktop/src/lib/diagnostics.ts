@@ -6,6 +6,7 @@
  * tokens, env vars, source contents, logs and any user file data.
  */
 
+import { activeTarget } from "@rootray/shared";
 import type { UiState } from "../state/reducer";
 import { getDiagnostics } from "./ipc";
 
@@ -18,12 +19,14 @@ function basename(p: string): string {
 export async function buildDiagnostics(state: UiState, crash?: string): Promise<string> {
   const info = await getDiagnostics().catch(() => null);
   const rt = state.runtime;
-  const p = rt.project;
+  const w = rt.workspace;
+  const t = w ? activeTarget(w) : null;
   const insp = state.inspector;
 
   const lines = [
     `RootRay ${info?.version ?? "?"} (${info?.os ?? "?"}/${info?.arch ?? "?"})`,
-    `Project: ${p ? basename(p.root) : "none"} — ${p?.framework ?? "—"} / ${p?.packageManager ?? "—"}`,
+    `Workspace: ${w ? `${basename(w.root)} (${w.workspaceKind})` : "none"}`,
+    `Target: ${t ? `${t.id} — ${t.framework} / ${t.packageManager}` : "—"}`,
     `Runner: ${rt.phase}${rt.url ? ` @ ${rt.url}` : ""}`,
     `Inspector: ${insp.phase}${insp.inspectionEnabled ? " (inspecting)" : ""}`,
     `Editor: ${state.editor ? `${state.editor.relativePath} (${state.editor.status})` : "none"}`,

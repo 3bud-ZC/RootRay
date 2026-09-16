@@ -13,7 +13,7 @@ const RESULT_CAP = 50;
  */
 export function QuickOpen({ onClose }: { onClose: () => void }) {
   const { state, dispatch } = useStore();
-  const root = state.runtime.project?.root ?? "";
+  const root = state.runtime.workspace?.root ?? "";
   const [query, setQuery] = useState("");
   const [paths, setPaths] = useState<string[] | null>(null);
   const [active, setActive] = useState(0);

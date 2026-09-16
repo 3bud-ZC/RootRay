@@ -15,7 +15,7 @@ type DirState = DirListing | "loading" | "error";
  */
 export function ExplorerPanel({ onSearch }: { onSearch: (query: string) => void }) {
   const { state, dispatch } = useStore();
-  const root = state.runtime.project?.root ?? "";
+  const root = state.runtime.workspace?.root ?? "";
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [dirs, setDirs] = useState<Map<string, DirState>>(new Map());
   const [, forceRecents] = useState(0);

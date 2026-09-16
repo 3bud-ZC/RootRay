@@ -1,0 +1,11 @@
+{
+  "name": "fixture-turborepo",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "turbo run dev"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0"
+  }
+}

@@ -26,3 +26,5 @@ mod settings;
 mod source_edit;
 #[path = "suite/url_detect.rs"]
 mod url_detect;
+#[path = "suite/workspace_discovery.rs"]
+mod workspace_discovery;

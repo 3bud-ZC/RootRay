@@ -1,13 +1,98 @@
 # RootRay Status
 
-## Overall Progress
-100%
+## Current Development
+**v0.2.0-dev** — Universal Project Workspace
 
-## Current Milestone
-Milestone 05 — Release Hardening, Windows Packaging & MVP Final Acceptance
+**Milestone:** 01 — Universal Project Discovery & Capability Engine
+**Progress:** 20% of the v0.2.0 track
 
-## Milestone Status
-Complete
+### What changed (v0.2.0, in development on `main`)
+
+- **Universal workspace model** — `crates/rootray-core/src/project/workspace/`
+  replaces the single-project `supported: bool` analysis with an
+  authoritative `WorkspaceAnalysis`: workspace kind, package manager,
+  manifests, technologies, targets, capability matrix, findings, warnings
+  and real discovery metrics.
+- **Three roots kept distinct** — `workspace.root` (selected directory =
+  workspace root = filesystem security root), `target.absoluteRoot`
+  (nested package the runtime acts on), and the unchanged security
+  boundary all filesystem features enforce.
+- **Bounded discovery** — depth ≤ 4, ≤ 400 dirs, ≤ 64 manifests, ≤ 256 KB
+  metadata; generated dirs (`node_modules`, `.git`, `dist`, `build`,
+  `.next`, `.turbo`, `target`, `coverage`, `out`, `playwright-report`,
+  `test-results`, `.e2e-work`, caches) are never entered; nothing is
+  executed; secret files are never read.
+- **Capability engine** — per-target `CapabilityMatrix` with
+  available / partial / unavailable(+reason) / not-applicable states for
+  browse, search, quick-open, quick-edit, safe-write, open-external, run,
+  browser-open, dom-inspect, style-inspect, source-mapping,
+  component-intelligence and HMR awareness. The global "Unsupported"
+  dead-end is gone.
+- **Detection** — Next.js (with declared version), React+Vite, Vite
+  (non-React), static web (`index.html`), Node web (Express/NestJS…),
+  Node CLI tools, libraries; pnpm/npm/yarn workspaces, Turborepo,
+  package-manager inheritance, runner candidates (`dev` > `serve` >
+  `start`, argv-only `pm run <script>`).
+- **Active target** — `set_active_target` Tauri command; a single
+  unambiguous web-app target is auto-selected, a `<select>` appears when
+  multiple targets exist; run cwd is the target root while Explorer/Search
+  stay workspace-rooted.
+- **UI** — ProjectView shows workspace kind, target selector, framework +
+  version, technology chips, grouped capability rows with reasons, and no
+  global dead-end.
+- **New error codes** — `WORKSPACE_TARGET_NOT_FOUND`,
+  `TARGET_RUNNER_UNAVAILABLE`.
+
+### Real-repository read-only validation (measured, not claimed)
+
+| Repository | Result |
+|---|---|
+| ClientFlow-CRM | Next.js 16.2.12 · npm · `npm run dev` · 22ms |
+| ELHABAK-Construction-System-V1 | pnpm workspace · 8 targets · `apps/web` Next.js 16.0.3 auto-selected · `apps/api` Node server · libs classified · 5–8ms |
+| workfolw (video-factory-monorepo) | pnpm workspace · Next.js 15.1.7 web target · 104ms |
+| Shadow Runner | Vite 6.2.0 (non-React, Phaser) · run available · 26ms |
+| Egyptian-Russian-University-master | nested manifest discovered → React+Vite 5.1.0 · 15ms |
+| natega (bsnu-result-portal) | React+Vite 8.2.0 · npm · 17ms |
+| camera (gesturefx) | React+Vite 8.1.1 · npm · 14ms |
+| short (abud-shorts-engine-v2) | pnpm workspace · truncated at 400-dir cap (real bound) · 214ms |
+| PoseMeme | no manifests → usable workspace, 0 targets · <1ms |
+
+### Deferred to later milestones
+
+- Milestone 02 — Next.js Runtime & Visual Source Inspection (exact
+  rendered-element source mapping, Turbopack adapter).
+- Built-in static server for `index.html`-only projects.
+- Vue/Svelte/Astro/Nuxt/Angular runtime adapters.
+
+### v0.2.0 verification
+
+- `cargo test -p rootray-core` — 151 passed, 0 failed (was ~130 at v0.1.1).
+- `pnpm -r test` — Vitest 59 + desktop 52 green; Playwright 22 e2e green
+  (19 → +3 workspace specs).
+- `pnpm -r typecheck`, `pnpm exec biome check .`, `cargo check` (both
+  crates), `cargo build -p rootray-desktop` — green.
+- `pnpm build:tauri` — release build + NSIS bundle green;
+  `scripts/installer-smoke.ps1` — PASS.
+- **Installed-app verification** (`scripts/verify-installed.ps1` — seeds
+  `lastProject`, launches the real installed binary, screenshots the
+  analyzed workspace):
+  - `fixtures/nextjs-basic` → Next.js 16.2.12, `npm run dev`, partial
+    runtime support, all workspace capabilities green.
+  - `fixtures/vite-react-inspector` → React+Vite 7.1.0, full runtime
+    support, all inspection capabilities green (regression-free).
+  - `ELHABAK-Construction-System-V1` (real pnpm monorepo) → 8 targets,
+    `apps/web` Next.js 16.0.3 auto-selected, `pnpm run dev`, target
+    selector live.
+
+---
+
+## Release History (published — do not alter)
+
+## Overall Progress (v0.1.x)
+100% — MVP complete
+
+## Milestone 05
+Release Hardening, Windows Packaging & MVP Final Acceptance — **Complete**
 
 ## Release Status
 MVP READY — **v0.1.1 published**
@@ -61,10 +146,9 @@ published v0.1.0 build:
   and GitHub Release are live with the verified Actions artifact.
 
 ## Release Version
-Working tree is **0.1.1** (patch in progress) — consistent across root
-`package.json`, all `packages/*`, `apps/desktop/package.json`,
-`tauri.conf.json`, and both `Cargo.toml` manifests. The published release
-remains `v0.1.0`; `v0.1.1` has no tag or GitHub Release yet.
+Working tree is **0.2.0-dev** — consistent across root `package.json`,
+all `packages/*`, `apps/desktop/package.json`, `tauri.conf.json`, and both
+`Cargo.toml` manifests. Latest published release: `v0.1.1` (above).
 
 ## Implemented (Milestone 05 additions)
 

@@ -58,10 +58,10 @@ export function HomeView() {
   return (
     <div className="home">
       <div className="home-hero">
-        <h1>Open a project</h1>
+        <h1>Open a workspace</h1>
         <p className="muted">
-          Select a local web project. RootRay inspects it, starts its dev server, and — soon — lets
-          you point at the rendered UI to reach the source.
+          Select a local project or workspace. RootRay discovers its structure, technologies and
+          targets — and where supported, lets you point at the rendered UI to reach the source.
         </p>
         <button
           type="button"
@@ -77,7 +77,7 @@ export function HomeView() {
         <h2 className="section-title">Recent Projects</h2>
         {recents.length === 0 ? (
           <p className="muted empty-hint">
-            No recent projects yet. Open a React + Vite project to get started.
+            No recent projects yet. Open any local project or workspace to get started.
           </p>
         ) : (
           <ul className="recent-list">

@@ -112,7 +112,7 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
 
   const copyContext = async () => {
     if (!sel) return;
-    const root = state.runtime.project?.root;
+    const root = state.runtime.workspace?.root;
     let usedBy = null;
     if (root && sel.source.componentName) {
       usedBy = await describeComponent(root, sel.source.componentName, sel.source.relativePath)

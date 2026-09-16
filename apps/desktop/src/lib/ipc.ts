@@ -10,7 +10,6 @@ import type {
   EditorSessionInfo,
   FileListing,
   InspectorState,
-  ProjectAnalysis,
   RootRaySettings,
   RuntimeState,
   SourceCollection,
@@ -18,6 +17,7 @@ import type {
   SourceFileRead,
   SourceFileWrite,
   SourcePreview,
+  WorkspaceAnalysis,
   WorkspaceSearchResult,
 } from "@rootray/shared";
 import { invoke } from "@tauri-apps/api/core";
@@ -29,7 +29,14 @@ export async function pickProjectDirectory(): Promise<string | null> {
 }
 
 export const analyzeProject = (path: string) =>
-  invoke<ProjectAnalysis>("analyze_project", { path });
+  invoke<WorkspaceAnalysis>("analyze_project", { path });
+
+/**
+ * Switches the active target inside the open workspace. Affects runtime
+ * actions only — Explorer/Search/Edit stay rooted at the workspace root.
+ */
+export const setActiveTarget = (targetId: string) =>
+  invoke<WorkspaceAnalysis>("set_active_target", { targetId });
 
 export const startDevServer = (inspector = false) =>
   invoke<number>("start_dev_server", { inspector });

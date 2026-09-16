@@ -13,7 +13,9 @@ use crate::error::{CommandError, CoreError, CoreResult};
 use crate::inspector::{InspectorManager, InspectorState};
 use crate::launcher::{self, DetectedLauncher};
 use crate::process::{EventSink, ProcessEvent, ProcessManager};
-use crate::project::{analyze_project, DevCommand, ProjectAnalysis};
+use crate::project::{
+    analyze_workspace, DevCommand, Framework, ProjectTarget, WorkspaceAnalysis,
+};
 use crate::settings::{Settings, SettingsStore};
 use crate::state::{LogStream, RuntimePhase, RuntimeState};
 
@@ -66,9 +68,9 @@ impl AppCore {
 
     // --- project ----------------------------------------------------------
 
-    /// Analyzes `path`, updates the state machine and records the project
-    /// in recents when usable.
-    pub fn analyze(&self, path: &Path) -> CoreResult<ProjectAnalysis> {
+    /// Analyzes `path` as a universal workspace, updates the state
+    /// machine and records the workspace in recents.
+    pub fn analyze(&self, path: &Path) -> CoreResult<WorkspaceAnalysis> {
         {
             let mut s = self.lock_state()?;
             if s.phase != RuntimePhase::Idle {
@@ -88,11 +90,11 @@ impl AppCore {
             }
         }
 
-        match analyze_project(path) {
+        match analyze_workspace(path) {
             Ok(analysis) => {
                 {
                     let mut s = self.lock_state()?;
-                    s.project = Some(analysis.clone());
+                    s.workspace = Some(analysis.clone());
                     s.transition(RuntimePhase::Ready)?;
                 }
                 let _ = self.settings.push_recent_project(&analysis.root);
@@ -102,7 +104,7 @@ impl AppCore {
             Err(e) => {
                 {
                     let mut s = self.lock_state()?;
-                    s.project = None;
+                    s.workspace = None;
                     s.set_error(CommandError::from(&e));
                     let _ = s.transition(RuntimePhase::Failed);
                 }
@@ -129,6 +131,29 @@ impl AppCore {
         }
     }
 
+    // --- active target -------------------------------------------------------
+
+    /// Switches the active target inside the current workspace.
+    ///
+    /// Only target-level concerns change (framework info, dev command,
+    /// runtime actions). The workspace root — which is also the
+    /// filesystem security root — never moves.
+    pub fn set_active_target(&self, target_id: &str) -> CoreResult<WorkspaceAnalysis> {
+        let mut s = self.lock_state()?;
+        let workspace = s
+            .workspace
+            .as_mut()
+            .ok_or(CoreError::NoProjectSelected)?;
+        if !workspace.targets.iter().any(|t| t.id == target_id) {
+            return Err(CoreError::WorkspaceTargetNotFound(target_id.to_string()));
+        }
+        workspace.active_target_id = Some(target_id.to_string());
+        let snapshot = workspace.clone();
+        drop(s);
+        self.notify_state_changed();
+        Ok(snapshot)
+    }
+
     // --- process lifecycle -------------------------------------------------
 
     /// Starts the analyzed project's dev server. `hook` additionally
@@ -139,27 +164,31 @@ impl AppCore {
     /// through the inspector runner; on any incompatibility it falls back
     /// to the plain dev command and reports `INSPECTOR_UNAVAILABLE`.
     pub fn start_dev_server(&self, hook: EventSink, inspector_enabled: bool) -> CoreResult<u32> {
-        let (mut cmd, gen, analysis) = {
+        let (mut cmd, gen, target) = {
             let mut s = self.lock_state()?;
-            let analysis = s
-                .project
+            let workspace = s
+                .workspace
                 .clone()
                 .ok_or(CoreError::NoProjectSelected)?;
-            let cmd = analysis
-                .dev_command
+            let target = workspace
+                .active_target()
+                .cloned()
+                .ok_or(CoreError::TargetRunnerUnavailable)?;
+            let cmd = target
+                .selected_runner
                 .clone()
-                .ok_or_else(|| Self::not_runnable_error(&analysis))?;
+                .ok_or_else(|| Self::not_runnable_error(&target))?;
             if self.processes.is_running() {
                 return Err(CoreError::ProcessAlreadyRunning);
             }
             s.transition(RuntimePhase::Starting)?;
             let mut g = self.generation.lock().map_err(|_| CoreError::Internal("generation lock".into()))?;
             *g += 1;
-            (cmd, *g, analysis)
+            (cmd, *g, target)
         };
 
-        if inspector_enabled && analysis.capabilities.inspector_compatible {
-            match self.inspector_launch_command(&analysis) {
+        if inspector_enabled && target.framework == Framework::ViteReact {
+            match self.inspector_launch_command(&target) {
                 Ok(Some(icmd)) => cmd = icmd,
                 Ok(None) => {}
                 Err(reason) => self.push_stderr_log(&format!(
@@ -193,12 +222,12 @@ impl AppCore {
         }
     }
 
-    /// Builds the inspector-enabled dev command. `Ok(None)` keeps the
-    /// plain command silently (non-compatible projects); `Err(reason)`
-    /// reports why the inspector could not be used.
+    /// Builds the inspector-enabled dev command for the active target.
+    /// `Ok(None)` keeps the plain command silently; `Err(reason)` reports
+    /// why the inspector could not be used.
     fn inspector_launch_command(
         &self,
-        analysis: &ProjectAnalysis,
+        target: &ProjectTarget,
     ) -> Result<Option<DevCommand>, String> {
         let assets = crate::inspector::resolve_assets()
             .ok_or_else(|| "inspector assets not found (run pnpm build)".to_string())?;
@@ -206,7 +235,7 @@ impl AppCore {
             .inspector
             .start_session()
             .map_err(|e| format!("bridge failed: {e}"))?;
-        match crate::inspector::launch::inspector_dev_command(analysis, &info, &assets) {
+        match crate::inspector::launch::inspector_dev_command(target, &info, &assets) {
             Some(cmd) => Ok(Some(cmd)),
             None => {
                 self.inspector
@@ -263,13 +292,15 @@ impl AppCore {
         self.start_dev_server(hook, inspector_enabled)
     }
 
-    fn not_runnable_error(project: &ProjectAnalysis) -> CoreError {
-        if !project.supported {
-            CoreError::UnsupportedFramework(project.reasons.join("; "))
-        } else if project.dev_script.is_none() {
-            CoreError::NoDevScript
-        } else {
+    /// Why the active target cannot be run — a typed error, never a
+    /// global "unsupported" verdict on the workspace.
+    fn not_runnable_error(target: &ProjectTarget) -> CoreError {
+        if !target.runner_candidates.is_empty()
+            && target.package_manager == crate::project::package_manager::PackageManager::Unknown
+        {
             CoreError::PackageManagerUnknown
+        } else {
+            CoreError::TargetRunnerUnavailable
         }
     }
 
@@ -324,15 +355,17 @@ impl AppCore {
                                         // Missing node_modules is the most common
                                         // early-exit cause — tell the user the
                                         // expected fix command, never run it.
-                                        let deps_hint = s.project.as_ref().and_then(|p| {
-                                            (!p.root.join("node_modules").is_dir()).then(|| {
-                                                format!(
-                                                    "[rootray] dependencies appear to be \
-                                                     missing — run `{} install` in this \
-                                                     project, then try again",
-                                                    p.package_manager.display_name()
-                                                )
-                                            })
+                                        let deps_hint = s.workspace.as_ref().and_then(|w| {
+                                            let t = w.active_target()?;
+                                            (!t.absolute_root.join("node_modules").is_dir())
+                                                .then(|| {
+                                                    format!(
+                                                        "[rootray] dependencies appear to be \
+                                                         missing — run `{} install` in this \
+                                                         project, then try again",
+                                                        t.package_manager.display_name()
+                                                    )
+                                                })
                                         });
                                         if let Some(hint) = deps_hint {
                                             s.push_log(LogStream::Stderr, hint);
@@ -370,7 +403,7 @@ impl AppCore {
     pub fn open_project_in_editor(&self, launcher_id: &str) -> CoreResult<()> {
         let root = {
             let s = self.lock_state()?;
-            s.project
+            s.workspace
                 .as_ref()
                 .map(|p| p.root.clone())
                 .ok_or(CoreError::NoProjectSelected)?
@@ -384,7 +417,7 @@ impl AppCore {
     pub fn open_path_in_editor(&self, launcher_id: &str, path: &Path) -> CoreResult<()> {
         let root = {
             let s = self.lock_state()?;
-            s.project
+            s.workspace
                 .as_ref()
                 .map(|p| p.root.clone())
                 .ok_or(CoreError::NoProjectSelected)?
@@ -569,11 +602,14 @@ impl AppCore {
         }
     }
 
+    /// The workspace root — also the filesystem security root. Runtime
+    /// actions may target a nested package, but every file operation is
+    /// still bounded by the directory the user originally selected.
     fn project_root(&self) -> CoreResult<std::path::PathBuf> {
         let s = self.lock_state()?;
-        s.project
+        s.workspace
             .as_ref()
-            .map(|p| p.root.clone())
+            .map(|w| w.root.clone())
             .ok_or(CoreError::NoProjectSelected)
     }
 

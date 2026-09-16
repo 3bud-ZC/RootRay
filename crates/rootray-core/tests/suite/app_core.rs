@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rootray_core::process::ProcessEvent;
-use rootray_core::project::adapters::Framework;
+use rootray_core::project::Framework;
 use rootray_core::state::RuntimePhase;
 use rootray_core::{AppCore, CoreError};
 
@@ -26,23 +26,23 @@ fn noop_sink() -> Arc<dyn Fn(ProcessEvent) + Send + Sync> {
 fn analyze_sets_ready_state() {
     let (core, _tmp) = core();
     let a = core.analyze(&fixtures().join("vite-react-basic")).unwrap();
-    assert_eq!(a.framework, Framework::ViteReact);
+    assert_eq!(a.active_target().unwrap().framework, Framework::ViteReact);
     let s = core.state();
     assert_eq!(s.phase, RuntimePhase::Ready);
-    assert_eq!(s.project.unwrap().root, a.root);
+    assert_eq!(s.workspace.unwrap().root, a.root);
 }
 
 #[test]
 fn analyze_bad_project_sets_failed() {
     let (core, _tmp) = core();
-    let err = core.analyze(&fixtures().join("unsupported-project")).unwrap();
-    // unsupported is still a valid analysis (supported=false), phase=Ready
-    assert!(!err.supported);
+    // A non-Vite project is still a valid workspace (a server target).
+    let a = core.analyze(&fixtures().join("unsupported-project")).unwrap();
+    assert_eq!(a.active_target().unwrap().framework, Framework::NodeWeb);
     assert_eq!(core.state().phase, RuntimePhase::Ready);
-    // but a *missing* package.json is a hard failure
+    // A nonexistent path is still a hard failure.
     let dir = tempfile::tempdir().unwrap();
-    let e = core.analyze(dir.path()).unwrap_err();
-    assert_eq!(e.code(), "PACKAGE_JSON_NOT_FOUND");
+    let e = core.analyze(&dir.path().join("missing")).unwrap_err();
+    assert_eq!(e.code(), "INVALID_PROJECT_PATH");
     assert_eq!(core.state().phase, RuntimePhase::Failed);
 }
 
@@ -62,22 +62,22 @@ fn analyze_notifies_state_change_on_success_and_failure() {
         c.fetch_add(1, Ordering::SeqCst);
     }));
 
-    // Success path: notify fires once, snapshot carries ready + project.
+    // Success path: notify fires once, snapshot carries ready + workspace.
     core.analyze(&fixtures().join("vite-react-basic")).unwrap();
     assert_eq!(count.load(Ordering::SeqCst), 1);
     let s = core.state();
     assert_eq!(s.phase, RuntimePhase::Ready);
-    assert!(s.project.is_some());
+    assert!(s.workspace.is_some());
 
     // Failure path: notify still fires; snapshot carries failed + error
-    // and a cleared project.
+    // and a cleared workspace.
     let dir = tempfile::tempdir().unwrap();
-    let e = core.analyze(dir.path()).unwrap_err();
-    assert_eq!(e.code(), "PACKAGE_JSON_NOT_FOUND");
+    let e = core.analyze(&dir.path().join("missing")).unwrap_err();
+    assert_eq!(e.code(), "INVALID_PROJECT_PATH");
     assert_eq!(count.load(Ordering::SeqCst), 2);
     let s = core.state();
     assert_eq!(s.phase, RuntimePhase::Failed);
-    assert!(s.project.is_none());
+    assert!(s.workspace.is_none());
     assert!(s.error.is_some());
 }
 
@@ -89,11 +89,12 @@ fn start_requires_project() {
 }
 
 #[test]
-fn start_rejects_unsupported_project() {
+fn start_rejects_target_without_runner() {
     let (core, _tmp) = core();
-    core.analyze(&fixtures().join("unsupported-project")).unwrap();
+    // Static-web workspace: fully browsable, but nothing to run.
+    core.analyze(&fixtures().join("static-web")).unwrap();
     let err = core.start_dev_server(noop_sink(), false).unwrap_err();
-    assert_eq!(err.code(), "UNSUPPORTED_FRAMEWORK");
+    assert_eq!(err.code(), "TARGET_RUNNER_UNAVAILABLE");
     assert_eq!(core.state().phase, RuntimePhase::Ready); // not left dangling
 }
 

@@ -1,0 +1,8 @@
+{
+  "name": "fixture-pnpm-monorepo",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter ./apps/* run dev"
+  }
+}

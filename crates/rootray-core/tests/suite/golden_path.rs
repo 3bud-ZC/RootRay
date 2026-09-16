@@ -49,8 +49,12 @@ fn golden_path_real_vite_server() {
 
     // 1. analyze
     let analysis = core.analyze(&fixture()).unwrap();
-    assert!(analysis.supported);
-    assert!(analysis.capabilities.can_run);
+    let target = analysis.active_target().expect("active target");
+    assert_eq!(
+        target.framework,
+        rootray_core::project::Framework::ViteReact
+    );
+    assert!(target.capabilities.run.is_available());
     assert_eq!(core.state().phase, RuntimePhase::Ready);
 
     // 2. start — real `npm.cmd run dev` → real Vite

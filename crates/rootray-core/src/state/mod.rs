@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use serde::Serialize;
 
 use crate::error::{CommandError, CoreError, CoreResult};
-use crate::project::ProjectAnalysis;
+use crate::project::WorkspaceAnalysis;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -90,7 +90,8 @@ pub enum LogStream {
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeState {
     pub phase: RuntimePhase,
-    pub project: Option<ProjectAnalysis>,
+    /// The authoritative workspace snapshot — `None` before analysis.
+    pub workspace: Option<WorkspaceAnalysis>,
     pub pid: Option<u32>,
     pub command: Option<String>,
     pub url: Option<String>,
@@ -108,7 +109,7 @@ impl Default for RuntimeState {
     fn default() -> Self {
         Self {
             phase: RuntimePhase::Idle,
-            project: None,
+            workspace: None,
             pid: None,
             command: None,
             url: None,
@@ -139,7 +140,7 @@ impl RuntimeState {
         self.phase = to;
         match to {
             RuntimePhase::Idle => {
-                self.project = None;
+                self.workspace = None;
                 self.clear_run_fields();
                 self.recent_logs.clear();
             }

@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "preserve",
+    "moduleResolution": "bundler"
+  },
+  "include": ["app", "next.config.ts"]
+}

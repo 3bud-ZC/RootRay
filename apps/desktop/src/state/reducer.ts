@@ -34,7 +34,7 @@ export interface UiState {
 
 export const emptyRuntime: RuntimeState = {
   phase: "idle",
-  project: null,
+  workspace: null,
   pid: null,
   command: null,
   url: null,

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use crate::inspector::SessionInfo;
 use crate::launcher::find_executable_on_path;
-use crate::project::{DevCommand, ProjectAnalysis};
+use crate::project::{DevCommand, Framework, ProjectTarget};
 
 /// On-disk assets the runner needs (bundled JS, not user files).
 #[derive(Debug, Clone)]
@@ -114,29 +114,32 @@ pub fn vite_args_from_dev_script(script: &str) -> Option<Vec<String>> {
     Some(out)
 }
 
-/// Builds the inspector-enabled dev command, or `None` when this project's
+/// Builds the inspector-enabled dev command, or `None` when this target's
 /// dev setup is not safely instrumentable (caller falls back gracefully).
 pub fn inspector_dev_command(
-    analysis: &ProjectAnalysis,
+    target: &ProjectTarget,
     info: &InspectorLaunchInfo,
     assets: &InspectorAssets,
 ) -> Option<DevCommand> {
-    if !analysis.capabilities.inspector_compatible {
+    if target.framework != Framework::ViteReact {
         return None;
     }
-    let script = analysis.dev_script.as_ref()?;
+    let script = target.dev_script.as_ref()?;
     let vite_args = vite_args_from_dev_script(script)?;
     let node = find_executable_on_path("node")?;
 
     let mut args = vec![
         assets.runner.to_string_lossy().to_string(),
         "--root".to_string(),
-        analysis.root.to_string_lossy().to_string(),
+        target.absolute_root.to_string_lossy().to_string(),
     ];
     args.extend(vite_args);
 
     let env = vec![
-        ("ROOTRAY_PROJECT_ROOT".into(), analysis.root.to_string_lossy().to_string()),
+        (
+            "ROOTRAY_PROJECT_ROOT".into(),
+            target.absolute_root.to_string_lossy().to_string(),
+        ),
         ("ROOTRAY_BRIDGE_URL".into(), format!("ws://127.0.0.1:{}/rootray", info.port)),
         ("ROOTRAY_SESSION_ID".into(), info.session_id.clone()),
         ("ROOTRAY_SESSION_TOKEN".into(), info.token.clone()),
@@ -148,7 +151,7 @@ pub fn inspector_dev_command(
         executable: node.to_string_lossy().to_string(),
         args,
         display: "vite (RootRay inspector)".to_string(),
-        cwd: analysis.root.clone(),
+        cwd: target.absolute_root.clone(),
         env,
     })
 }

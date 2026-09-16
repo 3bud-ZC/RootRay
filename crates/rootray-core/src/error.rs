@@ -27,6 +27,12 @@ pub enum CoreError {
     #[error("no project has been analyzed yet")]
     NoProjectSelected,
 
+    #[error("workspace target not found: {0}")]
+    WorkspaceTargetNotFound(String),
+
+    #[error("the active target has no resolvable run script")]
+    TargetRunnerUnavailable,
+
     #[error("a development server is already running")]
     ProcessAlreadyRunning,
 
@@ -126,6 +132,8 @@ impl CoreError {
             Self::NoDevScript => "NO_DEV_SCRIPT",
             Self::PackageManagerUnknown => "PACKAGE_MANAGER_UNKNOWN",
             Self::NoProjectSelected => "NO_PROJECT_SELECTED",
+            Self::WorkspaceTargetNotFound(_) => "WORKSPACE_TARGET_NOT_FOUND",
+            Self::TargetRunnerUnavailable => "TARGET_RUNNER_UNAVAILABLE",
             Self::ProcessAlreadyRunning => "PROCESS_ALREADY_RUNNING",
             Self::ProcessNotRunning => "PROCESS_NOT_RUNNING",
             Self::ProcessStartFailed(_) => "PROCESS_START_FAILED",

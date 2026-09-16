@@ -7,7 +7,7 @@ import { useStore } from "../state/store";
 export function App() {
   const { state, dispatch } = useStore();
   const { runtime } = state;
-  const hasProject = runtime.project !== null;
+  const hasProject = runtime.workspace !== null;
 
   return (
     <div className="app-shell">

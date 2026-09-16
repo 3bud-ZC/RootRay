@@ -3,9 +3,26 @@
  * These mirror the serialized shapes produced by `rootray-core`.
  */
 
-export type Framework = "vite-react" | "vite" | "unknown";
+/**
+ * Frameworks RootRay identifies for a target. Extensible — new frameworks
+ * are added here as their detection lands; absence of a runtime adapter
+ * is expressed through capabilities, not through the framework value.
+ */
+export type Framework = "next-js" | "vite-react" | "vite" | "static-web" | "node-web" | "unknown";
 
 export type PackageManager = "pnpm" | "npm" | "yarn" | "unknown";
+
+/** How the selected directory is organized. */
+export type WorkspaceKind =
+  | "single-package"
+  | "npm-workspace"
+  | "pnpm-workspace"
+  | "yarn-workspace"
+  | "unknown-multi-package"
+  | "no-manifest";
+
+/** What a discovered target is — evidence-based, not folder-name-based. */
+export type TargetKind = "web-app" | "server" | "library" | "tool" | "static-web" | "unknown";
 
 export type RuntimePhase =
   | "idle"
@@ -23,27 +40,106 @@ export interface DevCommand {
   display: string;
 }
 
-export interface ProjectCapabilities {
-  canRun: boolean;
-  inspectorCompatible: boolean;
+/** Richer than boolean — every non-available capability carries a reason. */
+export type CapabilityState = "available" | "partial" | "unavailable" | "not-applicable";
+
+export interface Capability {
+  state: CapabilityState;
+  reason?: string;
 }
 
-export interface ProjectAnalysis {
-  root: string;
-  projectName: string | null;
-  supported: boolean;
+/** The full capability surface of a target or workspace. */
+export interface CapabilityMatrix {
+  workspaceBrowse: Capability;
+  workspaceSearch: Capability;
+  quickOpen: Capability;
+  quickEdit: Capability;
+  safeWrite: Capability;
+  openExternal: Capability;
+  run: Capability;
+  browserOpen: Capability;
+  domInspect: Capability;
+  styleInspect: Capability;
+  sourceMapping: Capability;
+  componentIntelligence: Capability;
+  hmrAware: Capability;
+}
+
+/** A technology identified from real project metadata. */
+export interface Technology {
+  name: string;
+  /** Declared version from the manifest — never guessed. */
+  version: string | null;
+  evidence: string[];
+}
+
+/** A plausible way to run a target — informational until selected. */
+export interface RunnerCandidate {
+  scriptName: string;
+  display: string;
+  confidence: number;
+  reason: string;
+}
+
+/** One runnable/examinable unit inside the workspace. */
+export interface ProjectTarget {
+  /** Stable id — the workspace-relative path ("root" for the root target). */
+  id: string;
+  name: string | null;
+  relativeRoot: string;
+  /** Canonical absolute root — always inside the workspace root. */
+  absoluteRoot: string;
+  kind: TargetKind;
   framework: Framework;
+  frameworkVersion: string | null;
+  languages: string[];
+  technologies: Technology[];
   packageManager: PackageManager;
-  devCommand: DevCommand | null;
-  packageJsonPath: string | null;
   devScript: string | null;
-  reasons: string[];
-  capabilities: ProjectCapabilities;
+  runnerCandidates: RunnerCandidate[];
+  selectedRunner: DevCommand | null;
+  capabilities: CapabilityMatrix;
+  evidence: string[];
+}
+
+/** Metrics recorded during bounded discovery. */
+export interface DiscoveryMetrics {
+  dirsVisited: number;
+  manifestsRead: number;
+  metadataBytes: number;
+  targetsFound: number;
+  elapsedMs: number;
+  truncated: boolean;
+}
+
+/**
+ * The authoritative workspace snapshot. `root` is the selected directory —
+ * workspace root AND filesystem security root. `activeTargetId` picks the
+ * target runtime actions act on; it never moves the security boundary.
+ */
+export interface WorkspaceAnalysis {
+  root: string;
+  name: string | null;
+  workspaceKind: WorkspaceKind;
+  packageManager: PackageManager;
+  manifests: string[];
+  technologies: Technology[];
+  targets: ProjectTarget[];
+  activeTargetId: string | null;
+  capabilities: CapabilityMatrix;
+  findings: string[];
+  warnings: string[];
+  discovery: DiscoveryMetrics;
+}
+
+/** Convenience accessor mirroring the Rust `active_target()`. */
+export function activeTarget(w: WorkspaceAnalysis): ProjectTarget | null {
+  return w.targets.find((t) => t.id === w.activeTargetId) ?? null;
 }
 
 export interface RuntimeState {
   phase: RuntimePhase;
-  project: ProjectAnalysis | null;
+  workspace: WorkspaceAnalysis | null;
   pid: number | null;
   command: string | null;
   url: string | null;
@@ -87,6 +183,8 @@ export type CoreErrorCode =
   | "NO_DEV_SCRIPT"
   | "PACKAGE_MANAGER_UNKNOWN"
   | "NO_PROJECT_SELECTED"
+  | "WORKSPACE_TARGET_NOT_FOUND"
+  | "TARGET_RUNNER_UNAVAILABLE"
   | "PROCESS_ALREADY_RUNNING"
   | "PROCESS_NOT_RUNNING"
   | "PROCESS_START_FAILED"

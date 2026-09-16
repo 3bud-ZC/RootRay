@@ -1,12 +1,13 @@
-//! Project-detection tests against real fixture files and synthetic
-//! temp-dir projects.
+//! Workspace-analysis tests against real fixture files and synthetic
+//! temp-dir workspaces.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rootray_core::project::adapters::Framework;
 use rootray_core::project::package_manager::PackageManager;
-use rootray_core::project::analyze_project;
+use rootray_core::project::{
+    analyze_workspace, CapabilityState, Framework, TargetKind, WorkspaceKind,
+};
 
 fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures")
@@ -30,33 +31,70 @@ fn vite_pkg(extra: &str) -> String {
 
 #[test]
 fn detects_vite_react_basic_fixture() {
-    let a = analyze_project(&fixtures_dir().join("vite-react-basic")).unwrap();
-    assert!(a.supported);
-    assert_eq!(a.framework, Framework::ViteReact);
-    assert_eq!(a.package_manager, PackageManager::Npm);
-    assert!(a.capabilities.can_run);
-    assert!(a.capabilities.inspector_compatible);
-    let cmd = a.dev_command.expect("dev command");
+    let a = analyze_workspace(&fixtures_dir().join("vite-react-basic")).unwrap();
+    let t = a.active_target().expect("active target");
+    assert_eq!(t.framework, Framework::ViteReact);
+    assert_eq!(t.package_manager, PackageManager::Npm);
+    assert!(t.capabilities.run.is_available());
+    assert!(t.capabilities.source_mapping.is_available());
+    let cmd = t.selected_runner.as_ref().expect("dev command");
     assert!(cmd.display.contains("npm run dev"));
-    assert!(a.package_json_path.unwrap().ends_with("package.json"));
+    assert_eq!(cmd.cwd, t.absolute_root);
+    assert!(a.manifests.iter().any(|m| m.ends_with("package.json")));
+    // Universal workspace capabilities are always on.
+    assert!(a.capabilities.workspace_browse.is_available());
+    assert!(a.capabilities.quick_edit.is_available());
 }
 
 #[test]
 fn detects_vite_react_typescript_fixture() {
-    let a = analyze_project(&fixtures_dir().join("vite-react-typescript")).unwrap();
-    assert!(a.supported);
-    assert_eq!(a.framework, Framework::ViteReact);
-    assert_eq!(a.package_manager, PackageManager::Pnpm);
-    assert!(a.capabilities.can_run);
+    let a = analyze_workspace(&fixtures_dir().join("vite-react-typescript")).unwrap();
+    let t = a.active_target().expect("active target");
+    assert_eq!(t.framework, Framework::ViteReact);
+    assert_eq!(t.package_manager, PackageManager::Pnpm);
+    assert!(t.capabilities.run.is_available());
 }
 
 #[test]
-fn rejects_unsupported_fixture_with_reasons() {
-    let a = analyze_project(&fixtures_dir().join("unsupported-project")).unwrap();
-    assert!(!a.supported);
-    assert_eq!(a.framework, Framework::Unknown);
-    assert!(!a.capabilities.can_run);
-    assert!(a.reasons.iter().any(|r| r.contains("no supported framework")));
+fn detects_nextjs_fixture_with_version() {
+    let a = analyze_workspace(&fixtures_dir().join("nextjs-basic")).unwrap();
+    let t = a.active_target().expect("active target");
+    assert_eq!(t.framework, Framework::NextJs);
+    assert_eq!(t.framework_version.as_deref(), Some("16.2.12"));
+    assert_eq!(t.package_manager, PackageManager::Npm);
+    assert_eq!(t.dev_script.as_deref(), Some("next dev"));
+    let cmd = t.selected_runner.as_ref().expect("next dev runner");
+    assert_eq!(cmd.display, "npm run dev");
+    // Universal features on; runtime inspection honestly unavailable.
+    assert!(t.capabilities.workspace_search.is_available());
+    assert!(t.capabilities.quick_edit.is_available());
+    assert!(t.capabilities.run.is_available());
+    assert_eq!(t.capabilities.source_mapping.state, CapabilityState::Unavailable);
+    assert!(t
+        .capabilities
+        .source_mapping
+        .reason
+        .as_deref()
+        .unwrap()
+        .contains("Next.js runtime adapter"));
+    assert!(t.technologies.iter().any(|x| x.name == "React"));
+    assert!(t.technologies.iter().any(|x| x.name == "Prisma"));
+    assert!(t.technologies.iter().any(|x| x.name == "Tailwind CSS"));
+}
+
+#[test]
+fn unsupported_fixture_is_a_usable_workspace() {
+    // A Node/Express project is no longer "unsupported" — it is a server
+    // target with universal workspace capabilities.
+    let a = analyze_workspace(&fixtures_dir().join("unsupported-project")).unwrap();
+    assert_eq!(a.workspace_kind, WorkspaceKind::SinglePackage);
+    let t = a.active_target().expect("active target");
+    assert_eq!(t.framework, Framework::NodeWeb);
+    assert_eq!(t.kind, TargetKind::Server);
+    assert!(t.capabilities.workspace_browse.is_available());
+    assert!(t.capabilities.quick_open.is_available());
+    assert_eq!(t.package_manager, PackageManager::Yarn); // yarn.lock
+    assert_eq!(t.selected_runner.as_ref().unwrap().display, "yarn run start");
 }
 
 // ---- package-manager detection ----------------------------------------------
@@ -71,9 +109,10 @@ fn detects_each_lockfile() {
         let dir = tempfile::tempdir().unwrap();
         write(dir.path(), "package.json", &vite_pkg(""));
         write(dir.path(), lock, "# lockfile\n");
-        let a = analyze_project(dir.path()).unwrap();
-        assert_eq!(a.package_manager, pm, "lockfile {lock}");
-        assert!(a.capabilities.can_run);
+        let a = analyze_workspace(dir.path()).unwrap();
+        let t = a.active_target().unwrap();
+        assert_eq!(t.package_manager, pm, "lockfile {lock}");
+        assert!(t.capabilities.run.is_available());
     }
 }
 
@@ -85,9 +124,8 @@ fn package_manager_field_used_without_lockfile() {
         "package.json",
         &vite_pkg(r#","packageManager":"yarn@4.5.0""#),
     );
-    let a = analyze_project(dir.path()).unwrap();
-    assert_eq!(a.package_manager, PackageManager::Yarn);
-    assert!(a.capabilities.can_run);
+    let a = analyze_workspace(dir.path()).unwrap();
+    assert_eq!(a.active_target().unwrap().package_manager, PackageManager::Yarn);
 }
 
 #[test]
@@ -96,10 +134,10 @@ fn multiple_lockfiles_are_ambiguous() {
     write(dir.path(), "package.json", &vite_pkg(""));
     write(dir.path(), "package-lock.json", "{}");
     write(dir.path(), "yarn.lock", "");
-    let a = analyze_project(dir.path()).unwrap();
+    let a = analyze_workspace(dir.path()).unwrap();
     assert_eq!(a.package_manager, PackageManager::Unknown);
-    assert!(!a.capabilities.can_run);
-    assert!(a.reasons.iter().any(|r| r.contains("ambiguous") || r.contains("multiple")));
+    // Ambiguous PM → no selected runner, but the workspace still opens.
+    assert!(!a.active_target().unwrap().capabilities.run.is_available());
 }
 
 #[test]
@@ -112,72 +150,72 @@ fn multiple_lockfiles_resolved_by_package_manager_field() {
     );
     write(dir.path(), "package-lock.json", "{}");
     write(dir.path(), "pnpm-lock.yaml", "");
-    let a = analyze_project(dir.path()).unwrap();
-    assert_eq!(a.package_manager, PackageManager::Pnpm);
-    assert!(a.capabilities.can_run);
+    let a = analyze_workspace(dir.path()).unwrap();
+    assert_eq!(a.active_target().unwrap().package_manager, PackageManager::Pnpm);
 }
 
 #[test]
 fn no_lockfile_no_field_is_unknown() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "package.json", &vite_pkg(""));
-    let a = analyze_project(dir.path()).unwrap();
+    let a = analyze_workspace(dir.path()).unwrap();
     assert_eq!(a.package_manager, PackageManager::Unknown);
-    assert!(!a.capabilities.can_run);
-    assert!(a.reasons.iter().any(|r| r.contains("no lockfile")));
+    assert!(a.findings.iter().any(|r| r.contains("no lockfile")));
 }
 
 // ---- failure modes -----------------------------------------------------------
 
 #[test]
-fn missing_package_json() {
+fn empty_directory_is_a_valid_workspace() {
+    // The root no longer requires package.json — an empty directory is a
+    // workspace with no targets, not an error.
     let dir = tempfile::tempdir().unwrap();
-    let err = analyze_project(dir.path()).unwrap_err();
-    assert_eq!(err.code(), "PACKAGE_JSON_NOT_FOUND");
+    let a = analyze_workspace(dir.path()).unwrap();
+    assert_eq!(a.workspace_kind, WorkspaceKind::NoManifest);
+    assert!(a.targets.is_empty());
+    assert!(a.active_target_id.is_none());
+    assert!(a.capabilities.workspace_browse.is_available());
+    assert!(a.capabilities.quick_edit.is_available());
 }
 
 #[test]
-fn malformed_package_json() {
+fn malformed_package_json_is_a_warning_not_a_failure() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "package.json", "{ not json !!");
-    let err = analyze_project(dir.path()).unwrap_err();
-    assert_eq!(err.code(), "PACKAGE_JSON_INVALID");
+    let a = analyze_workspace(dir.path()).unwrap();
+    assert!(a.warnings.iter().any(|w| w.contains("invalid package.json")));
 }
 
 #[test]
-fn non_object_package_json() {
+fn non_object_package_json_is_a_warning() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "package.json", "[1,2,3]");
-    let err = analyze_project(dir.path()).unwrap_err();
-    assert_eq!(err.code(), "PACKAGE_JSON_INVALID");
+    let a = analyze_workspace(dir.path()).unwrap();
+    assert!(a.warnings.iter().any(|w| w.contains("invalid package.json")));
 }
 
 #[test]
 fn nonexistent_root() {
     let dir = tempfile::tempdir().unwrap();
-    let err = analyze_project(&dir.path().join("does-not-exist")).unwrap_err();
+    let err = analyze_workspace(&dir.path().join("does-not-exist")).unwrap_err();
     assert_eq!(err.code(), "INVALID_PROJECT_PATH");
 }
 
 #[test]
-fn missing_dev_script_reports_available() {
+fn missing_dev_script_reports_available_scripts() {
     let dir = tempfile::tempdir().unwrap();
     write(
         dir.path(),
         "package.json",
-        r#"{"name":"x","scripts":{"build":"vite build","start":"node s.js"},
+        r#"{"name":"x","scripts":{"build":"vite build","start":"vite preview"},
         "dependencies":{"react":"^19","vite":"^7"}}"#,
     );
     write(dir.path(), "package-lock.json", "{}");
-    let a = analyze_project(dir.path()).unwrap();
-    assert!(a.supported);
-    assert!(!a.capabilities.can_run);
-    assert!(a.dev_command.is_none());
-    assert!(
-        a.reasons
-            .iter()
-            .any(|r| r.contains("no \"dev\" script") && r.contains("build"))
-    );
+    let a = analyze_workspace(dir.path()).unwrap();
+    let t = a.active_target().unwrap();
+    // "start" is still a runner candidate — dev is just preferred.
+    assert!(t.runner_candidates.iter().any(|c| c.script_name == "start"));
+    assert!(t.selected_runner.as_ref().unwrap().display.contains("start"));
 }
 
 #[test]
@@ -190,11 +228,54 @@ fn vite_without_react_is_vite_framework() {
         "devDependencies":{"vite":"^7"}}"#,
     );
     write(dir.path(), "pnpm-lock.yaml", "");
-    let a = analyze_project(dir.path()).unwrap();
-    assert!(a.supported);
-    assert_eq!(a.framework, Framework::Vite);
-    assert!(a.capabilities.can_run);
-    assert!(!a.capabilities.inspector_compatible);
+    let a = analyze_workspace(dir.path()).unwrap();
+    let t = a.active_target().unwrap();
+    assert_eq!(t.framework, Framework::Vite);
+    assert!(t.capabilities.run.is_available());
+    assert!(!t.capabilities.source_mapping.is_available());
+    assert_eq!(
+        t.capabilities.component_intelligence.state,
+        CapabilityState::NotApplicable
+    );
+}
+
+#[test]
+fn vite_phaser_fixture_is_not_react() {
+    let a = analyze_workspace(&fixtures_dir().join("vite-nonreact")).unwrap();
+    let t = a.active_target().unwrap();
+    assert_eq!(t.framework, Framework::Vite);
+    assert!(t.technologies.iter().any(|x| x.name == "Phaser"));
+    assert!(!t.technologies.iter().any(|x| x.name == "React"));
+    assert!(t.capabilities.run.is_available());
+    assert_eq!(
+        t.capabilities.component_intelligence.state,
+        CapabilityState::NotApplicable
+    );
+}
+
+#[test]
+fn static_web_fixture_detected_without_runner() {
+    let a = analyze_workspace(&fixtures_dir().join("static-web")).unwrap();
+    let t = a.active_target().unwrap();
+    assert_eq!(t.framework, Framework::StaticWeb);
+    assert_eq!(t.kind, TargetKind::StaticWeb);
+    assert!(t.capabilities.workspace_browse.is_available());
+    assert!(t.capabilities.quick_edit.is_available());
+    assert!(!t.capabilities.run.is_available());
+    assert!(t.selected_runner.is_none());
+}
+
+#[test]
+fn node_cli_fixture_is_a_tool_not_a_web_app() {
+    let a = analyze_workspace(&fixtures_dir().join("node-cli")).unwrap();
+    let t = a.active_target().unwrap();
+    assert_eq!(t.kind, TargetKind::Tool);
+    assert!(!t.capabilities.run.is_available()); // build/test only, no dev/serve/start
+    assert_eq!(
+        t.capabilities.source_mapping.state,
+        CapabilityState::Unavailable
+    );
+    assert!(a.capabilities.workspace_search.is_available());
 }
 
 #[test]
@@ -209,7 +290,6 @@ fn detection_never_uses_folder_names() {
         r#"{"name":"x","scripts":{"dev":"node s.js"},"dependencies":{"express":"^4"}}"#,
     );
     write(&sneaky, "package-lock.json", "{}");
-    let a = analyze_project(&sneaky).unwrap();
-    assert_eq!(a.framework, Framework::Unknown);
-    assert!(!a.supported);
+    let a = analyze_workspace(&sneaky).unwrap();
+    assert_eq!(a.active_target().unwrap().framework, Framework::NodeWeb);
 }

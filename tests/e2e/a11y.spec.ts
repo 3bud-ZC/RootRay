@@ -18,7 +18,8 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { stubTauri } from "./stub";
 
 test.setTimeout(120_000);
 test.describe.configure({ mode: "serial" });
@@ -31,27 +32,81 @@ let server: ChildProcess | undefined;
 
 // ---- Tauri internals stub ----------------------------------------------------
 
-const CANNED_ANALYSIS = {
-  root: "C:/fixture/project",
-  projectName: "demo-app",
-  supported: true,
+const CAP = { state: "available" };
+const FULL_CAPS = {
+  workspaceBrowse: CAP,
+  workspaceSearch: CAP,
+  quickOpen: CAP,
+  quickEdit: CAP,
+  safeWrite: CAP,
+  openExternal: CAP,
+  run: CAP,
+  browserOpen: CAP,
+  domInspect: CAP,
+  styleInspect: CAP,
+  sourceMapping: CAP,
+  componentIntelligence: CAP,
+  hmrAware: CAP,
+};
+
+const CANNED_TARGET = {
+  id: "root",
+  name: "demo-app",
+  relativeRoot: "",
+  absoluteRoot: "C:/fixture/project",
+  kind: "web-app",
   framework: "vite-react",
+  frameworkVersion: "7.0.0",
+  languages: ["TypeScript"],
+  technologies: [
+    { name: "React", version: "19.0.0", evidence: ["package.json dependency"] },
+    { name: "Vite", version: "7.0.0", evidence: ["package.json dependency"] },
+  ],
   packageManager: "pnpm",
-  devCommand: {
+  devScript: "vite",
+  runnerCandidates: [
+    {
+      scriptName: "dev",
+      display: "pnpm run dev",
+      confidence: 100,
+      reason: 'conventional dev script: "dev": "vite"',
+    },
+  ],
+  selectedRunner: {
     executable: "pnpm.cmd",
     args: ["run", "dev"],
     display: "pnpm run dev",
     cwd: "C:/fixture/project",
   },
-  packageJsonPath: "C:/fixture/project/package.json",
-  devScript: "vite",
-  reasons: [],
-  capabilities: { canRun: true, inspectorCompatible: true },
+  capabilities: FULL_CAPS,
+  evidence: [],
+};
+
+const CANNED_ANALYSIS = {
+  root: "C:/fixture/project",
+  name: "demo-app",
+  workspaceKind: "single-package",
+  packageManager: "pnpm",
+  manifests: ["package.json"],
+  technologies: CANNED_TARGET.technologies,
+  targets: [CANNED_TARGET],
+  activeTargetId: "root",
+  capabilities: FULL_CAPS,
+  findings: [],
+  warnings: [],
+  discovery: {
+    dirsVisited: 3,
+    manifestsRead: 1,
+    metadataBytes: 512,
+    targetsFound: 1,
+    elapsedMs: 1,
+    truncated: false,
+  },
 };
 
 const RUNTIME_WITH_PROJECT = {
   phase: "ready",
-  project: CANNED_ANALYSIS,
+  workspace: CANNED_ANALYSIS,
   pid: null,
   command: null,
   url: null,
@@ -64,7 +119,7 @@ const RUNTIME_WITH_PROJECT = {
 const CANNED: Record<string, unknown> = {
   get_runtime_state: {
     phase: "idle",
-    project: null,
+    workspace: null,
     pid: null,
     command: null,
     url: null,
@@ -117,104 +172,7 @@ const CANNED: Record<string, unknown> = {
   "plugin:dialog|open": null,
 };
 
-/** Installs a minimal Tauri IPC stub before any app code runs. */
-async function stubTauri(page: Page) {
-  await page.addInitScript(
-    (args: { canned: Record<string, unknown>; runtime: unknown }) => {
-      const { canned, runtime } = args;
-      const w = window as unknown as Record<string, unknown>;
-      const callbacks = new Map<number, (e: unknown) => void>();
-      const listeners = new Map<string, number>();
-      let nextId = 1;
-      const calls: { cmd: string; args: unknown }[] = [];
-      w.__RR_CALLS__ = calls;
-      w.__RR_EMIT__ = (event: string, payload: unknown) => {
-        const id = listeners.get(event);
-        const cb = id !== undefined ? callbacks.get(id) : undefined;
-        cb?.({ event, payload });
-      };
-      w.__TAURI_INTERNALS__ = {
-        invoke: (cmd: string, args: Record<string, unknown>) => {
-          calls.push({ cmd, args });
-          if (cmd === "plugin:event|listen") {
-            const handler = args.handler as number;
-            listeners.set(args.event as string, handler);
-            return Promise.resolve(nextId++);
-          }
-          if (cmd === "list_project_dir") {
-            // Path-aware canned listing — a static value can't be used because
-            // expanding "src" would then re-render "src" (same relativePath).
-            const rel = args.relativeDir as string;
-            return Promise.resolve(
-              rel === ""
-                ? {
-                    relativePath: "",
-                    truncated: false,
-                    entries: [
-                      {
-                        name: "src",
-                        relativePath: "src",
-                        kind: "dir",
-                        editable: false,
-                        sizeBytes: null,
-                      },
-                      {
-                        name: "package.json",
-                        relativePath: "package.json",
-                        kind: "file",
-                        editable: true,
-                        sizeBytes: 512,
-                      },
-                    ],
-                  }
-                : {
-                    relativePath: rel,
-                    truncated: false,
-                    entries: [
-                      {
-                        name: "App.tsx",
-                        relativePath: `${rel}/App.tsx`,
-                        kind: "file",
-                        editable: true,
-                        sizeBytes: 1024,
-                      },
-                    ],
-                  },
-            );
-          }
-          if (cmd === "plugin:dialog|open") {
-            return Promise.resolve("C:/fixture/project");
-          }
-          if (cmd === "analyze_project") {
-            // Mirrors the FIXED Tauri contract: the command emits a fresh
-            // rootray://state snapshot after mutating RuntimeState, then
-            // resolves the analysis. v0.1.0 skipped the emit — the UI
-            // stayed on HomeView.
-            const id = listeners.get("rootray://state");
-            const cb = id !== undefined ? callbacks.get(id) : undefined;
-            cb?.({ event: "rootray://state", payload: runtime });
-            return Promise.resolve(canned.analyze_project);
-          }
-          return Promise.resolve(canned[cmd]);
-        },
-        transformCallback: (cb: (e: unknown) => void) => {
-          const id = nextId++;
-          callbacks.set(id, cb);
-          return id;
-        },
-        unregisterCallback: (id: number) => callbacks.delete(id),
-        runCallback: (id: number, payload: unknown) => callbacks.get(id)?.(payload),
-        callbacks,
-        convertFileSrc: (p: string) => p,
-        metadata: {},
-        plugins: {},
-      };
-    },
-    { canned: CANNED, runtime: RUNTIME_WITH_PROJECT },
-  );
-}
-
-async function emitRuntime(page: Page) {
+async function emitRuntime(page: import("@playwright/test").Page) {
   await page.evaluate(
     (rt) =>
       (window as unknown as { __RR_EMIT__: (e: string, p: unknown) => void }).__RR_EMIT__(
@@ -257,16 +215,16 @@ test.afterAll(() => {
 // ---- tests ---------------------------------------------------------------------
 
 test("home view passes axe serious/critical checks", async ({ page }) => {
-  await stubTauri(page);
+  await stubTauri(page, { canned: CANNED, runtime: RUNTIME_WITH_PROJECT });
   await page.goto(URL);
-  await expect(page.locator("text=Open a project")).toBeVisible();
+  await expect(page.locator("text=Open a workspace")).toBeVisible();
   const { violations } = await new AxeBuilder({ page }).analyze();
   const bad = violations.filter((v) => v.impact === "critical" || v.impact === "serious");
   expect(bad, JSON.stringify(bad.map((v) => v.id))).toEqual([]);
 });
 
 test("project view passes axe serious/critical checks", async ({ page }) => {
-  await stubTauri(page);
+  await stubTauri(page, { canned: CANNED, runtime: RUNTIME_WITH_PROJECT });
   await page.goto(URL);
   await emitRuntime(page);
   await expect(page.locator("text=demo-app")).toBeVisible({ timeout: 10_000 });
@@ -276,7 +234,7 @@ test("project view passes axe serious/critical checks", async ({ page }) => {
 });
 
 test("Ctrl+P opens Quick Open; keyboard selects a file into Quick Edit", async ({ page }) => {
-  await stubTauri(page);
+  await stubTauri(page, { canned: CANNED, runtime: RUNTIME_WITH_PROJECT });
   await page.goto(URL);
   await emitRuntime(page);
   await expect(page.locator("text=demo-app")).toBeVisible();
@@ -306,7 +264,7 @@ test("Ctrl+P opens Quick Open; keyboard selects a file into Quick Edit", async (
 });
 
 test("Ctrl+Shift+F opens Workspace Search; Escape closes", async ({ page }) => {
-  await stubTauri(page);
+  await stubTauri(page, { canned: CANNED, runtime: RUNTIME_WITH_PROJECT });
   await page.goto(URL);
   await emitRuntime(page);
   await expect(page.locator("text=demo-app")).toBeVisible();
@@ -321,7 +279,7 @@ test("Ctrl+Shift+F opens Workspace Search; Escape closes", async ({ page }) => {
 });
 
 test("explorer tree is keyboard navigable", async ({ page }) => {
-  await stubTauri(page);
+  await stubTauri(page, { canned: CANNED, runtime: RUNTIME_WITH_PROJECT });
   await page.goto(URL);
   await emitRuntime(page);
   await expect(page.locator("text=demo-app")).toBeVisible();
@@ -337,7 +295,7 @@ test("explorer tree is keyboard navigable", async ({ page }) => {
 });
 
 test("malformed backend payload never blanks the shell", async ({ page }) => {
-  await stubTauri(page);
+  await stubTauri(page, { canned: CANNED, runtime: RUNTIME_WITH_PROJECT });
   await page.goto(URL);
   await emitRuntime(page);
   await expect(page.locator("text=demo-app")).toBeVisible();
@@ -345,7 +303,7 @@ test("malformed backend payload never blanks the shell", async ({ page }) => {
   // A bad wire payload must degrade to a notice, not a white screen.
   await page.evaluate(() => {
     const w = window as unknown as { __RR_EMIT__: (e: string, p: unknown) => void };
-    w.__RR_EMIT__("rootray://state", { phase: 42, project: "not-an-object" });
+    w.__RR_EMIT__("rootray://state", { phase: 42, workspace: "not-an-object" });
   });
   await expect(page.locator("body")).not.toBeEmpty();
   // The project view (or boundary recovery) must still be present.
@@ -355,21 +313,21 @@ test("malformed backend payload never blanks the shell", async ({ page }) => {
 // ---- v0.1.1 regression: Open Project must reach the project view ---------
 
 test("Open Project transitions to ProjectView when state is emitted", async ({ page }) => {
-  await stubTauri(page);
+  await stubTauri(page, { canned: CANNED, runtime: RUNTIME_WITH_PROJECT });
   await page.goto(URL);
-  await expect(page.locator("text=Open a project")).toBeVisible();
+  await expect(page.locator("text=Open a workspace")).toBeVisible();
 
   await page.getByRole("button", { name: "Open Project" }).click();
 
   // The emitted rootray://state snapshot must switch the shell.
   await expect(page.locator("text=demo-app")).toBeVisible({ timeout: 10_000 });
-  await expect(page.locator("text=vite-react")).toBeVisible();
+  await expect(page.locator("text=React + Vite 7.0.0")).toBeVisible();
   await expect(page.getByText("pnpm", { exact: true })).toBeVisible();
   await expect(page.locator("text=pnpm run dev")).toBeVisible();
 });
 
 test("Change Project re-analysis updates the visible project", async ({ page }) => {
-  await stubTauri(page);
+  await stubTauri(page, { canned: CANNED, runtime: RUNTIME_WITH_PROJECT });
   await page.goto(URL);
   await emitRuntime(page);
   await expect(page.locator("text=demo-app")).toBeVisible();

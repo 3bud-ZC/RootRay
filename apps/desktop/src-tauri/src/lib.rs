@@ -13,7 +13,7 @@ use rootray_core::filesystem::preview::SourcePreview;
 use rootray_core::inspector::InspectorState;
 use rootray_core::launcher::DetectedLauncher;
 use rootray_core::process::{EventSink, ProcessEvent};
-use rootray_core::project::ProjectAnalysis;
+use rootray_core::project::WorkspaceAnalysis;
 use rootray_core::settings::Settings;
 use rootray_core::state::RuntimeState;
 use rootray_core::{AppCore, CommandError};
@@ -40,8 +40,18 @@ fn ui_sink(app: &AppHandle) -> EventSink {
 }
 
 #[tauri::command]
-fn analyze_project(path: String, core: State<'_, Arc<AppCore>>) -> CmdResult<ProjectAnalysis> {
+fn analyze_project(path: String, core: State<'_, Arc<AppCore>>) -> CmdResult<WorkspaceAnalysis> {
     core.analyze(std::path::Path::new(&path)).map_err(Into::into)
+}
+
+/// Switches the active target inside the current workspace. Only
+/// runtime-facing data changes — the workspace/security root is fixed.
+#[tauri::command]
+fn set_active_target(
+    target_id: String,
+    core: State<'_, Arc<AppCore>>,
+) -> CmdResult<WorkspaceAnalysis> {
+    core.set_active_target(&target_id).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -319,6 +329,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             analyze_project,
+            set_active_target,
             start_dev_server,
             stop_dev_server,
             restart_dev_server,

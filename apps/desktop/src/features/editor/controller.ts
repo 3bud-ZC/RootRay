@@ -50,7 +50,7 @@ export async function quickEdit(
   try {
     const read = await openSourceEditor(relativePath);
     dispatch({ type: "edit-opened", read, source });
-    if (state.runtime.project) pushRecentFile(state.runtime.project.root, relativePath);
+    if (state.runtime.workspace) pushRecentFile(state.runtime.workspace.root, relativePath);
   } catch (err) {
     dispatch({ type: "edit-closed" });
     const e = asCoreError(err);
