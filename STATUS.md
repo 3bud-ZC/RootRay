@@ -10,16 +10,26 @@ Milestone 05 — Release Hardening, Windows Packaging & MVP Final Acceptance
 Complete
 
 ## Release Status
-MVP READY — **published**
+MVP READY — **v0.1.1 published**
 
-- Published release: `v0.1.0` —
+- Published patch: `v0.1.1` —
+  https://github.com/3bud-ZC/RootRay/releases/tag/v0.1.1
+- Tag: `v0.1.1` → `7fba49a43321f1c2cb167bdaf32edf0ad3097040`
+  (annotated, immutable)
+- Release workflow: run `35039871780` (tag push, `v0.1.1`) — **success**
+- Actions artifact: `rootray-v0.1.1-windows-x64`
+- Installer: `RootRay_0.1.1_x64-setup.exe` — `2,570,550 bytes`
+- SHA-256: `6660d62b9bfd576c47e3800ab558d660378cbf987a774af04ba1c25fe19f919c`
+- Checksum manifest: `RootRay_0.1.1_x64-setup.exe.sha256` (verified
+  matching)
+- Prior release: `v0.1.0` —
   https://github.com/3bud-ZC/RootRay/releases/tag/v0.1.0
 - Tag: `v0.1.0` → `62d05f23b05c063aa6f1a93c4d2f1c8971c34302` (annotated,
   immutable)
 - License: **MIT**
 - Copyright: `Copyright (c) 2026 Abdallah — ABUD FUN`
 
-## Patch In Progress — v0.1.1 (not yet published)
+## Patch — v0.1.1 (published)
 
 A release-blocking bug was found during first-user testing of the
 published v0.1.0 build:
@@ -47,9 +57,8 @@ published v0.1.0 build:
   native picker → React + Vite fixture → picker closed → ProjectView
   with name, framework, package manager, and dev command.
 - **CI:** run `35038504057` on `1beff63` — **success**.
-- **Status:** ready for publication on `main` at
-  `1beff6324b6dce43223bd91f7bf8b2dc4fbf89e1`; no `v0.1.1` tag or release
-  exists yet.
+- **Status:** published — `v0.1.0` history preserved below; `v0.1.1` tag
+  and GitHub Release are live with the verified Actions artifact.
 
 ## Release Version
 Working tree is **0.1.1** (patch in progress) — consistent across root
