@@ -303,6 +303,109 @@ export async function startFixture(vitePort: number): Promise<FixtureRun> {
   return { workDir, appUrl, bridge, runner };
 }
 
+// ---------------------------------------------------------------------------
+// Next.js launch — mirrors crates/rootray-core/src/inspector/launch.rs:
+// `node --require <next-shim.cjs> <next-bin> dev <args>` with the shim env
+// contract and a session entry written under node_modules/.cache/rootray-*.
+// ---------------------------------------------------------------------------
+
+export const NEXT_SHIM = join(REPO_ROOT, "packages", "next-adapter", "dist", "next-shim.cjs");
+export const NEXT_LOADER = join(REPO_ROOT, "packages", "next-adapter", "dist", "jsx-loader.cjs");
+
+export interface NextFixtureRun {
+  workDir: string;
+  appUrl: string;
+  bridge: MockBridge;
+  runner: ChildProcess;
+  scratchDir: string;
+}
+
+/**
+ * Copies a Next fixture into `.e2e-work/`, installs deps, writes the session
+ * entry module (same shape as `write_next_entry` in launch.rs) and spawns
+ * `next dev` under the RootRay shim.
+ */
+export async function startNextFixture(
+  fixtureDir: string,
+  port: number,
+  extraNextArgs: string[] = [],
+): Promise<NextFixtureRun> {
+  const workParent = join(REPO_ROOT, ".e2e-work");
+  mkdirSync(workParent, { recursive: true });
+  const workDir = mkdtempSync(join(workParent, "next-"));
+  cpSync(fixtureDir, workDir, {
+    recursive: true,
+    filter: (src) => !src.includes("node_modules") && !src.includes(`${sep()}.next`),
+  });
+  npm("install --no-audit --no-fund --loglevel=error", workDir);
+
+  const bridge = new MockBridge();
+  await bridge.start();
+
+  const scratchDir = join(workDir, "node_modules", ".cache", `rootray-${SESSION_ID}`);
+  mkdirSync(scratchDir, { recursive: true });
+  const runtime = readFileSync(RUNTIME_BUNDLE, "utf8");
+  const config = JSON.stringify({
+    bridgeUrl: `ws://127.0.0.1:${bridge.port}/rootray`,
+    sessionId: SESSION_ID,
+    token: SESSION_TOKEN,
+    version: 1,
+    projectRoot: workDir,
+  });
+  writeFileSync(
+    join(scratchDir, "entry.js"),
+    `if (typeof window !== "undefined") {\nwindow.__ROOTRAY__=${config};\n${runtime}}\n`,
+  );
+
+  const nextBin = join(workDir, "node_modules", "next", "dist", "bin", "next");
+  const runner = spawn(
+    process.execPath,
+    ["--require", NEXT_SHIM, nextBin, "dev", "-p", String(port), ...extraNextArgs],
+    {
+      cwd: workDir,
+      env: {
+        ...process.env,
+        ROOTRAY_PROJECT_ROOT: workDir,
+        ROOTRAY_NEXT_LOADER: NEXT_LOADER,
+        ROOTRAY_NEXT_ENTRY: join(scratchDir, "entry.js"),
+        ROOTRAY_BRIDGE_URL: `ws://127.0.0.1:${bridge.port}/rootray`,
+        ROOTRAY_SESSION_ID: SESSION_ID,
+        ROOTRAY_SESSION_TOKEN: SESSION_TOKEN,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  const appUrl = await waitForRunnerUrl(runner);
+  return { workDir, appUrl, bridge, runner, scratchDir };
+}
+
+export async function stopNextFixture(run: NextFixtureRun | undefined): Promise<void> {
+  if (!run) return;
+  const exited = run.runner
+    ? new Promise<void>((r) => run.runner.once("exit", () => r()))
+    : Promise.resolve();
+  run.runner?.kill("SIGTERM");
+  await Promise.race([exited, new Promise((r) => setTimeout(r, 15_000))]);
+  // Next spawns router/render workers — on Windows the tree can outlive the
+  // parent, so force-kill anything still holding the port before cleanup.
+  await run.bridge?.stop();
+  if (run.workDir) {
+    for (let i = 0; i < 20; i++) {
+      try {
+        rmSync(run.workDir, { recursive: true, force: true });
+        break;
+      } catch (e) {
+        if (i === 19) throw e;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    }
+  }
+}
+
+function sep(): string {
+  return process.platform === "win32" ? "\\" : "/";
+}
+
 export async function stopFixture(run: FixtureRun | undefined): Promise<void> {
   if (!run) return;
   // The runner's cwd is the work dir — Windows holds a lock on it until the

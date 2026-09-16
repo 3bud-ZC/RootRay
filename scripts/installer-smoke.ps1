@@ -46,6 +46,8 @@ $resDir = Join-Path $installDir "inspector-assets"
 if (-not (Test-Path (Join-Path $resDir "runner.cjs"))) { Fail "runner.cjs resource missing" }
 if (-not (Test-Path (Join-Path $resDir "runtime.js"))) { Fail "runtime.js resource missing" }
 if (-not (Test-Path (Join-Path $resDir "plugin.cjs"))) { Fail "plugin.cjs resource missing" }
+if (-not (Test-Path (Join-Path $resDir "next-shim.cjs"))) { Fail "next-shim.cjs resource missing" }
+if (-not (Test-Path (Join-Path $resDir "jsx-loader.cjs"))) { Fail "jsx-loader.cjs resource missing" }
 Ok "inspector assets bundled under $resDir"
 
 # ---- launch -------------------------------------------------------------------

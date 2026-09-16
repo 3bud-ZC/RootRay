@@ -1,46 +1,62 @@
-//! Inspector-enabled Vite launch path.
+//! Inspector-enabled launch paths, per framework adapter.
 //!
-//! Builds a `DevCommand` that runs the RootRay Node runner instead of the
-//! package-manager dev script. The runner resolves Vite from the inspected
-//! project and merges the RootRay plugin in memory — nothing is written to
-//! the user's project.
+//! Each adapter builds a `DevCommand` that runs the project's own dev
+//! server with RootRay's instrumentation injected in memory — nothing is
+//! written to the user's project beyond a session-scoped scratch dir under
+//! `node_modules/.cache/` (removed on stop; swept on next launch if a
+//! crash left one behind).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::inspector::SessionInfo;
 use crate::launcher::find_executable_on_path;
 use crate::project::{DevCommand, Framework, ProjectTarget};
 
-/// On-disk assets the runner needs (bundled JS, not user files).
+/// On-disk assets the adapters need (bundled JS, not user files).
 #[derive(Debug, Clone)]
 pub struct InspectorAssets {
     pub runner: PathBuf,
     pub plugin: PathBuf,
     pub runtime: PathBuf,
+    /// `next-shim.cjs` — `Module._load` hook injected into `next dev`.
+    pub next_shim: PathBuf,
+    /// `jsx-loader.cjs` — webpack/turbopack-compatible JSX instrumenter.
+    pub next_loader: PathBuf,
 }
 
 /// Locates the bundled inspector assets.
 ///
 /// Resolution order:
 /// 1. `ROOTRAY_RUNNER_PATH` / `ROOTRAY_PLUGIN_PATH` / `ROOTRAY_RUNTIME_PATH`
-///    (all three must be set — a partial override is ignored)
-/// 2. `ROOTRAY_INSPECTOR_ASSETS_DIR` — one directory containing
-///    `runner.cjs`, `plugin.cjs` and `runtime.js`. The Tauri shell sets
-///    this to the bundle resource dir, so packaged installs work.
+///    plus `ROOTRAY_NEXT_SHIM_PATH` / `ROOTRAY_NEXT_LOADER_PATH`
+///    (a partial override is ignored)
+/// 2. `ROOTRAY_INSPECTOR_ASSETS_DIR` — one directory containing all of
+///    `runner.cjs`, `plugin.cjs`, `runtime.js`, `next-shim.cjs` and
+///    `jsx-loader.cjs`. The Tauri shell sets this to the bundle resource
+///    dir, so packaged installs work.
 /// 3. the workspace `packages/` directory relative to the crate — the
 ///    development path.
 pub fn resolve_assets() -> Option<InspectorAssets> {
-    if let (Ok(r), Ok(p), Ok(t)) = (
+    if let (Ok(r), Ok(p), Ok(t), Ok(s), Ok(l)) = (
         std::env::var("ROOTRAY_RUNNER_PATH"),
         std::env::var("ROOTRAY_PLUGIN_PATH"),
         std::env::var("ROOTRAY_RUNTIME_PATH"),
+        std::env::var("ROOTRAY_NEXT_SHIM_PATH"),
+        std::env::var("ROOTRAY_NEXT_LOADER_PATH"),
     ) {
         let a = normalize(InspectorAssets {
             runner: PathBuf::from(r),
             plugin: PathBuf::from(p),
             runtime: PathBuf::from(t),
+            next_shim: PathBuf::from(s),
+            next_loader: PathBuf::from(l),
         });
-        if a.runner.is_file() && a.plugin.is_file() && a.runtime.is_file() {
+        if a.runner.is_file()
+            && a.plugin.is_file()
+            && a.runtime.is_file()
+            && a.next_shim.is_file()
+            && a.next_loader.is_file()
+        {
             return Some(a);
         }
     }
@@ -51,8 +67,15 @@ pub fn resolve_assets() -> Option<InspectorAssets> {
             runner: dir.join("runner.cjs"),
             plugin: dir.join("plugin.cjs"),
             runtime: dir.join("runtime.js"),
+            next_shim: dir.join("next-shim.cjs"),
+            next_loader: dir.join("jsx-loader.cjs"),
         };
-        if a.runner.is_file() && a.plugin.is_file() && a.runtime.is_file() {
+        if a.runner.is_file()
+            && a.plugin.is_file()
+            && a.runtime.is_file()
+            && a.next_shim.is_file()
+            && a.next_loader.is_file()
+        {
             return Some(a);
         }
     }
@@ -62,8 +85,15 @@ pub fn resolve_assets() -> Option<InspectorAssets> {
         runner: packages.join("vite-plugin/dist/runner.cjs"),
         plugin: packages.join("vite-plugin/dist/plugin.cjs"),
         runtime: packages.join("inspector-runtime/dist/runtime.js"),
+        next_shim: packages.join("next-adapter/dist/next-shim.cjs"),
+        next_loader: packages.join("next-adapter/dist/jsx-loader.cjs"),
     });
-    (a.runner.is_file() && a.plugin.is_file() && a.runtime.is_file()).then_some(a)
+    (a.runner.is_file()
+        && a.plugin.is_file()
+        && a.runtime.is_file()
+        && a.next_shim.is_file()
+        && a.next_loader.is_file())
+    .then_some(a)
 }
 
 /// Asset paths are handed to Node verbatim — the `\\?\` prefix Windows
@@ -74,11 +104,72 @@ fn normalize(a: InspectorAssets) -> InspectorAssets {
         runner: crate::filesystem::strip_verbatim_pub(&a.runner),
         plugin: crate::filesystem::strip_verbatim_pub(&a.plugin),
         runtime: crate::filesystem::strip_verbatim_pub(&a.runtime),
+        next_shim: crate::filesystem::strip_verbatim_pub(&a.next_shim),
+        next_loader: crate::filesystem::strip_verbatim_pub(&a.next_loader),
     }
 }
 
-/// Session credentials handed to the runner via environment.
+/// Session credentials handed to the dev command via environment.
 pub type InspectorLaunchInfo = SessionInfo;
+
+/// A runtime inspector adapter for one supported framework.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InspectorAdapter {
+    ViteReact,
+    NextJs,
+}
+
+impl InspectorAdapter {
+    /// The adapter that can inspect this framework, if one exists.
+    /// The start path asks this instead of matching on framework names —
+    /// adding an adapter extends inspector support without touching the
+    /// launch flow.
+    pub fn for_framework(framework: &Framework) -> Option<Self> {
+        match framework {
+            Framework::ViteReact => Some(Self::ViteReact),
+            Framework::NextJs => Some(Self::NextJs),
+            _ => None,
+        }
+    }
+
+    /// Builds the instrumented dev command. `Err` carries a factual reason
+    /// the inspector cannot launch (caller runs the plain dev server and
+    /// reports the reason).
+    ///
+    /// The second tuple item lists session scratch dirs the caller must
+    /// clean up when the session ends.
+    pub fn dev_command(
+        &self,
+        target: &ProjectTarget,
+        info: &InspectorLaunchInfo,
+        assets: &InspectorAssets,
+    ) -> Result<(DevCommand, Vec<PathBuf>), String> {
+        match self {
+            Self::ViteReact => vite_dev_command(target, info, assets).map(|c| (c, Vec::new())),
+            Self::NextJs => next_dev_command(target, info, assets),
+        }
+    }
+}
+
+/// Builds the inspector-enabled dev command.
+/// `Ok(None)` — no adapter exists for this framework (silent fallback).
+/// `Err(reason)` — an adapter exists but cannot launch it (reported).
+/// The scratch list is returned alongside so the session manager can
+/// delete adapter-owned temp files on stop.
+pub fn inspector_dev_command(
+    target: &ProjectTarget,
+    info: &InspectorLaunchInfo,
+    assets: &InspectorAssets,
+) -> Result<Option<(DevCommand, Vec<PathBuf>)>, String> {
+    match InspectorAdapter::for_framework(&target.framework) {
+        Some(adapter) => adapter.dev_command(target, info, assets).map(Some),
+        None => Ok(None),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Vite React adapter
+// ---------------------------------------------------------------------------
 
 /// Extracts the safe subset of `vite` CLI arguments from a dev script.
 ///
@@ -125,19 +216,16 @@ pub fn vite_args_from_dev_script(script: &str) -> Option<Vec<String>> {
     Some(out)
 }
 
-/// Builds the inspector-enabled dev command, or `None` when this target's
-/// dev setup is not safely instrumentable (caller falls back gracefully).
-pub fn inspector_dev_command(
+fn vite_dev_command(
     target: &ProjectTarget,
     info: &InspectorLaunchInfo,
     assets: &InspectorAssets,
-) -> Option<DevCommand> {
-    if target.framework != Framework::ViteReact {
-        return None;
-    }
-    let script = target.dev_script.as_ref()?;
-    let vite_args = vite_args_from_dev_script(script)?;
-    let node = find_executable_on_path("node")?;
+) -> Result<DevCommand, String> {
+    let script = target.dev_script.as_deref().unwrap_or("");
+    let vite_args = vite_args_from_dev_script(script)
+        .ok_or_else(|| "dev script is not a plain `vite` invocation".to_string())?;
+    let node = find_executable_on_path("node")
+        .ok_or_else(|| "node is not on PATH".to_string())?;
 
     let mut args = vec![
         assets.runner.to_string_lossy().to_string(),
@@ -158,11 +246,192 @@ pub fn inspector_dev_command(
         ("ROOTRAY_RUNTIME_PATH".into(), assets.runtime.to_string_lossy().to_string()),
     ];
 
-    Some(DevCommand {
+    Ok(DevCommand {
         executable: node.to_string_lossy().to_string(),
         args,
         display: "vite (RootRay inspector)".to_string(),
         cwd: target.absolute_root.clone(),
         env,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Next.js adapter
+// ---------------------------------------------------------------------------
+
+/// Next dev-script flags RootRay understands and can preserve.
+///
+/// Anything beyond this set (chained commands, env wrappers, unknown
+/// flags) makes the script unsafe to reconstruct → `Err` with the flag
+/// named, and the caller falls back to a plain (uninspected) run.
+pub fn next_dev_args_from_script(script: &str) -> Result<Vec<String>, String> {
+    let mut tokens = script.split_whitespace().peekable();
+    match (tokens.next(), tokens.next()) {
+        (Some("next"), Some("dev")) => {}
+        _ => {
+            return Err("dev script is not a plain `next dev` invocation".to_string());
+        }
+    }
+    let mut out: Vec<String> = Vec::new();
+    while let Some(arg) = tokens.next() {
+        match arg {
+            "--turbopack" | "--turbo" | "--webpack" => out.push(arg.to_string()),
+            "-p" | "--port" | "-H" | "--hostname" => {
+                match tokens.peek() {
+                    Some(v) if !v.starts_with('-') => {
+                        out.push(arg.to_string());
+                        out.push(tokens.next().unwrap().to_string());
+                    }
+                    _ => return Err(format!("{arg} requires a value")),
+                }
+            }
+            _ if arg.starts_with("--port=") || arg.starts_with("--hostname=") => {
+                out.push(arg.to_string())
+            }
+            _ => return Err(format!("unsupported next dev flag: {arg}")),
+        }
+    }
+    Ok(out)
+}
+
+/// Locates `node_modules/next/dist/bin/next` for the target — its own
+/// node_modules first, then ancestors up to the workspace root (monorepo
+/// hoisting). No result means dependencies are not installed.
+fn find_next_bin(target_root: &Path, workspace_root: &Path) -> Option<PathBuf> {
+    let mut dir = Some(target_root);
+    while let Some(d) = dir {
+        let bin = d.join("node_modules/next/dist/bin/next");
+        if bin.is_file() {
+            return Some(crate::filesystem::strip_verbatim_pub(&bin));
+        }
+        if d == workspace_root {
+            break;
+        }
+        dir = d.parent();
+    }
+    None
+}
+
+/// Session scratch dir for the generated inspector entry module.
+///
+/// Turbopack cannot resolve modules outside its root, so the entry lives
+/// inside the target's own `node_modules/.cache/` — the conventional,
+/// gitignored tool-cache location that is always inside the bundler root
+/// (it sits next to `next` itself). `<sid>` keeps sessions distinct.
+fn next_session_scratch(next_bin: &Path, session_id: &str) -> PathBuf {
+    // <nm>/next/dist/bin/next → ancestors: bin, dist, next, node_modules
+    let nm = next_bin
+        .ancestors()
+        .nth(3)
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("node_modules"));
+    nm.join(".cache").join(format!("rootray-{session_id}"))
+}
+
+/// Removes stale `rootray-*` scratch dirs left behind by crashed sessions.
+fn sweep_stale_scratch(cache_dir: &Path, keep: &Path) {
+    let Ok(entries) = std::fs::read_dir(cache_dir) else { return };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p != keep
+            && p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("rootray-"))
+        {
+            let _ = std::fs::remove_dir_all(&p);
+        }
+    }
+}
+
+/// Writes the session entry module: sets `window.__ROOTRAY__` then runs
+/// the bundled inspector runtime, guarded so it is a no-op in the
+/// server/edge module graphs where `window` does not exist.
+fn write_next_entry(
+    scratch: &Path,
+    info: &InspectorLaunchInfo,
+    assets: &InspectorAssets,
+) -> Result<PathBuf, String> {
+    let runtime = std::fs::read_to_string(&assets.runtime)
+        .map_err(|e| format!("cannot read inspector runtime bundle: {e}"))?;
+    let config = serde_json::json!({
+        "bridgeUrl": format!("ws://127.0.0.1:{}/rootray", info.port),
+        "sessionId": info.session_id,
+        "token": info.token,
+        "version": crate::inspector::protocol::PROTOCOL_VERSION,
+        "projectRoot": info
+            .target_root
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default(),
+    });
+    let body = format!(
+        "if (typeof window !== \"undefined\") {{\nwindow.__ROOTRAY__={};\n{}}}\n",
+        config, runtime
+    );
+    std::fs::create_dir_all(scratch).map_err(|e| format!("cannot create session dir: {e}"))?;
+    let entry = scratch.join("entry.js");
+    std::fs::write(&entry, body).map_err(|e| format!("cannot write session entry: {e}"))?;
+    Ok(entry)
+}
+
+fn next_dev_command(
+    target: &ProjectTarget,
+    info: &InspectorLaunchInfo,
+    assets: &InspectorAssets,
+) -> Result<(DevCommand, Vec<PathBuf>), String> {
+    let script = target.dev_script.as_deref().unwrap_or("");
+    let next_args = next_dev_args_from_script(script)?;
+    let node = find_executable_on_path("node").ok_or_else(|| "node is not on PATH".to_string())?;
+    let workspace_root = info
+        .workspace_root
+        .as_deref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| target.absolute_root.clone());
+    let next_bin = find_next_bin(&target.absolute_root, &workspace_root).ok_or_else(|| {
+        "next binary not found under node_modules — install project dependencies".to_string()
+    })?;
+
+    // Session scratch dir + entry module (cleaned on session end).
+    let scratch = next_session_scratch(&next_bin, &info.session_id);
+    if let Some(cache) = scratch.parent() {
+        sweep_stale_scratch(cache, &scratch);
+    }
+    let entry = write_next_entry(&scratch, info, assets)?;
+
+    // `node -r <shim> <next-bin> dev <args>`: argv `-r` avoids NODE_OPTIONS
+    // whitespace splitting (spaces in paths are safe) and confines the
+    // hook to the process that loads bundler config.
+    let mut args = vec![
+        "--require".to_string(),
+        assets.next_shim.to_string_lossy().to_string(),
+        next_bin.to_string_lossy().to_string(),
+        "dev".to_string(),
+    ];
+    args.extend(next_args);
+
+    let env = vec![
+        (
+            "ROOTRAY_PROJECT_ROOT".into(),
+            target.absolute_root.to_string_lossy().to_string(),
+        ),
+        (
+            "ROOTRAY_NEXT_LOADER".into(),
+            assets.next_loader.to_string_lossy().to_string(),
+        ),
+        ("ROOTRAY_NEXT_ENTRY".into(), entry.to_string_lossy().to_string()),
+        ("ROOTRAY_BRIDGE_URL".into(), format!("ws://127.0.0.1:{}/rootray", info.port)),
+        ("ROOTRAY_SESSION_ID".into(), info.session_id.clone()),
+        ("ROOTRAY_SESSION_TOKEN".into(), info.token.clone()),
+    ];
+
+    Ok((
+        DevCommand {
+            executable: node.to_string_lossy().to_string(),
+            args,
+            display: "next dev (RootRay inspector)".to_string(),
+            cwd: target.absolute_root.clone(),
+            env,
+        },
+        vec![scratch],
+    ))
 }

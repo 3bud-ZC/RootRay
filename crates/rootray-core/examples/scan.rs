@@ -28,6 +28,19 @@ fn main() {
                         .map(|r| r.display.as_str())
                         .unwrap_or("—"),
                 );
+                let cap = |c: &rootray_core::project::workspace::Capability| {
+                    match (c.state, c.reason.as_deref()) {
+                        (s, Some(r)) => format!("{s:?}({r})"),
+                        (s, None) => format!("{s:?}"),
+                    }
+                };
+                println!(
+                    "      caps: inspect={} styles={} srcmap={} hmr={}",
+                    cap(&t.capabilities.dom_inspect),
+                    cap(&t.capabilities.style_inspect),
+                    cap(&t.capabilities.source_mapping),
+                    cap(&t.capabilities.hmr_aware),
+                );
             }
             println!(
                 "metrics   : {} dirs, {} manifests, {}B metadata, {}ms{}",

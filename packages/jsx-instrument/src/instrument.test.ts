@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { instrumentSource, relativeSourcePath, shouldInstrument } from "./instrument";
-import rootrayInspector from "./plugin";
+import { instrumentSource, relativeSourcePath, shouldInstrument } from "./index";
 
 const ROOT = "/project";
 const ID = "/project/src/App.tsx";
@@ -167,37 +166,30 @@ describe("instrumentSource", () => {
   });
 });
 
-describe("plugin", () => {
-  const opts = {
-    bridgeUrl: "ws://127.0.0.1:4000/rootray",
-    sessionId: "s",
-    sessionToken: "t",
-    runtimePath: "/tmp/runtime.js",
-    projectRoot: ROOT,
-  };
+describe("entryImport", () => {
+  const ENTRY = "./node_modules/.cache/rootray-s/entry.js";
+  const withEntry = (code: string) =>
+    instrumentSource({ id: ID, projectRoot: ROOT, code, entryImport: ENTRY });
 
-  it("is serve-only and runs pre-transform", () => {
-    const p = rootrayInspector(opts);
-    expect(p.apply).toBe("serve");
-    expect(p.enforce).toBe("pre");
+  it('inserts the entry import after a leading "use client" directive', () => {
+    const out = withEntry(
+      ['"use client";', "", "export function Btn() {", "  return <button>go</button>;", "}"].join(
+        "\n",
+      ),
+    )!;
+    const clientIdx = out.code.indexOf('"use client"');
+    const importIdx = out.code.indexOf(`import "${ENTRY}"`);
+    expect(clientIdx).toBe(0);
+    expect(importIdx).toBeGreaterThan(clientIdx);
+    expect(out.code).toContain('data-rootray-file="src/App.tsx"');
   });
 
-  it("transform returns null for out-of-scope ids", () => {
-    const p = rootrayInspector(opts);
-    const t = p.transform as (code: string, id: string) => unknown;
-    expect(t.call({} as never, "const x = <div/>;", "/project/node_modules/a/b.js")).toBeNull();
+  it("inserts the entry import at offset 0 when there are no directives", () => {
+    const out = withEntry("export const B = () => <div/>;")!;
+    expect(out.code.startsWith(`\nimport "${ENTRY}"`)).toBe(true);
   });
 
-  it("transformIndexHtml injects config + runtime script", () => {
-    const p = rootrayInspector(opts);
-    const hook = p.transformIndexHtml as unknown as (html: string) => {
-      tags: { tag: string; children?: string }[];
-    };
-    const result = hook("<html><head></head><body></body></html>");
-    const tags = Array.isArray(result) ? result : result.tags;
-    expect(tags.some((t) => t.children?.includes("window.__ROOTRAY__"))).toBe(true);
-    const cfg = tags.find((t) => t.children?.includes("window.__ROOTRAY__"))!.children!;
-    expect(cfg).toContain('"sessionId":"s"');
-    expect(cfg).toContain('"bridgeUrl":"ws://127.0.0.1:4000/rootray"');
+  it("does not emit the entry import for files without JSX", () => {
+    expect(withEntry("export const x = 1;")).toBeNull();
   });
 });

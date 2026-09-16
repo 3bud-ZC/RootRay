@@ -1,0 +1,25 @@
+{
+  "name": "@rootray/jsx-instrument",
+  "version": "0.2.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Framework-agnostic JSX source instrumentation: stamps data-rootray-* identity attributes and optional session entry imports.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.28.4",
+    "@rootray/source-protocol": "workspace:*",
+    "magic-string": "^0.30.19"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.4",
+    "typescript": "5.9.2",
+    "vitest": "3.2.4"
+  }
+}

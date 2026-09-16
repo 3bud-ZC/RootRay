@@ -120,6 +120,47 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/node@24.13.4)(happy-dom@19.0.2)
 
+  packages/jsx-instrument:
+    dependencies:
+      '@babel/parser':
+        specifier: ^7.28.4
+        version: 7.29.8
+      '@rootray/source-protocol':
+        specifier: workspace:*
+        version: link:../source-protocol
+      magic-string:
+        specifier: ^0.30.19
+        version: 0.30.21
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.4
+        version: 24.13.4
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@24.13.4)(happy-dom@19.0.2)
+
+  packages/next-adapter:
+    dependencies:
+      '@rootray/jsx-instrument':
+        specifier: workspace:*
+        version: link:../jsx-instrument
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.4
+        version: 24.13.4
+      esbuild:
+        specifier: 0.25.9
+        version: 0.25.9
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@24.13.4)(happy-dom@19.0.2)
+
   packages/shared:
     devDependencies:
       typescript:
@@ -140,15 +181,12 @@ importers:
 
   packages/vite-plugin:
     dependencies:
-      '@babel/parser':
-        specifier: ^7.28.4
-        version: 7.29.8
+      '@rootray/jsx-instrument':
+        specifier: workspace:*
+        version: link:../jsx-instrument
       '@rootray/source-protocol':
         specifier: workspace:*
         version: link:../source-protocol
-      magic-string:
-        specifier: ^0.30.19
-        version: 0.30.21
     devDependencies:
       '@types/node':
         specifier: ^24.13.4

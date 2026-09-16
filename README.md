@@ -6,7 +6,7 @@ RootRay is a lightweight, local-first Windows developer tool that connects a
 rendered web UI back to its editable source code. Open almost any local
 project or workspace, let RootRay discover its structure, and get universal
 workspace tooling — Explorer, Quick Open, Workspace Search, Quick Edit —
-everywhere. Where a supported runtime exists (React + Vite today), run it,
+everywhere. Where a supported runtime exists (React + Vite, Next.js), run it,
 point at any element on the page, and RootRay shows you the exact file, line,
 and component that produced it — plus its styles, its usages, and a safe
 in-place editor when you just need a quick fix.
@@ -26,7 +26,7 @@ Open Project → Run → Inspect UI → point at an element
   → source file:line:col
   → owning component + definition + usages
   → classes, box model, computed styles, matched CSS rules
-  → Quick Edit → safe save → Vite HMR → inspect again
+  → Quick Edit → safe save → HMR / Fast Refresh → inspect again
 ```
 
 - **Inspect Mode** — hover highlights elements and shows
@@ -120,7 +120,7 @@ gets an honest **capability matrix**: `available`, `partial`,
 |---|---|---|
 | React + Vite | ✓ | ✓ full instrumentation |
 | Vite (non-React) | ✓ | ○ inspector requires React |
-| Next.js | ✓ | ○ runtime adapter not implemented yet |
+| Next.js | ✓ | ✓ full instrumentation (Turbopack + webpack dev paths) |
 | Static web (index.html) | only if a script exists | ○ |
 | Node/Express/CLI/library | if a safe script exists | n/a |
 
@@ -176,7 +176,7 @@ normally — RootRay doesn't intercept or proxy any of it.
 | SmartScreen / Smart App Control warning | Expected — the MVP is unsigned. *More info → Run anyway*. |
 | Blank window / "WebView2 missing" | Install [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (the installer normally does this automatically). |
 | "no runnable target" / missing Run | The target has no `dev`/`serve`/`start` script or the package manager is unknown. Workspace features still work — check the capability rows for the factual reason. |
-| Source mapping unavailable on Next.js | Expected — the Next.js runtime adapter is Milestone 02 work. Explorer/Search/Edit/Run all work today. |
+| Source mapping unavailable on a Next.js element | Only intrinsic DOM elements carry metadata; server components map to their authored JSX site. A wrapped/complex `dev` script disables instrumentation — the capability row names the reason. |
 | "dependencies appear to be missing" | Run your package manager's install (`pnpm install` / `npm install` / `yarn`) in the project, then Run again. RootRay never installs for you. |
 | Dev server exits immediately | Check the Runner panel log — the project's own output is shown verbatim. Common causes: missing deps, port in use, unsupported dev command flags. |
 | Browser didn't connect / inspector unavailable | Open the exact `localhost` URL RootRay printed (a different port or `127.0.0.1` vs `localhost` mix won't reach the bridge). Re-run with a plain `vite` dev script if yours uses unusual flags. |
@@ -251,8 +251,10 @@ apps/desktop               React 19 UI + thin src-tauri command layer;
 packages/source-protocol   Versioned wire contract (validated both ways).
 packages/inspector-runtime Browser client: WS auth/reconnect, Shadow-DOM
                            overlay, hover/select, on-select style details.
-packages/vite-plugin       Babel JSX/TSX instrumentation + dev-server
-                           runner merged into the project's own Vite.
+packages/jsx-instrument    Shared Babel JSX/TSX source instrumentation.
+packages/vite-plugin       Dev-server runner + Vite adapter (jsx-instrument).
+packages/next-adapter      Next.js adapter: NODE_OPTIONS shim → turbopack
+                           rules / webpack wrapper → jsx-instrument loader.
 packages/intelligence      Bounded static React analysis (Babel).
 fixtures/                  Real test projects: Vite+React, Next.js,
                            pnpm/Turborepo monorepos, Vite non-React,
@@ -264,18 +266,23 @@ scripts/installer-smoke.ps1  Repeatable install/launch/uninstall test.
 ### Data flow
 
 ```
-Vite transform stamps data-rootray-* on JSX ──▶ rendered DOM
+build instrumentation stamps data-rootray-* on JSX ──▶ rendered DOM
+  (Vite: plugin transform · Next.js: shim → turbopack/webpack loader)
 hover/click ─▶ runtime reads metadata ─▶ WS + token ─▶ Rust bridge
 validates ─▶ desktop resolves file:line ─▶ Quick Edit / Open Source
 
-save ─▶ SHA-256 check ─▶ temp-file + rename ─▶ Vite watcher ─▶ HMR
+save ─▶ SHA-256 check ─▶ temp-file + rename ─▶ watcher ─▶ HMR/Fast Refresh
 ```
 
 ## Known limitations
 
-- Rendered-element source inspection requires React + Vite today; Next.js
-  and other frameworks are first-class workspaces with Run support, but
-  their runtime source adapters are not implemented yet (Milestone 02).
+- Rendered-element source inspection requires React + Vite or Next.js
+  (Turbopack and webpack dev paths). Vue, Svelte, Astro and Angular are
+  first-class workspaces with Run support, but their runtime source
+  adapters are not implemented yet.
+- Next.js instrumentation requires a dev script RootRay can safely
+  reconstruct (`next dev` with plain flags); composed or wrapped scripts
+  still run — the capability row explains why inspection is off.
 - Static analysis resolves common import shapes — aliased paths (`@/…`),
   barrel cycles, `React.lazy`, and re-export chains deeper than one
   unambiguous `index` hop report *unresolved*, never a guess.

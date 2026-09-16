@@ -81,6 +81,9 @@ pub struct SourceLocation {
     pub column: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub component_name: Option<String>,
+    /// "exact" | "approximate" | "component" — how trustworthy the mapping is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -263,6 +266,9 @@ fn parse_source_location(v: Option<&Value>) -> Option<SourceLocation> {
         line: line as u32,
         column: column as u32,
         component_name: optional_str(obj.get("componentName")),
+        confidence: optional_str(obj.get("confidence")).filter(|c| {
+            matches!(c.as_str(), "exact" | "approximate" | "component")
+        }),
     })
 }
 

@@ -74,7 +74,32 @@ describe("metadata", () => {
       line: 12,
       column: 9,
       componentName: "Btn",
+      confidence: "exact",
     });
+  });
+
+  it("fills componentName from the fiber owner chain when unstamped", () => {
+    document.body.innerHTML = `
+      <div data-rootray-file="src/App.tsx" data-rootray-line="4"
+        data-rootray-column="3"></div>`;
+    const el = document.querySelector("div")!;
+    // Simulate React 19 dev internals: host fiber whose _debugOwner is the
+    // component that authored the element.
+    function Card() {}
+    (el as unknown as Record<string, unknown>).__reactFiber$abc = {
+      type: "div",
+      _debugOwner: { type: Card },
+    };
+    expect(readSourceLocation(el)!.componentName).toBe("Card");
+  });
+
+  it("leaves componentName unset when no fiber exists", () => {
+    document.body.innerHTML = `
+      <div data-rootray-file="src/App.tsx" data-rootray-line="4"
+        data-rootray-column="3"></div>`;
+    const loc = readSourceLocation(document.querySelector("div")!)!;
+    expect(loc.componentName).toBeUndefined();
+    expect(loc.confidence).toBe("exact");
   });
 
   it("finds the nearest instrumented ancestor from a child", () => {

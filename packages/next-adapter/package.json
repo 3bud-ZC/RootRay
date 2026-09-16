@@ -1,0 +1,25 @@
+{
+  "name": "@rootray/next-adapter",
+  "version": "0.2.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "RootRay Next.js inspector adapter: a --require shim that injects JSX instrumentation into `next dev` (Turbopack rules or webpack config) without touching project files.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rootray/jsx-instrument": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.4",
+    "esbuild": "0.25.9",
+    "typescript": "5.9.2",
+    "vitest": "3.2.4"
+  }
+}

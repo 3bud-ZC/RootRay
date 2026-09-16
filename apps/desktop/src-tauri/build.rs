@@ -14,6 +14,8 @@ fn stage_inspector_assets() {
         "vite-plugin/dist/runner.cjs",
         "vite-plugin/dist/plugin.cjs",
         "inspector-runtime/dist/runtime.js",
+        "next-adapter/dist/next-shim.cjs",
+        "next-adapter/dist/jsx-loader.cjs",
     ];
     for rel in files {
         let src = packages.join(rel);

@@ -10,8 +10,8 @@
  */
 
 import { readFileSync } from "node:fs";
+import { bootstrapConfig, instrumentSource, shouldInstrument } from "@rootray/jsx-instrument";
 import type { Plugin } from "vite";
-import { bootstrapConfig, instrumentSource, shouldInstrument } from "./instrument";
 
 export const RUNTIME_URL = "/__rootray/runtime.js";
 

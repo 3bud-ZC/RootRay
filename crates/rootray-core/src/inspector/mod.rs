@@ -23,6 +23,12 @@ pub struct SessionInfo {
     pub session_id: String,
     pub token: String,
     pub port: u16,
+    /// Absolute active-target root — stamped into the runtime bootstrap so
+    /// adapters can relativize paths the browser reports back.
+    pub target_root: Option<std::path::PathBuf>,
+    /// Workspace root — bounds adapter ancestor searches (monorepo
+    /// hoisting). Never escaped.
+    pub workspace_root: Option<std::path::PathBuf>,
 }
 
 type Notify = Arc<dyn Fn() + Send + Sync>;
@@ -38,6 +44,10 @@ struct ManagerInner {
     state: Mutex<InspectorState>,
     bridge: Mutex<Option<BridgeHandle>>,
     notify: Mutex<Option<Notify>>,
+    /// Session-owned scratch dirs (e.g. the Next adapter's generated
+    /// entry under `node_modules/.cache/rootray-<sid>`). Removed on
+    /// shutdown and swept before the next session starts.
+    scratch: Mutex<Vec<std::path::PathBuf>>,
 }
 
 impl Default for InspectorManager {
@@ -80,6 +90,7 @@ impl InspectorManager {
                 state: Mutex::new(InspectorState::default()),
                 bridge: Mutex::new(None),
                 notify: Mutex::new(None),
+                scratch: Mutex::new(Vec::new()),
             }),
         }
     }
@@ -111,6 +122,34 @@ impl InspectorManager {
         self.lock_state()
             .map(|s| s.clone())
             .unwrap_or_default()
+    }
+
+    /// Registers adapter-owned scratch dirs for removal when the session
+    /// ends. Never used for project files — only dirs the adapter itself
+    /// created (node_modules/.cache/rootray-*, .next/rootray-*).
+    pub fn register_scratch(&self, dirs: Vec<std::path::PathBuf>) {
+        if let Ok(mut slot) = self.inner.scratch.lock() {
+            slot.extend(dirs);
+        }
+    }
+
+    /// Deletes every registered scratch dir (idempotent, missing-ok).
+    fn cleanup_scratch(inner: &ManagerInner) {
+        let dirs = match inner.scratch.lock() {
+            Ok(mut slot) => std::mem::take(&mut *slot),
+            Err(_) => return,
+        };
+        for d in dirs {
+            // Only ever remove RootRay-named dirs — a misregistered path
+            // must never turn session cleanup into arbitrary deletion.
+            let ours = d
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("rootray-"));
+            if ours {
+                let _ = std::fs::remove_dir_all(&d);
+            }
+        }
     }
 
     /// Starts a fresh inspector session: dynamic loopback port + new
@@ -145,7 +184,13 @@ impl InspectorManager {
                     s.error = None;
                 }
                 self.emit();
-                Ok(SessionInfo { session_id, token, port })
+                Ok(SessionInfo {
+                    session_id,
+                    token,
+                    port,
+                    target_root: None,
+                    workspace_root: None,
+                })
             }
             Err(e) => {
                 self.fail(&format!("{e}"));
@@ -257,6 +302,7 @@ impl InspectorManager {
     /// Tears down the session entirely (dev server stopped/exited).
     /// `last_selection` is retained so the UI keeps showing context.
     pub fn shutdown(&self) {
+        Self::cleanup_scratch(&self.inner);
         if let Ok(mut slot) = self.inner.bridge.lock() {
             if let Some(b) = slot.take() {
                 b.shutdown();

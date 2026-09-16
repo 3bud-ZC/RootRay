@@ -1,11 +1,17 @@
 /**
- * JSX source instrumentation.
+ * JSX source instrumentation — bundler-agnostic.
  *
  * Stamps `data-rootray-*` attributes onto *intrinsic* (lowercase DOM) JSX
  * elements so the browser runtime can map a rendered node back to the file,
  * line and column that produced it. Works purely on the transform result —
  * files on disk are never touched and production builds never reach this
- * code (`apply: "serve"` on the plugin).
+ * code (the Vite plugin is `apply: "serve"`; the Next adapter only ever
+ * injects into `next dev`).
+ *
+ * Optionally prepends a session entry import (used by the Next adapter to
+ * pull the inspector runtime into the client graph). The import is inserted
+ * after any leading directives so `"use client"`/`"use server"` boundaries
+ * keep working.
  *
  * Implementation: real parse via `@babel/parser`, source edits via
  * `magic-string` (source maps preserved). No regex JSX parsing.
@@ -22,14 +28,27 @@ export const ATTR_COLUMN = "data-rootray-column";
 export const ATTR_COMPONENT = "data-rootray-component";
 
 const CODE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"]);
-const SKIP_DIR_MARKERS = ["node_modules", "/dist/", "/coverage/", "/.git/", "__generated__"];
+const SKIP_DIR_MARKERS = [
+  "node_modules",
+  "/dist/",
+  "/coverage/",
+  "/.git/",
+  "__generated__",
+  "/.next/",
+];
 
 export interface InstrumentOptions {
-  /** Vite module id (absolute path, possibly with query). */
+  /** Module id (absolute path, possibly with query). */
   id: string;
   /** Canonical absolute project root. */
   projectRoot: string;
   code: string;
+  /**
+   * Module specifier imported once at the top of the transformed file —
+   * after any leading directives. Used by the Next adapter to pull the
+   * inspector runtime entry into the client module graph.
+   */
+  entryImport?: string;
 }
 
 export interface InstrumentResult {
@@ -220,8 +239,22 @@ function collectInsertions(ast: AnyNode, relativePath: string): CollectedInserti
 // --- public API --------------------------------------------------------------------
 
 /**
+ * Offset just past the last leading directive (`"use client"`, `"use
+ * server"`, …). Directive nodes live on `program.directives`; their `end`
+ * includes the trailing semicolon.
+ */
+function directivesEnd(program: AnyNode): number {
+  const directives = program.directives;
+  if (!Array.isArray(directives) || directives.length === 0) return 0;
+  const last = directives[directives.length - 1];
+  return isNode(last) && typeof last.end === "number" ? last.end : 0;
+}
+
+/**
  * Instruments `code` if it contains JSX. Returns null when parsing fails —
- * callers treat that as "leave the file alone".
+ * callers treat that as "leave the file alone". Files without intrinsic
+ * elements are left untouched entirely (the entry import rides on JSX
+ * modules only — every rendered page has at least one).
  */
 export function instrumentSource(opts: InstrumentOptions): InstrumentResult | null {
   const relativePath = relativeSourcePath(opts.id, opts.projectRoot);
@@ -249,6 +282,12 @@ export function instrumentSource(opts: InstrumentOptions): InstrumentResult | nu
   // Apply right-to-left so earlier offsets stay valid.
   for (const ins of insertions.sort((a, b) => b.at - a.at)) {
     ms.appendLeft(ins.at, ins.attrs);
+  }
+  if (opts.entryImport) {
+    ms.appendLeft(
+      directivesEnd(ast.program as AnyNode),
+      `\nimport ${JSON.stringify(opts.entryImport)};`,
+    );
   }
   return {
     code: ms.toString(),

@@ -304,7 +304,8 @@ pub fn detect_target(
     let dev_script = pkg_ref.scripts.get("dev").cloned();
 
     // --- capabilities -------------------------------------------------------
-    let capabilities = capabilities_for(framework, tkind, selected.is_some());
+    let capabilities =
+        capabilities_for(framework, tkind, selected.is_some(), dev_script.as_deref());
 
     ProjectTarget {
         id,
@@ -693,7 +694,12 @@ fn resolve_runners(
 // capabilities per target
 // ---------------------------------------------------------------------------
 
-fn capabilities_for(framework: Framework, kind: TargetKind, runnable: bool) -> CapabilityMatrix {
+fn capabilities_for(
+    framework: Framework,
+    kind: TargetKind,
+    runnable: bool,
+    dev_script: Option<&str>,
+) -> CapabilityMatrix {
     let mut caps = CapabilityMatrix::universal();
     caps.run = if runnable {
         Capability::available()
@@ -724,16 +730,37 @@ fn capabilities_for(framework: Framework, kind: TargetKind, runnable: bool) -> C
         }
         Framework::NextJs => {
             caps.browser_open = Capability::available();
-            caps.dom_inspect =
-                Capability::unavailable("Next.js runtime adapter is not implemented yet");
-            caps.style_inspect =
-                Capability::unavailable("Next.js runtime adapter is not implemented yet");
-            caps.source_mapping =
-                Capability::unavailable("Next.js runtime adapter is not implemented yet");
-            caps.component_intelligence = Capability::partial(
-                "static React analysis only — no rendered-element mapping",
-            );
-            caps.hmr_aware = Capability::unavailable(NO_ADAPTER);
+            // The Next adapter instruments `next dev` in memory — but only
+            // for dev scripts it can safely reconstruct. Complex scripts
+            // still run; the inspector just reports why it is absent.
+            let instrumentable = runnable
+                && match dev_script {
+                    Some(s) => crate::inspector::launch::next_dev_args_from_script(s).is_ok(),
+                    None => false,
+                };
+            if instrumentable {
+                caps.dom_inspect = Capability::available();
+                caps.style_inspect = Capability::available();
+                caps.source_mapping = Capability::available();
+                // Instrumentation stamps DOM nodes for client *and* server
+                // components; runtime ownership for RSC is static-only.
+                caps.component_intelligence = Capability::partial(
+                    "rendered-element mapping via build instrumentation; server-component ownership is static",
+                );
+                caps.hmr_aware = Capability::available();
+            } else {
+                let reason = match dev_script {
+                    Some(_) => "dev script too complex for safe instrumentation",
+                    None => "no resolvable dev script",
+                };
+                caps.dom_inspect = Capability::unavailable(reason);
+                caps.style_inspect = Capability::unavailable(reason);
+                caps.source_mapping = Capability::unavailable(reason);
+                caps.component_intelligence = Capability::partial(
+                    "static React analysis only — no rendered-element mapping",
+                );
+                caps.hmr_aware = Capability::unavailable(reason);
+            }
         }
         Framework::StaticWeb => {
             caps.browser_open =

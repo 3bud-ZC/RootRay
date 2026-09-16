@@ -4,6 +4,7 @@
  */
 
 import type { ElementFacts, SourceLocation } from "@rootray/source-protocol";
+import { fiberComponentName } from "./fiber";
 
 export const ATTR_FILE = "data-rootray-file";
 export const ATTR_LINE = "data-rootray-line";
@@ -38,8 +39,15 @@ export function readSourceLocation(el: Element): SourceLocation | null {
   if (!Number.isInteger(line) || line < 1) return null;
   if (!Number.isInteger(column) || column < 1) return null;
   const component = el.getAttribute(ATTR_COMPONENT);
-  const loc: SourceLocation = { relativePath: file, line, column };
-  if (component && component.length <= MAX_FIELD) loc.componentName = component;
+  const loc: SourceLocation = { relativePath: file, line, column, confidence: "exact" };
+  if (component && component.length <= MAX_FIELD) {
+    loc.componentName = component;
+  } else {
+    // Attrs give the exact JSX site but not always a name (e.g. anonymous
+    // scopes); the dev-only fiber owner chain can still identify it.
+    const hinted = fiberComponentName(el);
+    if (hinted) loc.componentName = hinted;
+  }
   return loc;
 }
 

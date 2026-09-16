@@ -3,10 +3,56 @@
 ## Current Development
 **v0.2.0-dev** — Universal Project Workspace
 
-**Milestone:** 01 — Universal Project Discovery & Capability Engine
-**Progress:** 20% of the v0.2.0 track
+**Milestone:** 02 — Next.js Runtime & Visual Source Inspection
+**Progress:** 40% of the v0.2.0 track
 
-### What changed (v0.2.0, in development on `main`)
+### Milestone 02 — Next.js Runtime & Visual Source Inspection
+
+- **Inspector adapter abstraction** — `InspectorAdapter::for_framework`
+  dispatches per-framework launch/instrumentation: `ViteReact` (unchanged
+  runner path) and `NextJs` (new). Unsupported frameworks get honest
+  capability states, never a dead-end.
+- **`@rootray/jsx-instrument`** — the Babel JSX/TSX stamping logic
+  extracted from vite-plugin into a shared package; both adapters use it.
+- **`@rootray/next-adapter`** — `next-shim.cjs` is loaded into the
+  `next dev` process via `node --require` (argv form — no NODE_OPTIONS
+  whitespace issues, scoped to the bundler process). It hooks
+  `Module._load` so every importer of `next/dist/server/config.js`
+  receives a wrapped `loadConfig` that merges RootRay's loader into
+  `turbopack.rules` and wraps `config.webpack` for the `--webpack` path.
+  The loader emits directive-aware code (injected entry import lands
+  *after* `"use client"`) and a relative import to a session entry written
+  under `node_modules/.cache/rootray-<sid>/` — inside the Turbopack root,
+  outside volatile `.next/`, removed on session end (stale dirs swept on
+  next launch; only `rootray-*` names are ever removed).
+- **React 19** — `_debugSource` is gone; `_debugOwner`/`_debugStack`
+  exist in dev builds. The runtime treats them as a bounded, failure-
+  silent *hint layer* (`fiber.ts`) that can enrich a selection's
+  `componentName` when instrumentation did not carry one. Location always
+  comes from stamped DOM attributes; `source.confidence` ("exact" |
+  "approximate" | "component") is now part of the wire protocol.
+- **Coverage proven** — Next 16.3.5 Turbopack: App Router page/layout/
+  server+client components, Pages Router `/legacy`, CSS Modules,
+  Tailwind v4, repeated siblings (each keeps its own JSX site), client-
+  side navigation, hard navigation re-authentication, Fast Refresh after
+  Quick Edit save. Next 16 `--webpack` and Next 15.5.12 webpack:
+  instrumented render + bridge handshake.
+- **Capabilities** — Next.js targets report dom-inspect/style-inspect/
+  source-mapping/hmr **available** when the dev script is safely
+  reconstructable (`next dev` + plain flags); component-intelligence is
+  **partial** (server-component ownership is static). Complex/wrapped
+  scripts still run — inspection reports the reason instead.
+- **Installed-app verification — PASS**
+  (`tests/e2e/installed-golden-next.mjs`, real `rootray-desktop.exe`):
+  analyze → `Next.js 16.2.12 · npm · npm run dev` → Run → real
+  `next dev` (Turbopack) → `http://localhost:3000/` → bridge connected →
+  Inspect UI → select → `components/ActionButton.tsx` L9 C5,
+  `ActionButton` → component + style intelligence → Quick Edit → Saved →
+  Fast Refresh applied in the page → re-inspection resolves the same
+  source → About-link navigation stays instrumented → Stop → owned
+  process tree exited, URL dead. Vite installed golden path re-run: PASS.
+
+### What changed (v0.2.0, Milestone 01)
 
 - **Universal workspace model** — `crates/rootray-core/src/project/workspace/`
   replaces the single-project `supported: bool` analysis with an
@@ -47,8 +93,8 @@
 
 | Repository | Result |
 |---|---|
-| ClientFlow-CRM | Next.js 16.2.12 · npm · `npm run dev` · 22ms |
-| ELHABAK-Construction-System-V1 | pnpm workspace · 8 targets · `apps/web` Next.js 16.0.3 auto-selected · `apps/api` Node server · libs classified · 5–8ms |
+| ClientFlow-CRM | Next.js 16.2.12 · npm · `npm run dev` · all runtime caps available · 24ms · **live shimmed `next dev` → `/login` SSR carries `data-rootray-*` on real sources** |
+| ELHABAK-Construction-System-V1 | pnpm workspace · 8 targets · `apps/web` Next.js 16.0.3 auto-selected, runtime caps available · `apps/api` Node server · libs classified · 71ms |
 | workfolw (video-factory-monorepo) | pnpm workspace · Next.js 15.1.7 web target · 104ms |
 | Shadow Runner | Vite 6.2.0 (non-React, Phaser) · run available · 26ms |
 | Egyptian-Russian-University-master | nested manifest discovered → React+Vite 5.1.0 · 15ms |
@@ -59,52 +105,32 @@
 
 ### Deferred to later milestones
 
-- Milestone 02 — Next.js Runtime & Visual Source Inspection (exact
-  rendered-element source mapping, Turbopack adapter).
+- Milestone 03 — Generic Browser Runtime, Static Web & Non-React
+  Inspection.
 - Built-in static server for `index.html`-only projects.
 - Vue/Svelte/Astro/Nuxt/Angular runtime adapters.
 
 ### v0.2.0 verification
 
-- `cargo test -p rootray-core` — 154 passed, 0 failed, 1 ignored
+- `cargo test -p rootray-core` — 163 passed, 0 failed, 1 ignored
   (`golden_path_real_vite_server` — real `npm run dev` run, passes with
   `--ignored`).
-- `pnpm -r test` — Vitest 123 green (shared 7, source-protocol 14,
-  intelligence 17, vite-plugin 19, inspector-runtime 14, desktop 52);
-  Playwright 22 e2e green — e2e now spawns the runner with
-  `cwd == --root`, matching production.
+- `pnpm -r test` — Vitest 133 green (shared 7, source-protocol 14,
+  intelligence 17, jsx-instrument 19, vite-plugin 3, inspector-runtime
+  16, next-adapter 5, desktop 52).
+- `pnpm --filter @rootray/e2e test` — Playwright 31 e2e green (22 prior
+  + 9 Next: turbopack full flow 7, webpack 16+15 fallback 2).
 - `pnpm -r typecheck`, `pnpm exec biome check .`, `cargo check` (both
   crates), `cargo build -p rootray-desktop` — green.
 - `pnpm build:tauri` — release build + NSIS bundle green;
-  `scripts/installer-smoke.ps1` — PASS.
-- **Installed-app golden path — PASS** (`tests/e2e/installed-golden.mjs`
-  drives the real installed `rootray-desktop.exe` via WebView2 CDP +
-  a controlled Chromium page):
-  - Fixture: `fixtures/vite-react-inspector`; package-manager evidence =
-    generated `package-lock.json` (npm).
-  - Binary: `C:\Users\Abud\AppData\Local\RootRay\rootray-desktop.exe`
-    (fresh `RootRay_0.2.0_x64-setup.exe` install).
-  - Analysis → `React + Vite 7.1.0 · npm · npm run dev` resolved and
-    displayed.
-  - Run → real Vite dev server spawned by the app →
-    `http://localhost:5173/` detected from stdout.
-  - Inspector bridge connected; rendered page inspected in Chromium.
-  - Source mapping: `src/components/ActionButton.tsx` L7 C5 · component
-    `ActionButton`; component + style intelligence rendered.
-  - Quick Edit → save → Vite HMR applied in the rendered page →
-    re-inspection resolved the same source.
-  - Stop → owned process tree exited; URL dead.
-  - Three latent defects this exposed are fixed: verbatim `\\?\` asset
-    paths reaching Node (`resolve_assets` now strips them), the runner
-    rejecting a valid `--root` equal to its cwd (`runner.ts`), and
-    `.cmd` dev commands receiving args twice (`process/mod.rs`).
-  - `fixtures/nextjs-basic` → Next.js 16.2.12, `npm run dev`, partial
-    runtime support, all workspace capabilities green (analysis-level
-    check via `scripts/verify-installed.ps1`; its `node_modules` are not
-    installed locally, so no live `next dev` run — Milestone 02 scope).
-  - `ELHABAK-Construction-System-V1` (real pnpm monorepo) → 8 targets,
-    `apps/web` Next.js 16.0.3 auto-selected, `pnpm run dev`, target
-    selector live.
+  `scripts/installer-smoke.ps1` — PASS (all five inspector assets ship).
+- **Installed-app golden paths — PASS** (`installed-golden.mjs` Vite,
+  `installed-golden-next.mjs` Next.js — both drive the real installed
+  `rootray-desktop.exe` via WebView2 CDP + a controlled Chromium page).
+- Real-repo validation: `ClientFlow-CRM` live shimmed `next dev` renders
+  `data-rootray-*` on real SSR output (`/login`, 200);
+  `ELHABAK-Construction-System-V1` monorepo → 8 targets, `apps/web`
+  Next.js 16.0.3 auto-selected with runtime caps available.
 
 ---
 

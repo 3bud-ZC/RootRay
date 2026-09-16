@@ -27,6 +27,13 @@ export interface SourceLocation {
   column: number;
   /** Nearest owning component, when it could be determined reliably. */
   componentName?: string;
+  /**
+   * "exact": stamped by instrumentation on the selected element.
+   * "approximate": derived from generated-URL or fiber hints — may point at
+   * compiled output rather than authored source.
+   * "component": only the owning component is known; position is approximate.
+   */
+  confidence?: "exact" | "approximate" | "component";
 }
 
 /** Compact element facts the runtime reports with a selection. */
@@ -218,12 +225,21 @@ export function parseSourceLocation(v: unknown): SourceLocation | null {
   if (/^[a-zA-Z]:/.test(v.relativePath) || v.relativePath.startsWith("/")) return null;
   if (!intAtLeast(v.line, 1) || !intAtLeast(v.column, 1)) return null;
   if (!optStr(v.componentName)) return null;
+  if (
+    v.confidence !== undefined &&
+    v.confidence !== "exact" &&
+    v.confidence !== "approximate" &&
+    v.confidence !== "component"
+  ) {
+    return null;
+  }
   const out: SourceLocation = {
     relativePath: v.relativePath,
     line: v.line,
     column: v.column,
   };
   if (typeof v.componentName === "string") out.componentName = v.componentName;
+  if (typeof v.confidence === "string") out.confidence = v.confidence;
   return out;
 }
 

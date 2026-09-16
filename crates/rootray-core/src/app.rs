@@ -14,7 +14,7 @@ use crate::inspector::{InspectorManager, InspectorState};
 use crate::launcher::{self, DetectedLauncher};
 use crate::process::{EventSink, ProcessEvent, ProcessManager};
 use crate::project::{
-    analyze_workspace, DevCommand, Framework, ProjectTarget, WorkspaceAnalysis,
+    analyze_workspace, DevCommand, ProjectTarget, WorkspaceAnalysis,
 };
 use crate::settings::{Settings, SettingsStore};
 use crate::state::{LogStream, RuntimePhase, RuntimeState};
@@ -164,7 +164,7 @@ impl AppCore {
     /// through the inspector runner; on any incompatibility it falls back
     /// to the plain dev command and reports `INSPECTOR_UNAVAILABLE`.
     pub fn start_dev_server(&self, hook: EventSink, inspector_enabled: bool) -> CoreResult<u32> {
-        let (mut cmd, gen, target) = {
+        let (mut cmd, gen, target, workspace_root) = {
             let mut s = self.lock_state()?;
             let workspace = s
                 .workspace
@@ -184,11 +184,14 @@ impl AppCore {
             s.transition(RuntimePhase::Starting)?;
             let mut g = self.generation.lock().map_err(|_| CoreError::Internal("generation lock".into()))?;
             *g += 1;
-            (cmd, *g, target)
+            (cmd, *g, target, workspace.root.clone())
         };
 
-        if inspector_enabled && target.framework == Framework::ViteReact {
-            match self.inspector_launch_command(&target) {
+        if inspector_enabled
+            && crate::inspector::launch::InspectorAdapter::for_framework(&target.framework)
+                .is_some()
+        {
+            match self.inspector_launch_command(&target, &workspace_root) {
                 Ok(Some(icmd)) => cmd = icmd,
                 Ok(None) => {}
                 Err(reason) => self.push_stderr_log(&format!(
@@ -228,20 +231,28 @@ impl AppCore {
     fn inspector_launch_command(
         &self,
         target: &ProjectTarget,
+        workspace_root: &std::path::Path,
     ) -> Result<Option<DevCommand>, String> {
         let assets = crate::inspector::resolve_assets()
             .ok_or_else(|| "inspector assets not found (run pnpm build)".to_string())?;
-        let info = self
+        let mut info = self
             .inspector
             .start_session()
             .map_err(|e| format!("bridge failed: {e}"))?;
+        info.target_root = Some(target.absolute_root.clone());
+        info.workspace_root = Some(workspace_root.to_path_buf());
         match crate::inspector::launch::inspector_dev_command(target, &info, &assets) {
-            Some(cmd) => Ok(Some(cmd)),
-            None => {
-                self.inspector
-                    .fail("unsupported dev script for automatic instrumentation");
-                Err("unsupported dev script — inspector expects a plain \"vite\" invocation"
-                    .to_string())
+            Ok(Some((cmd, scratch))) => {
+                self.inspector.register_scratch(scratch);
+                Ok(Some(cmd))
+            }
+            Ok(None) => {
+                self.inspector.on_process_exit();
+                Ok(None)
+            }
+            Err(reason) => {
+                self.inspector.fail(&reason);
+                Err(reason)
             }
         }
     }

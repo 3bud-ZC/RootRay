@@ -305,8 +305,8 @@ fn set_active_target_requires_workspace() {
 fn capability_matrix_is_richer_than_boolean() {
     let a = analyze_workspace(&fixtures().join("nextjs-basic")).unwrap();
     let t = a.active_target().unwrap();
-    // Next.js: universal + run available; runtime inspection unavailable
-    // with a factual reason — never a global "unsupported".
+    // Next.js: universal + run + inspector capabilities available — the
+    // dev script is a plain `next dev`, which the adapter can instrument.
     assert!(t.capabilities.workspace_browse.is_available());
     assert!(t.capabilities.quick_open.is_available());
     assert!(t.capabilities.workspace_search.is_available());
@@ -315,13 +315,40 @@ fn capability_matrix_is_richer_than_boolean() {
     assert!(t.capabilities.open_external.is_available());
     assert!(t.capabilities.run.is_available());
     assert!(t.capabilities.browser_open.is_available());
-    assert_eq!(t.capabilities.dom_inspect.state, CapabilityState::Unavailable);
-    assert_eq!(t.capabilities.style_inspect.state, CapabilityState::Unavailable);
-    assert_eq!(t.capabilities.source_mapping.state, CapabilityState::Unavailable);
+    assert_eq!(t.capabilities.dom_inspect.state, CapabilityState::Available);
+    assert_eq!(t.capabilities.style_inspect.state, CapabilityState::Available);
+    assert_eq!(t.capabilities.source_mapping.state, CapabilityState::Available);
+    // Instrumentation maps rendered DOM to source for client *and* server
+    // components, but RSC runtime ownership is static-only → Partial.
     assert_eq!(
         t.capabilities.component_intelligence.state,
         CapabilityState::Partial
     );
+    assert_eq!(t.capabilities.hmr_aware.state, CapabilityState::Available);
+}
+
+#[test]
+fn nextjs_with_complex_dev_script_reports_unavailable_inspection() {
+    // A dev script the adapter cannot safely reconstruct must degrade to
+    // "runnable but not inspectable" — never a broken Run button.
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::write(
+        root.join("package.json"),
+        r#"{
+            "name": "complex-next",
+            "scripts": { "dev": "cross-env FOO=1 next dev" },
+            "dependencies": { "next": "16.0.0", "react": "19.0.0" }
+        }"#,
+    )
+    .unwrap();
+    std::fs::write(root.join("package-lock.json"), "{}").unwrap();
+    std::fs::write(root.join("next.config.js"), "module.exports = {}").unwrap();
+    let a = analyze_workspace(root).unwrap();
+    let t = a.active_target().unwrap();
+    assert_eq!(t.framework, Framework::NextJs);
+    assert!(t.capabilities.run.is_available());
+    assert_eq!(t.capabilities.dom_inspect.state, CapabilityState::Unavailable);
     assert_eq!(t.capabilities.hmr_aware.state, CapabilityState::Unavailable);
 }
 

@@ -65,18 +65,12 @@ fn detects_nextjs_fixture_with_version() {
     assert_eq!(t.dev_script.as_deref(), Some("next dev"));
     let cmd = t.selected_runner.as_ref().expect("next dev runner");
     assert_eq!(cmd.display, "npm run dev");
-    // Universal features on; runtime inspection honestly unavailable.
+    // Universal features on; the plain `next dev` script is instrumentable
+    // so runtime inspection is available.
     assert!(t.capabilities.workspace_search.is_available());
     assert!(t.capabilities.quick_edit.is_available());
     assert!(t.capabilities.run.is_available());
-    assert_eq!(t.capabilities.source_mapping.state, CapabilityState::Unavailable);
-    assert!(t
-        .capabilities
-        .source_mapping
-        .reason
-        .as_deref()
-        .unwrap()
-        .contains("Next.js runtime adapter"));
+    assert_eq!(t.capabilities.source_mapping.state, CapabilityState::Available);
     assert!(t.technologies.iter().any(|x| x.name == "React"));
     assert!(t.technologies.iter().any(|x| x.name == "Prisma"));
     assert!(t.technologies.iter().any(|x| x.name == "Tailwind CSS"));
