@@ -49,9 +49,10 @@ export function EditorPanel() {
   // moves the focus marker — edits are never touched.
   const lastSel = state.inspector.lastSelection;
   useEffect(() => {
-    if (ed && lastSel && lastSel.source.relativePath === ed.relativePath) {
-      if (lastSel.source.line !== ed.selectedLine) {
-        focusEditorOnSelection(dispatch, lastSel.source);
+    const src = lastSel?.source;
+    if (ed && src && src.relativePath === ed.relativePath) {
+      if (src.line !== ed.selectedLine) {
+        focusEditorOnSelection(dispatch, src);
       }
     }
   }, [lastSel, ed, dispatch]);

@@ -14,10 +14,11 @@ use crate::inspector::{InspectorManager, InspectorState};
 use crate::launcher::{self, DetectedLauncher};
 use crate::process::{EventSink, ProcessEvent, ProcessManager};
 use crate::project::{
-    analyze_workspace, DevCommand, ProjectTarget, WorkspaceAnalysis,
+    analyze_workspace, DevCommand, Framework, ProjectTarget, WorkspaceAnalysis,
 };
 use crate::settings::{Settings, SettingsStore};
 use crate::state::{LogStream, RuntimePhase, RuntimeState};
+use crate::static_server::{StaticInjection, StaticServer};
 
 pub struct AppCore {
     state: Arc<Mutex<RuntimeState>>,
@@ -25,6 +26,9 @@ pub struct AppCore {
     settings: SettingsStore,
     inspector: InspectorManager,
     editor: EditorManager,
+    /// RootRay-owned loopback server for `StaticWeb` targets — `Some`
+    /// while a static target is running (there is no child process).
+    static_server: Mutex<Option<StaticServer>>,
     /// Monotonic run id — guards against events from a previous process
     /// generation landing on a newer run.
     generation: Arc<Mutex<u64>>,
@@ -42,6 +46,7 @@ impl AppCore {
             settings: SettingsStore::new(settings_dir),
             inspector: InspectorManager::new(),
             editor: EditorManager::new(),
+            static_server: Mutex::new(None),
             generation: Arc::new(Mutex::new(0)),
             state_notify: Mutex::new(None),
         }
@@ -164,7 +169,7 @@ impl AppCore {
     /// through the inspector runner; on any incompatibility it falls back
     /// to the plain dev command and reports `INSPECTOR_UNAVAILABLE`.
     pub fn start_dev_server(&self, hook: EventSink, inspector_enabled: bool) -> CoreResult<u32> {
-        let (mut cmd, gen, target, workspace_root) = {
+        let (cmd, gen, target, workspace_root) = {
             let mut s = self.lock_state()?;
             let workspace = s
                 .workspace
@@ -174,11 +179,19 @@ impl AppCore {
                 .active_target()
                 .cloned()
                 .ok_or(CoreError::TargetRunnerUnavailable)?;
-            let cmd = target
-                .selected_runner
-                .clone()
-                .ok_or_else(|| Self::not_runnable_error(&target))?;
-            if self.processes.is_running() {
+            // Static targets need no declared dev script — RootRay serves
+            // the workspace itself on a loopback socket.
+            let cmd = if target.framework == Framework::StaticWeb {
+                None
+            } else {
+                Some(
+                    target
+                        .selected_runner
+                        .clone()
+                        .ok_or_else(|| Self::not_runnable_error(&target))?,
+                )
+            };
+            if self.processes.is_running() || self.static_server_running() {
                 return Err(CoreError::ProcessAlreadyRunning);
             }
             s.transition(RuntimePhase::Starting)?;
@@ -186,6 +199,11 @@ impl AppCore {
             *g += 1;
             (cmd, *g, target, workspace.root.clone())
         };
+
+        if target.framework == Framework::StaticWeb {
+            return self.start_static_server(&target, &workspace_root, hook, inspector_enabled);
+        }
+        let mut cmd = cmd.expect("non-static target always has a runner");
 
         if inspector_enabled
             && crate::inspector::launch::InspectorAdapter::for_framework(&target.framework)
@@ -269,8 +287,123 @@ impl AppCore {
         }
     }
 
+    /// Runs a `StaticWeb` target through RootRay's own loopback server.
+    /// The returned id is the bound port — there is no child pid.
+    fn start_static_server(
+        &self,
+        target: &ProjectTarget,
+        workspace_root: &Path,
+        hook: EventSink,
+        inspector_enabled: bool,
+    ) -> CoreResult<u32> {
+        let mut injection = None;
+        if inspector_enabled {
+            match self.static_injection(target, workspace_root) {
+                Ok(inj) => injection = Some(inj),
+                Err(reason) => self.push_stderr_log(&format!(
+                    "[rootray] inspector unavailable: {reason} — serving without instrumentation"
+                )),
+            }
+        }
+        let server = match StaticServer::start(workspace_root, &target.relative_root, injection) {
+            Ok(s) => s,
+            Err(e) => {
+                self.inspector.on_process_exit();
+                let mut st = self.lock_state()?;
+                st.set_error(CommandError::from(CoreError::ProcessStartFailed(format!(
+                    "static server: {e}"
+                ))));
+                let _ = st.transition(RuntimePhase::Failed);
+                return Err(CoreError::ProcessStartFailed(format!("static server: {e}")));
+            }
+        };
+        let port = server.port();
+        let url = server.url();
+        if let Ok(mut g) = self.static_server.lock() {
+            *g = Some(server);
+        }
+        // State first, events second — mirrors the spawned-server path
+        // where `set_running` lands before the process can emit output.
+        // The sink re-emits a `core.state()` snapshot on every event, so
+        // emitting before this mutation would push a stale
+        // `{phase: starting, url: null}` snapshot over the process event.
+        {
+            let mut s = self.lock_state()?;
+            if s.phase == RuntimePhase::Starting {
+                s.push_log(
+                    LogStream::Stdout,
+                    format!("[rootray] static server listening on {url}"),
+                );
+                s.set_running_detached("rootray static server".to_string());
+                s.set_url(url.clone(), Some(port));
+                s.transition_unchecked(RuntimePhase::Running);
+            }
+        }
+        // Same event stream a spawned server would produce, so the UI
+        // flow (URL detected → open browser) is identical.
+        hook(ProcessEvent::Stdout {
+            line: format!("[rootray] static server listening on {url}"),
+        });
+        hook(ProcessEvent::UrlDetected { url: url.clone(), port: Some(port) });
+        Ok(port as u32)
+    }
+
+    /// Starts an inspector bridge session and builds the page injection
+    /// for a static target. Session roots make stamped file paths
+    /// workspace-relative already, so the rebase is an identity.
+    fn static_injection(
+        &self,
+        target: &ProjectTarget,
+        workspace_root: &Path,
+    ) -> Result<StaticInjection, String> {
+        let assets = crate::inspector::resolve_assets()
+            .ok_or_else(|| "inspector assets not found (run pnpm build)".to_string())?;
+        let mut session = self
+            .inspector
+            .start_session()
+            .map_err(|e| format!("bridge failed: {e}"))?;
+        session.target_root = Some(target.absolute_root.clone());
+        session.workspace_root = Some(workspace_root.to_path_buf());
+        self.inspector
+            .set_session_roots(target.absolute_root.clone(), workspace_root.to_path_buf());
+        let runtime_js = std::fs::read(&assets.runtime).map_err(|e| {
+            self.inspector.on_process_exit();
+            format!("runtime asset unreadable: {e}")
+        })?;
+        let bootstrap = serde_json::json!({
+            "bridgeUrl": format!("ws://127.0.0.1:{}/rootray", session.port),
+            "sessionId": session.session_id,
+            "token": session.token,
+            "version": crate::inspector::protocol::PROTOCOL_VERSION,
+            // Stamped data-rootray-file values are workspace-relative —
+            // the frontend resolves them against the security root.
+            "projectRoot": workspace_root.to_string_lossy().replace('\\', "/"),
+            "mode": "generic-dom",
+            "reloadUrl": "/__rootray/events",
+        });
+        Ok(StaticInjection {
+            bootstrap_json: bootstrap.to_string(),
+            runtime_js,
+        })
+    }
+
+    fn static_server_running(&self) -> bool {
+        self.static_server.lock().map(|g| g.is_some()).unwrap_or(false)
+    }
+
+    /// Tells a running static server to reload connected pages — called
+    /// after RootRay writes a file (save/revert).
+    fn notify_static_reload(&self) {
+        if let Ok(g) = self.static_server.lock() {
+            if let Some(server) = g.as_ref() {
+                server.notify_reload();
+            }
+        }
+    }
+
     /// Stops the running dev server (no-op-safe error if none).
     pub fn stop_dev_server(&self) -> CoreResult<()> {
+        let has_static = self.static_server_running();
         {
             let mut s = self.lock_state()?;
             match s.phase {
@@ -279,6 +412,19 @@ impl AppCore {
                 }
                 _ => return Err(CoreError::ProcessNotRunning),
             }
+        }
+        if has_static {
+            if let Ok(mut g) = self.static_server.lock() {
+                if let Some(server) = g.take() {
+                    server.shutdown();
+                }
+            }
+            self.inspector.on_process_exit();
+            let mut s = self.lock_state()?;
+            if s.phase == RuntimePhase::Stopping {
+                s.transition(RuntimePhase::Stopped)?;
+            }
+            return Ok(());
         }
         match self.processes.stop() {
             Ok(()) => {
@@ -303,7 +449,7 @@ impl AppCore {
     pub fn restart_dev_server(&self, hook: EventSink, inspector_enabled: bool) -> CoreResult<u32> {
         // stop() leaves phase = Stopped; start() handles the rest. From
         // Failed the process handle may be dead already — start anyway.
-        if self.processes.is_running() {
+        if self.processes.is_running() || self.static_server_running() {
             self.stop_dev_server()?;
         }
         self.start_dev_server(hook, inspector_enabled)
@@ -514,6 +660,7 @@ impl AppCore {
     }
 
     /// Optimistic-concurrency save through the open edit session.
+    /// A successful save reloads pages served by the static server.
     pub fn save_source_file(
         &self,
         relative_path: &str,
@@ -521,7 +668,9 @@ impl AppCore {
         expected_hash: &str,
     ) -> CoreResult<crate::editor::SourceFileWrite> {
         let root = self.project_root()?;
-        self.editor.save(&root, relative_path, content, expected_hash)
+        let out = self.editor.save(&root, relative_path, content, expected_hash)?;
+        self.notify_static_reload();
+        Ok(out)
     }
 
     /// Current disk hash for the open file.
@@ -550,7 +699,9 @@ impl AppCore {
         relative_path: &str,
     ) -> CoreResult<crate::editor::SourceFileRead> {
         let root = self.project_root()?;
-        self.editor.revert_last_save(&root, relative_path)
+        let out = self.editor.revert_last_save(&root, relative_path)?;
+        self.notify_static_reload();
+        Ok(out)
     }
 
     /// Closes the edit session and stops the watcher.

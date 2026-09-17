@@ -240,6 +240,7 @@ export interface SourceLocation {
   line: number;
   column: number;
   componentName?: string;
+  confidence?: "exact" | "approximate" | "component";
 }
 
 export interface ElementFacts {
@@ -291,7 +292,13 @@ export interface StyleDetails {
 
 export interface ElementSelection {
   element: ElementFacts;
-  source: SourceLocation;
+  /**
+   * Authored source identity — absent when the selected DOM element has
+   * no trustworthy mapping (generic DOM inspection of runtime-created
+   * nodes). UI must treat a missing source as a normal state, never an
+   * error, and must not fabricate one.
+   */
+  source?: SourceLocation;
   styles?: StyleDetails;
 }
 

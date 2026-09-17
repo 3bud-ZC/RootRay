@@ -156,12 +156,13 @@ fn adapter_selection_is_framework_aware() {
         InspectorAdapter::for_framework(&Framework::NextJs),
         Some(InspectorAdapter::NextJs)
     );
-    for f in [
-        Framework::Vite,
-        Framework::StaticWeb,
-        Framework::NodeWeb,
-        Framework::Unknown,
-    ] {
+    // Non-React Vite gets the generic DOM adapter — HTML instrumentation
+    // only, no JSX stamping requirement.
+    assert_eq!(
+        InspectorAdapter::for_framework(&Framework::Vite),
+        Some(InspectorAdapter::ViteGeneric)
+    );
+    for f in [Framework::StaticWeb, Framework::NodeWeb, Framework::Unknown] {
         assert_eq!(InspectorAdapter::for_framework(&f), None, "{f:?}");
     }
 }

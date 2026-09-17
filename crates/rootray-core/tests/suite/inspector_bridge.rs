@@ -161,10 +161,81 @@ fn element_selection_is_propagated() {
     assert!(wait_for(|| mgr.state().last_selection.is_some(), 3000));
     let sel = mgr.state().last_selection.unwrap();
     assert_eq!(sel.element.tag_name, "button");
-    assert_eq!(sel.source.relative_path, "src/App.tsx");
-    assert_eq!(sel.source.line, 12);
-    assert_eq!(sel.source.column, 9);
-    assert_eq!(sel.source.component_name.as_deref(), Some("App"));
+    let src = sel.source.as_ref().expect("source present");
+    assert_eq!(src.relative_path, "src/App.tsx");
+    assert_eq!(src.line, 12);
+    assert_eq!(src.column, 9);
+    assert_eq!(src.component_name.as_deref(), Some("App"));
+    mgr.shutdown();
+}
+
+#[test]
+fn element_selection_without_source_is_propagated() {
+    // Generic DOM inspection: a runtime-created element is selectable
+    // even when no authored source mapping exists — `source` is absent,
+    // not a placeholder.
+    let (mgr, info, _states) = start_manager();
+    let mut ws = connected_ws(&info);
+    ws.send(Message::text(
+        format!(
+            r#"{{"version":1,"type":"element:selected","sessionId":"{}",
+                "element":{{"tagName":"div","className":"runtime-card","textPreview":"made by JS"}},
+                "styles":{{"classes":["runtime-card"],
+                    "box":{{"x":0,"y":0,"width":1,"height":1,
+                        "margin":{{"top":0,"right":0,"bottom":0,"left":0}},
+                        "padding":{{"top":0,"right":0,"bottom":0,"left":0}},
+                        "border":{{"top":0,"right":0,"bottom":0,"left":0}}}},
+                    "computed":{{"display":"block"}},"matchedRules":[]}}}}"#,
+            info.session_id
+        ),
+    ))
+    .unwrap();
+    assert!(wait_for(|| mgr.state().last_selection.is_some(), 3000));
+    let sel = mgr.state().last_selection.unwrap();
+    assert_eq!(sel.element.tag_name, "div");
+    assert!(sel.source.is_none());
+    assert!(sel.styles.is_some());
+    mgr.shutdown();
+}
+
+#[test]
+fn element_selection_with_null_source_is_dropped() {
+    // A *present* but invalid source must not silently become trusted:
+    // `null` is malformed, the whole message is rejected.
+    let (mgr, info, _states) = start_manager();
+    let mut ws = connected_ws(&info);
+    ws.send(Message::text(format!(
+        r#"{{"version":1,"type":"element:selected","sessionId":"{}",
+            "element":{{"tagName":"div"}},"source":null}}"#,
+        info.session_id
+    )))
+    .unwrap();
+    std::thread::sleep(Duration::from_millis(400));
+    assert!(mgr.state().last_selection.is_none());
+    mgr.shutdown();
+}
+
+#[test]
+fn element_selection_with_malformed_source_is_dropped() {
+    let (mgr, info, _states) = start_manager();
+    let mut ws = connected_ws(&info);
+    for bad in [
+        r#"{"relativePath":"C:/abs/x.html","line":1,"column":1}"#,
+        r#"{"relativePath":"/rooted/x.html","line":1,"column":1}"#,
+        r#"{"relativePath":"a\\b.html","line":1,"column":1}"#,
+        r#"{"relativePath":"x.html","line":0,"column":1}"#,
+        r#"{"relativePath":"x.html","line":1}"#,
+        r#""src/x.html""#,
+    ] {
+        ws.send(Message::text(format!(
+            r#"{{"version":1,"type":"element:selected","sessionId":"{}",
+                "element":{{"tagName":"div"}},"source":{bad}}}"#,
+            info.session_id
+        )))
+        .unwrap();
+    }
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(mgr.state().last_selection.is_none());
     mgr.shutdown();
 }
 
@@ -218,8 +289,9 @@ fn selection_without_confidence_is_accepted() {
     );
     assert!(wait_for(|| mgr.state().last_selection.is_some(), 3000));
     let sel = mgr.state().last_selection.unwrap();
-    assert_eq!(sel.source.relative_path, "src/App.tsx");
-    assert!(sel.source.confidence.is_none());
+    let src = sel.source.as_ref().expect("source present");
+    assert_eq!(src.relative_path, "src/App.tsx");
+    assert!(src.confidence.is_none());
     mgr.shutdown();
 }
 
@@ -236,7 +308,12 @@ fn selection_with_exact_confidence_is_accepted() {
     );
     assert!(wait_for(|| mgr.state().last_selection.is_some(), 3000));
     assert_eq!(
-        mgr.state().last_selection.unwrap().source.confidence.as_deref(),
+        mgr.state()
+            .last_selection
+            .unwrap()
+            .source
+            .and_then(|s| s.confidence)
+            .as_deref(),
         Some("exact")
     );
     mgr.shutdown();
@@ -260,7 +337,8 @@ fn selection_with_approximate_or_component_confidence_is_accepted() {
             || mgr.state()
                 .last_selection
                 .as_ref()
-                .is_some_and(|s| s.source.confidence.as_deref() == Some(confidence)),
+                .and_then(|s| s.source.as_ref())
+                .is_some_and(|s| s.confidence.as_deref() == Some(confidence)),
             3000
         ));
     }
@@ -366,7 +444,10 @@ fn selection_rebases_target_relative_to_workspace_relative() {
     );
     assert!(wait_for(|| mgr.state().last_selection.is_some(), 3000));
     let sel = mgr.state().last_selection.unwrap();
-    assert_eq!(sel.source.relative_path, "apps/web/app/page.tsx");
+    assert_eq!(
+        sel.source.as_ref().unwrap().relative_path,
+        "apps/web/app/page.tsx"
+    );
     assert_eq!(
         sel.styles.unwrap().matched_rules[0].source_path.as_deref(),
         Some("apps/web/styles/a.module.css")
@@ -390,7 +471,12 @@ fn selection_at_workspace_root_is_unchanged() {
     );
     assert!(wait_for(|| mgr.state().last_selection.is_some(), 3000));
     assert_eq!(
-        mgr.state().last_selection.unwrap().source.relative_path,
+        mgr.state()
+            .last_selection
+            .unwrap()
+            .source
+            .unwrap()
+            .relative_path,
         "src/App.tsx"
     );
     mgr.shutdown();

@@ -20,6 +20,19 @@ import { elementFacts, findInstrumentedElement, readSourceLocation } from "./met
 import { InspectorOverlay } from "./overlay";
 import { collectStyleDetails } from "./styles";
 
+/**
+ * How the runtime picks the element a pointer event inspects.
+ *
+ * - `"jsx-meta"` — legacy framework path: inspection tracks the nearest
+ *   *instrumented* ancestor (`data-rootray-file`). Elements without
+ *   instrumentation are not selectable.
+ * - `"generic-dom"` — framework-free inspection: EVERY real DOM element
+ *   is selectable. Source mapping still resolves when the element itself
+ *   carries trusted `data-rootray-*` stamps (authored HTML), and is
+ *   genuinely absent otherwise — never guessed.
+ */
+export type RuntimeMode = "generic-dom" | "jsx-meta";
+
 export interface RuntimeConfig {
   bridgeUrl: string;
   sessionId: string;
@@ -30,6 +43,14 @@ export interface RuntimeConfig {
    * hints before they leave the page. Never sent to the bridge.
    */
   projectRoot?: string;
+  /** Element picking strategy — defaults to `generic-dom`. */
+  mode?: RuntimeMode;
+  /**
+   * Same-origin `EventSource` endpoint served by the RootRay static
+   * server. On any message the page reloads — how Quick Edit saves get
+   * applied when the app has no HMR machinery of its own.
+   */
+  reloadUrl?: string;
 }
 
 /** Minimal socket contract — `WebSocket` satisfies this structurally. */
@@ -76,6 +97,7 @@ export class InspectorRuntime {
   private pendingFrame = 0;
   private lastPointerTarget: unknown = null;
   private listenersActive = false;
+  private reloadSource: { close(): void } | null = null;
 
   constructor(opts: RuntimeOptions) {
     this.cfg = opts.config;
@@ -97,6 +119,7 @@ export class InspectorRuntime {
   start(): void {
     if (this.destroyed) return;
     this.connect();
+    this.connectReload();
   }
 
   /** Full teardown: listeners off, overlay removed, socket closed, no retry. */
@@ -111,7 +134,25 @@ export class InspectorRuntime {
       /* socket may already be dead */
     }
     this.socket = null;
+    this.reloadSource?.close();
+    this.reloadSource = null;
     this.setPhase("idle");
+  }
+
+  /**
+   * Static-server reload channel. A bare SSE `data:` frame means "files
+   * changed" — the whole page reloads so re-served HTML/CSS/JS applies.
+   * EventSource auto-reconnects; failures are silent and harmless.
+   */
+  private connectReload(): void {
+    if (!this.cfg.reloadUrl || this.reloadSource) return;
+    try {
+      const es = new EventSource(this.cfg.reloadUrl);
+      es.onmessage = () => this.doc.location.reload();
+      this.reloadSource = es;
+    } catch {
+      /* EventSource unavailable — reload channel simply absent */
+    }
   }
 
   // --- connection -----------------------------------------------------------
@@ -240,25 +281,44 @@ export class InspectorRuntime {
     });
   };
 
+  /**
+   * The element a pointer event inspects.
+   * `jsx-meta`: nearest instrumented ancestor (unchanged legacy path).
+   * `generic-dom`: the element itself — every DOM node is inspectable,
+   * including `<canvas>` surfaces and runtime-created elements.
+   */
+  private pickTarget(target: unknown): Element | null {
+    if (this.cfg.mode === "jsx-meta") {
+      return findInstrumentedElement(target);
+    }
+    if (
+      target &&
+      typeof target === "object" &&
+      "nodeType" in target &&
+      (target as Node).nodeType === 1
+    ) {
+      return target as Element;
+    }
+    return null;
+  }
+
   private highlight(target: unknown): void {
     if (!this.inspecting) return;
-    const el = findInstrumentedElement(target);
+    const el = this.pickTarget(target);
     if (!el) {
       this.overlay.hide();
       return;
     }
+    // Source is optional — an unresolved element still highlights and
+    // reports facts/styles; the label just has no location to show.
     const source = readSourceLocation(el);
-    if (!source) {
-      this.overlay.hide();
-      return;
-    }
     this.overlay.show(el, elementFacts(el), source);
   }
 
   /** Suppresses focus/active side-effects of a click on an inspected target. */
   private onSuppress = (event: Event): void => {
     if (!this.inspecting) return;
-    if (findInstrumentedElement(event.target)) {
+    if (this.pickTarget(event.target)) {
       event.preventDefault();
       event.stopImmediatePropagation();
     }
@@ -266,20 +326,23 @@ export class InspectorRuntime {
 
   private onSelect = (event: Event): void => {
     if (!this.inspecting) return;
-    const el = findInstrumentedElement(event.target);
+    const el = this.pickTarget(event.target);
     if (!el) return;
     // The selected click never reaches the app: no navigation, no submit,
     // no React handlers.
     event.preventDefault();
     event.stopImmediatePropagation();
     const source = readSourceLocation(el);
-    if (!source) return;
+    // jsx-meta keeps the legacy contract: only elements that resolve to
+    // an authored source are selectable — a corrupt/absent stamp is not
+    // reported as "unmapped". generic-dom reports the element anyway.
+    if (this.cfg.mode === "jsx-meta" && !source) return;
     this.overlay.show(el, elementFacts(el), source);
     // Style details are collected on selection only — never on hover.
     const styles = collectStyleDetails(el, this.cfg.projectRoot ?? "") ?? undefined;
     this.send(
       serializeMessage(
-        elementSelectedMessage(this.cfg.sessionId, elementFacts(el), source, styles),
+        elementSelectedMessage(this.cfg.sessionId, elementFacts(el), source ?? undefined, styles),
       ),
     );
   };

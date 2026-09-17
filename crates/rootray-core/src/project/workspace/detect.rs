@@ -328,43 +328,45 @@ pub fn detect_target(
     }
 }
 
-/// A directory with `index.html` but no package.json — a plain browser
-/// project. Returns `None` when the directory is already a target.
-pub fn static_target(
+/// Directories with `index.html` but no package.json — plain browser
+/// projects. A manifest-backed directory is already a target; every other
+/// index.html dir becomes a static target (nested sites included).
+pub fn static_targets(
     root: &Path,
     scan: &Scan,
     findings: &mut Vec<String>,
-) -> Option<ProjectTarget> {
-    let dir = scan.index_html_dirs.first()?;
-    if scan.manifest_dirs.iter().any(|d| d == dir) {
-        return None; // already a manifest-backed target
+) -> Vec<ProjectTarget> {
+    const MAX_STATIC_TARGETS: usize = 16;
+    let mut out = Vec::new();
+    for dir in &scan.index_html_dirs {
+        if scan.manifest_dirs.iter().any(|d| d == dir) {
+            continue; // already a manifest-backed target
+        }
+        if out.len() >= MAX_STATIC_TARGETS {
+            break;
+        }
+        let rel_root = rel(root, dir);
+        let id = if rel_root.is_empty() { "root".to_string() } else { rel_root.clone() };
+        findings.push(format!("static web entry found: {id}/index.html"));
+        out.push(ProjectTarget {
+            id,
+            name: dir.file_name().map(|n| n.to_string_lossy().to_string()),
+            relative_root: rel_root,
+            absolute_root: dir.clone(),
+            kind: TargetKind::StaticWeb,
+            framework: Framework::StaticWeb,
+            framework_version: None,
+            languages: vec!["JavaScript".to_string()],
+            technologies: vec![],
+            package_manager: PackageManager::Unknown,
+            dev_script: None,
+            runner_candidates: vec![],
+            selected_runner: None,
+            capabilities: static_caps(),
+            evidence: vec!["index.html present".to_string()],
+        });
     }
-    let rel_root = rel(root, dir);
-    let id = if rel_root.is_empty() { "root".to_string() } else { rel_root.clone() };
-    findings.push(format!("static web entry found: {id}/index.html"));
-    let caps = CapabilityMatrix {
-        run: Capability::unavailable(
-            "no declared dev script — RootRay does not fabricate a server command",
-        ),
-        ..static_caps()
-    };
-    Some(ProjectTarget {
-        id,
-        name: dir.file_name().map(|n| n.to_string_lossy().to_string()),
-        relative_root: rel_root,
-        absolute_root: dir.clone(),
-        kind: TargetKind::StaticWeb,
-        framework: Framework::StaticWeb,
-        framework_version: None,
-        languages: vec!["JavaScript".to_string()],
-        technologies: vec![],
-        package_manager: PackageManager::Unknown,
-        dev_script: None,
-        runner_candidates: vec![],
-        selected_runner: None,
-        capabilities: caps,
-        evidence: vec!["index.html present".to_string()],
-    })
+    out
 }
 
 fn static_caps() -> CapabilityMatrix {
@@ -375,13 +377,17 @@ fn static_caps() -> CapabilityMatrix {
         quick_edit: Capability::available(),
         safe_write: Capability::available(),
         open_external: Capability::available(),
-        run: Capability::unavailable("no declared dev script"),
-        browser_open: Capability::unavailable("no dev server to produce a URL"),
-        dom_inspect: Capability::unavailable(NO_ADAPTER),
-        style_inspect: Capability::unavailable(NO_ADAPTER),
-        source_mapping: Capability::unavailable(NO_ADAPTER),
+        // No dev script is needed — RootRay's own loopback static server
+        // runs the site.
+        run: Capability::available(),
+        browser_open: Capability::available(),
+        dom_inspect: Capability::available(),
+        style_inspect: Capability::available(),
+        source_mapping: Capability::partial(
+            "authored HTML elements map exactly; runtime-created DOM has no authored source",
+        ),
         component_intelligence: Capability::not_applicable_because("not a React project"),
-        hmr_aware: Capability::not_applicable(),
+        hmr_aware: Capability::partial("RootRay reloads the page on save — no HMR"),
     }
 }
 
@@ -717,13 +723,15 @@ fn capabilities_for(
             caps.hmr_aware = Capability::available();
         }
         Framework::Vite => {
+            // Generic DOM inspection runs through the same Vite adapter —
+            // no React required. Authored index.html elements map exactly;
+            // JSX-bearing files still get element stamps if present.
             caps.browser_open = Capability::available();
-            caps.dom_inspect =
-                Capability::unavailable("inspector instrumentation requires React + Vite");
-            caps.style_inspect =
-                Capability::unavailable("inspector instrumentation requires React + Vite");
-            caps.source_mapping =
-                Capability::unavailable("inspector instrumentation requires React + Vite");
+            caps.dom_inspect = Capability::available();
+            caps.style_inspect = Capability::available();
+            caps.source_mapping = Capability::partial(
+                "authored HTML elements map exactly; runtime-created DOM has no authored source",
+            );
             caps.component_intelligence =
                 Capability::not_applicable_because("not a React project");
             caps.hmr_aware = Capability::available();
@@ -763,14 +771,20 @@ fn capabilities_for(
             }
         }
         Framework::StaticWeb => {
-            caps.browser_open =
-                Capability::unavailable("no dev server to produce a URL");
-            caps.dom_inspect = Capability::unavailable(NO_ADAPTER);
-            caps.style_inspect = Capability::unavailable(NO_ADAPTER);
-            caps.source_mapping = Capability::unavailable(NO_ADAPTER);
+            // Manifest-backed static target (package.json + index.html,
+            // no bundler) — served by RootRay's built-in loopback server,
+            // so a dev script is not required.
+            caps.run = Capability::available();
+            caps.browser_open = Capability::available();
+            caps.dom_inspect = Capability::available();
+            caps.style_inspect = Capability::available();
+            caps.source_mapping = Capability::partial(
+                "authored HTML elements map exactly; runtime-created DOM has no authored source",
+            );
             caps.component_intelligence =
                 Capability::not_applicable_because("not a React project");
-            caps.hmr_aware = Capability::not_applicable();
+            caps.hmr_aware =
+                Capability::partial("RootRay reloads the page on save — no HMR");
         }
         Framework::NodeWeb => {
             caps.browser_open =

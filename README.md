@@ -6,10 +6,12 @@ RootRay is a lightweight, local-first Windows developer tool that connects a
 rendered web UI back to its editable source code. Open almost any local
 project or workspace, let RootRay discover its structure, and get universal
 workspace tooling — Explorer, Quick Open, Workspace Search, Quick Edit —
-everywhere. Where a supported runtime exists (React + Vite, Next.js), run it,
-point at any element on the page, and RootRay shows you the exact file, line,
-and component that produced it — plus its styles, its usages, and a safe
-in-place editor when you just need a quick fix.
+everywhere. Where a supported runtime exists (React + Vite, Next.js, any
+Vite project, or a plain `index.html` site served by RootRay's built-in
+static server), run it, point at any element on the page, and RootRay
+shows you the exact file, line, and component that produced it — plus its
+styles, its usages, and a safe in-place editor when you just need a quick
+fix.
 
 RootRay is not an IDE. It is the missing bridge between *what you see* and
 *where it lives*. Bigger changes belong in your real editor — RootRay opens
@@ -76,15 +78,19 @@ bootstrapper automatically.
    technologies, and per-target capabilities. A monorepo's web target is
    selected automatically; multiple runnable targets get a selector.
 2. **Run Project** — launches your own Vite dev server through a Node
-   runner that injects a development-only instrumentation plugin.
+   runner that injects a development-only instrumentation plugin, or —
+   for a plain `index.html` project — serves the workspace through
+   RootRay's own loopback static server.
    Your `vite.config.*`, `package.json`, and sources are never modified.
    Live server logs stream into the Runner panel.
 3. **Open the printed localhost URL** — your app loads with a
    `data-rootray-*` instrumented DOM and the inspector runtime connected.
-4. **Enable Inspect Mode** and point at the UI.
+4. **Enable Inspect Mode** and point at the UI. Authored markup maps to
+   its file and line; elements the page created at runtime report facts
+   and styles honestly — with no invented source location.
 5. **Quick Edit** or **Open Source** at the exact location.
-6. **Save** — Vite's own watcher hot-reloads; instrumentation survives
-   HMR. Inspect again.
+6. **Save** — Vite's own watcher hot-reloads; on the static server a
+   save-driven reload applies the change. Inspect again.
 
 RootRay never starts a dev server on its own — not on launch, not on
 project restore. You press Run.
@@ -118,10 +124,10 @@ gets an honest **capability matrix**: `available`, `partial`,
 
 | Framework | Run | DOM inspect / source mapping |
 |---|---|---|
-| React + Vite | ✓ | ✓ full instrumentation |
-| Vite (non-React) | ✓ | ○ inspector requires React |
+| React + Vite | ✓ | ✓ full JSX instrumentation |
+| Vite (non-React) | ✓ | ✓ generic DOM inspect; authored `index.html` maps exactly |
 | Next.js | ✓ | ✓ full instrumentation (Turbopack + webpack dev paths) |
-| Static web (index.html) | only if a script exists | ○ |
+| Static web (index.html) | ✓ built-in static server | ✓ generic DOM inspect; authored HTML maps exactly |
 | Node/Express/CLI/library | if a safe script exists | n/a |
 
 - **Package managers:** pnpm, npm, yarn — detected per workspace from
@@ -245,14 +251,22 @@ crates/rootray-core        Native core: bounded workspace discovery,
                            (Windows Job Object containment), inspector
                            bridge/session, source preview, safe edit
                            sessions (hash-checked atomic writes, watcher),
-                           lazy nav + bounded search + source collection.
+                           lazy nav + bounded search + source collection,
+                           loopback static server (lol_html stamping, SSE
+                           reload) for index.html projects.
 apps/desktop               React 19 UI + thin src-tauri command layer;
                            lazy-loaded CodeMirror + intelligence chunks.
 packages/source-protocol   Versioned wire contract (validated both ways).
 packages/inspector-runtime Browser client: WS auth/reconnect, Shadow-DOM
                            overlay, hover/select, on-select style details.
+                           Two pick modes: jsx-meta (framework sites) and
+                           generic-dom (every element, source optional).
 packages/jsx-instrument    Shared Babel JSX/TSX source instrumentation.
-packages/vite-plugin       Dev-server runner + Vite adapter (jsx-instrument).
+packages/html-instrument   Parser-based (parse5) HTML stamping — authored
+                           elements get exact file/line/column; authored
+                           data-rootray-* is stripped before stamping.
+packages/vite-plugin       Dev-server runner + Vite adapter (jsx-instrument
+                           + transformIndexHtml HTML stamping).
 packages/next-adapter      Next.js adapter: NODE_OPTIONS shim → turbopack
                            rules / webpack wrapper → jsx-instrument loader.
 packages/intelligence      Bounded static React analysis (Babel).
@@ -276,10 +290,12 @@ save ─▶ SHA-256 check ─▶ temp-file + rename ─▶ watcher ─▶ HMR/Fa
 
 ## Known limitations
 
-- Rendered-element source inspection requires React + Vite or Next.js
-  (Turbopack and webpack dev paths). Vue, Svelte, Astro and Angular are
-  first-class workspaces with Run support, but their runtime source
-  adapters are not implemented yet.
+- JSX/component source inspection requires React + Vite or Next.js
+  (Turbopack and webpack dev paths). Other Vite projects and static sites
+  get full DOM inspection with authored-HTML mapping; runtime-created
+  elements report facts and styles without a fabricated source. Vue,
+  Svelte, Astro and Angular are first-class workspaces, but their
+  framework-specific runtime adapters are not implemented yet.
 - Next.js instrumentation requires a dev script RootRay can safely
   reconstruct (`next dev` with plain flags); composed or wrapped scripts
   still run — the capability row explains why inspection is off.

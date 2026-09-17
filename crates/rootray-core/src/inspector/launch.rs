@@ -116,6 +116,10 @@ pub type InspectorLaunchInfo = SessionInfo;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InspectorAdapter {
     ViteReact,
+    /// Vite without React — generic DOM inspection: authored index.html
+    /// elements map to source, runtime-created DOM stays inspectable
+    /// without a mapping.
+    ViteGeneric,
     NextJs,
 }
 
@@ -127,6 +131,7 @@ impl InspectorAdapter {
     pub fn for_framework(framework: &Framework) -> Option<Self> {
         match framework {
             Framework::ViteReact => Some(Self::ViteReact),
+            Framework::Vite => Some(Self::ViteGeneric),
             Framework::NextJs => Some(Self::NextJs),
             _ => None,
         }
@@ -142,7 +147,9 @@ impl InspectorAdapter {
         assets: &InspectorAssets,
     ) -> Result<(DevCommand, LaunchArtifacts), String> {
         match self {
-            Self::ViteReact => vite_dev_command(target, info, assets)
+            Self::ViteReact => vite_dev_command(target, info, assets, "jsx-meta")
+                .map(|c| (c, LaunchArtifacts::default())),
+            Self::ViteGeneric => vite_dev_command(target, info, assets, "generic-dom")
                 .map(|c| (c, LaunchArtifacts::default())),
             Self::NextJs => next_dev_command(target, info, assets),
         }
@@ -229,6 +236,7 @@ fn vite_dev_command(
     target: &ProjectTarget,
     info: &InspectorLaunchInfo,
     assets: &InspectorAssets,
+    mode: &str,
 ) -> Result<DevCommand, String> {
     let script = target.dev_script.as_deref().unwrap_or("");
     let vite_args = vite_args_from_dev_script(script)
@@ -253,6 +261,7 @@ fn vite_dev_command(
         ("ROOTRAY_SESSION_TOKEN".into(), info.token.clone()),
         ("ROOTRAY_PLUGIN_PATH".into(), assets.plugin.to_string_lossy().to_string()),
         ("ROOTRAY_RUNTIME_PATH".into(), assets.runtime.to_string_lossy().to_string()),
+        ("ROOTRAY_INSPECTOR_MODE".into(), mode.to_string()),
     ];
 
     Ok(DevCommand {
@@ -383,6 +392,10 @@ fn write_next_entry(
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default(),
+        // Next always uses JSX metadata picking — the shim instruments
+        // every JSX module, and the runtime resolves via nearest
+        // instrumented ancestor.
+        "mode": "jsx-meta",
     });
     let body = format!(
         "if (typeof window !== \"undefined\") {{\nwindow.__ROOTRAY__={};\n{}}}\n",

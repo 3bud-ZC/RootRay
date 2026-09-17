@@ -10,12 +10,14 @@ pub mod app;
 pub mod editor;
 pub mod error;
 pub mod filesystem;
+pub mod html_instrument;
 pub mod inspector;
 pub mod launcher;
 pub mod process;
 pub mod project;
 pub mod settings;
 pub mod state;
+pub mod static_server;
 
 pub use app::AppCore;
 pub use error::{CommandError, CoreError};

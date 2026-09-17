@@ -19,8 +19,14 @@ export function buildContextBlock(
   const { element, source, styles } = selection;
   const lines: string[] = [];
 
-  if (source.componentName) lines.push(`Component: ${source.componentName}`);
-  lines.push(`Source: ${source.relativePath}:${source.line}:${source.column}`);
+  if (source?.componentName) lines.push(`Component: ${source.componentName}`);
+  // A runtime-created element has no authored source — state that fact
+  // instead of fabricating a path.
+  lines.push(
+    source
+      ? `Source: ${source.relativePath}:${source.line}:${source.column}`
+      : "Source: (none — element created at runtime)",
+  );
   lines.push(`Tag: ${element.tagName}`);
   if (element.id) lines.push(`ID: #${element.id}`);
   if (styles && styles.classes.length > 0) {

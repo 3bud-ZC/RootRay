@@ -24,6 +24,8 @@ mod runtime_state;
 mod settings;
 #[path = "suite/source_edit.rs"]
 mod source_edit;
+#[path = "suite/static_server.rs"]
+mod static_server;
 #[path = "suite/url_detect.rs"]
 mod url_detect;
 #[path = "suite/workspace_discovery.rs"]

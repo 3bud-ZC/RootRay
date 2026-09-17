@@ -30,10 +30,31 @@ export function findInstrumentedElement(target: unknown): Element | null {
   return null;
 }
 
-/** Extracts the source identity stamped on an element by instrumentation. */
+/**
+ * Project-relative path contract — mirrors `is_safe_relative_path` in
+ * `crates/rootray-core/src/inspector/protocol.rs` and the validator in
+ * `@rootray/source-protocol`. Stamped metadata is untrusted input: a
+ * value that doesn't satisfy this is dropped, never interpreted.
+ */
+export function isSafeRelativePath(p: string): boolean {
+  return (
+    p.length > 0 &&
+    p.length <= MAX_FIELD &&
+    !p.includes("..") &&
+    !p.includes("\\") &&
+    !p.startsWith("/") &&
+    !/^[a-zA-Z]:/.test(p)
+  );
+}
+
+/**
+ * Extracts the source identity stamped on an element by instrumentation.
+ * Reads THIS element only — no ancestor walk — so a dynamically created
+ * node never inherits a misleading mapping from an authored container.
+ */
 export function readSourceLocation(el: Element): SourceLocation | null {
   const file = el.getAttribute(ATTR_FILE);
-  if (!file || file.length > MAX_FIELD || file.includes("..")) return null;
+  if (!file || !isSafeRelativePath(file)) return null;
   const line = Number(el.getAttribute(ATTR_LINE));
   const column = Number(el.getAttribute(ATTR_COLUMN));
   if (!Number.isInteger(line) || line < 1) return null;

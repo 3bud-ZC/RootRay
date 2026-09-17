@@ -188,6 +188,14 @@ impl RuntimeState {
         self.started_at = Some(now_millis());
     }
 
+    /// Marks the runtime live without an OS process — the RootRay-owned
+    /// static server runs in-process, so there is no pid to report.
+    pub fn set_running_detached(&mut self, command: String) {
+        self.pid = None;
+        self.command = Some(command);
+        self.started_at = Some(now_millis());
+    }
+
     pub fn set_url(&mut self, url: String, port: Option<u16>) {
         self.url = Some(url);
         self.port = port;

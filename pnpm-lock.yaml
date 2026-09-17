@@ -88,6 +88,25 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@24.13.4)(happy-dom@19.0.2)
 
+  packages/html-instrument:
+    dependencies:
+      magic-string:
+        specifier: ^0.30.21
+        version: 0.30.21
+      parse5:
+        specifier: ^7.3.0
+        version: 7.3.0
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.4
+        version: 24.13.4
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@24.13.4)(happy-dom@19.0.2)
+
   packages/inspector-runtime:
     dependencies:
       '@rootray/source-protocol':
@@ -181,6 +200,9 @@ importers:
 
   packages/vite-plugin:
     dependencies:
+      '@rootray/html-instrument':
+        specifier: workspace:*
+        version: link:../html-instrument
       '@rootray/jsx-instrument':
         specifier: workspace:*
         version: link:../jsx-instrument
@@ -1135,6 +1157,10 @@ packages:
   electron-to-chromium@1.5.427:
     resolution: {integrity: sha512-n14zb3FdsChZ2BNobqNHAJMcP3ifFv4paox2LvCrfVAQcqGiSURgbJl+PfMpHVCNFkStnNc+RRVtPBTVW5PDgw==}
 
+  entities@6.0.1:
+    resolution: {integrity: sha512-aN97NXWF6AWBTahfVOIrB/NShkzi5H7F9r1s9mD3cDj4Ko5f2qhhVoYMibXF7GlLveb/D2ioWay8lxI97Ven3g==}
+    engines: {node: '>=0.12'}
+
   es-module-lexer@1.7.0:
     resolution: {integrity: sha512-jEQoCwk8hyb2AZziIOLhDqpm5+2ww5uIE6lkO/6jcOCusfk6LhMHpXXfBLXTZ7Ydyt0j4VoUQv6uGNYbdW+kBA==}
 
@@ -1217,6 +1243,9 @@ packages:
   node-releases@2.0.55:
     resolution: {integrity: sha512-mIrE/Cw9y+9Au6dS5vDKDhQza9YvG6w+ZrS6X+ZzA7yFW/soAeaups4Qzn1bL6g5FVy8WtP79+0j82oPIbqRjQ==}
     engines: {node: '>=18'}
+
+  parse5@7.3.0:
+    resolution: {integrity: sha512-IInvU7fabl34qmi9gY8XOVxhYyMyuH2xUNpb2q8/Y+7552KlejkRvqvD19nMoUW/uQGGbqNpA6Tufu5FL5BZgw==}
 
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
@@ -2164,6 +2193,8 @@ snapshots:
 
   electron-to-chromium@1.5.427: {}
 
+  entities@6.0.1: {}
+
   es-module-lexer@1.7.0: {}
 
   esbuild@0.25.9:
@@ -2270,6 +2301,10 @@ snapshots:
   nanoid@3.3.19: {}
 
   node-releases@2.0.55: {}
+
+  parse5@7.3.0:
+    dependencies:
+      entities: 6.0.1
 
   pathe@2.0.3: {}
 

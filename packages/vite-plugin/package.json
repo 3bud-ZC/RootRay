@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@rootray/html-instrument": "workspace:*",
     "@rootray/jsx-instrument": "workspace:*",
     "@rootray/source-protocol": "workspace:*"
   },

@@ -118,7 +118,14 @@ export interface ElementSelectedMessage {
   type: "element:selected";
   sessionId: string;
   element: ElementFacts;
-  source: SourceLocation;
+  /**
+   * Authored source identity — ABSENT when the selected DOM element has
+   * no trustworthy mapping (e.g. a node created dynamically by plain
+   * JavaScript). Generic DOM inspection must be able to report a
+   * selection without one; `source` is never a dummy/placeholder value —
+   * either it validates fully or the key is omitted entirely.
+   */
+  source?: SourceLocation;
   /** Style snapshot — present when the runtime could collect it. */
   styles?: StyleDetails;
 }
@@ -173,7 +180,7 @@ export function readyMessage(sessionId: string): RuntimeReadyMessage {
 export function elementSelectedMessage(
   sessionId: string,
   element: ElementFacts,
-  source: SourceLocation,
+  source?: SourceLocation,
   styles?: StyleDetails,
 ): ElementSelectedMessage {
   const msg: ElementSelectedMessage = {
@@ -181,8 +188,8 @@ export function elementSelectedMessage(
     type: "element:selected",
     sessionId,
     element,
-    source,
   };
+  if (source) msg.source = source;
   if (styles) msg.styles = styles;
   return msg;
 }
@@ -416,16 +423,22 @@ export function parseRuntimeMessage(raw: string): ParseResult<RuntimeMessage> {
         return { ok: false, reason: "element:selected missing sessionId" };
       }
       const element = parseElementFacts(data.element);
-      const source = parseSourceLocation(data.source);
       if (!element) return { ok: false, reason: "element:selected has invalid element" };
-      if (!source) return { ok: false, reason: "element:selected has invalid source" };
       const message: ElementSelectedMessage = {
         version: ROOTRAY_PROTOCOL_VERSION,
         type: "element:selected",
         sessionId: data.sessionId,
         element,
-        source,
       };
+      // `source` is optional — a generic DOM selection may legitimately
+      // have no authored mapping. But a PRESENT source must validate in
+      // full: a malformed source (including `null`) rejects the message
+      // rather than degrading into a fake location.
+      if (data.source !== undefined) {
+        const source = parseSourceLocation(data.source);
+        if (!source) return { ok: false, reason: "element:selected has invalid source" };
+        message.source = source;
+      }
       // Optional payload — malformed styles degrade to absent, never to
       // a rejected selection.
       const styles = parseStyleDetails(data.styles);

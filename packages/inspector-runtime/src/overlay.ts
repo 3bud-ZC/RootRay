@@ -75,12 +75,20 @@ export class InspectorOverlay {
     this.host = host;
   }
 
-  /** Highlights `el` and shows its source label. */
-  show(el: Element, facts: ElementFacts, source: SourceLocation): void {
+  /**
+   * Highlights `el` and shows its label. `source` may be null — a
+   * runtime-created DOM element has no authored location and the label
+   * says so instead of hiding the highlight.
+   */
+  show(el: Element, facts: ElementFacts, source: SourceLocation | null): void {
     this.attach();
     this.target = el;
-    if (this.labelName) this.labelName.textContent = source.componentName ?? facts.tagName;
-    if (this.labelLoc) this.labelLoc.textContent = `  ${source.relativePath}:${source.line}`;
+    if (this.labelName) this.labelName.textContent = source?.componentName ?? facts.tagName;
+    if (this.labelLoc) {
+      this.labelLoc.textContent = source
+        ? `  ${source.relativePath}:${source.line}`
+        : "  no source";
+    }
     this.render();
   }
 

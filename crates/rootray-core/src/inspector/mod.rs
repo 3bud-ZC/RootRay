@@ -299,8 +299,11 @@ impl InspectorManager {
                     // Re-base stamped paths (target-relative) onto the
                     // workspace root — every downstream file operation
                     // resolves against the workspace security root.
-                    sel.source.relative_path =
-                        Self::workspace_relative(inner, &sel.source.relative_path);
+                    // `source` may be absent for generic DOM selections.
+                    if let Some(src) = sel.source.as_mut() {
+                        src.relative_path =
+                            Self::workspace_relative(inner, &src.relative_path);
+                    }
                     if let Some(styles) = sel.styles.as_mut() {
                         for rule in &mut styles.matched_rules {
                             if let Some(p) = rule.source_path.take() {

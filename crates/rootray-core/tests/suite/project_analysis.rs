@@ -248,14 +248,20 @@ fn vite_phaser_fixture_is_not_react() {
 }
 
 #[test]
-fn static_web_fixture_detected_without_runner() {
+fn static_web_fixture_detected_and_runnable() {
     let a = analyze_workspace(&fixtures_dir().join("static-web")).unwrap();
     let t = a.active_target().unwrap();
     assert_eq!(t.framework, Framework::StaticWeb);
     assert_eq!(t.kind, TargetKind::StaticWeb);
     assert!(t.capabilities.workspace_browse.is_available());
     assert!(t.capabilities.quick_edit.is_available());
-    assert!(!t.capabilities.run.is_available());
+    // No dev script — RootRay's built-in loopback server runs it.
+    assert!(t.capabilities.run.is_available());
+    assert!(t.capabilities.dom_inspect.is_available());
+    assert_eq!(
+        t.capabilities.source_mapping.state,
+        CapabilityState::Partial
+    );
     assert!(t.selected_runner.is_none());
 }
 

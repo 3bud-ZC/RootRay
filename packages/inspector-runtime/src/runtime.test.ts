@@ -4,14 +4,17 @@ import { ROOTRAY_PROTOCOL_VERSION } from "@rootray/source-protocol";
 import { describe, expect, it, vi } from "vitest";
 import { elementFacts, findInstrumentedElement, readSourceLocation } from "./metadata";
 import { InspectorOverlay, OVERLAY_HOST_ATTR } from "./overlay";
-import { type BridgeSocket, InspectorRuntime } from "./runtime";
+import { type BridgeSocket, InspectorRuntime, type RuntimeConfig } from "./runtime";
 
 const CFG = {
   bridgeUrl: "ws://127.0.0.1:4444/rootray",
   sessionId: "sess-test",
   token: "tok-test",
   protocolVersion: ROOTRAY_PROTOCOL_VERSION,
+  mode: "jsx-meta" as const,
 };
+
+const CFG_GENERIC = { ...CFG, mode: "generic-dom" as const };
 
 /** Controllable fake bridge socket. */
 class FakeSocket implements BridgeSocket {
@@ -37,11 +40,11 @@ class FakeSocket implements BridgeSocket {
   }
 }
 
-function makeRuntime() {
+function makeRuntime(config: RuntimeConfig = CFG) {
   const socket = new FakeSocket();
   const phases: string[] = [];
   const rt = new InspectorRuntime({
-    config: CFG,
+    config,
     socketFactory: () => socket,
     document,
     window,
@@ -233,6 +236,18 @@ describe("inspection", () => {
     rt.destroy();
   });
 
+  it("does not select instrumented elements with invalid stamped paths", () => {
+    const { socket, rt } = makeRuntime();
+    document.body.innerHTML =
+      '<div data-rootray-file="../../secret.txt" data-rootray-line="1" data-rootray-column="1"></div>';
+    rt.start();
+    handshake(socket);
+    socket.receive({ version: 1, type: "inspect:set", enabled: true });
+    document.querySelector("div")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(socket.sent.some((m) => m.includes("element:selected"))).toBe(false);
+    rt.destroy();
+  });
+
   it("Escape requests inspection off and restores app clicks", () => {
     const { socket, rt } = makeRuntime();
     const btn = instrumentedButton();
@@ -263,5 +278,80 @@ describe("inspection", () => {
     btn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     expect(clicks).toBe(1);
     expect(document.documentElement.querySelector(`[${OVERLAY_HOST_ATTR}]`)).toBeNull();
+  });
+});
+
+describe("generic-dom mode", () => {
+  it("selects elements with no source metadata and omits source", () => {
+    const { socket, rt } = makeRuntime(CFG_GENERIC);
+    document.body.innerHTML = '<div class="runtime-card"><span id="t">made by JS</span></div>';
+    rt.start();
+    handshake(socket);
+    socket.receive({ version: 1, type: "inspect:set", enabled: true });
+    document
+      .getElementById("t")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    const sel = socket.sent.map((m) => JSON.parse(m)).find((m) => m.type === "element:selected");
+    expect(sel).toBeTruthy();
+    expect(sel.element.tagName).toBe("span");
+    expect("source" in sel).toBe(false);
+    rt.destroy();
+  });
+
+  it("maps authored stamped elements to their HTML source", () => {
+    const { socket, rt } = makeRuntime(CFG_GENERIC);
+    document.body.innerHTML =
+      '<canvas id="arena" data-rootray-file="index.html" data-rootray-line="4" data-rootray-column="3"></canvas>';
+    rt.start();
+    handshake(socket);
+    socket.receive({ version: 1, type: "inspect:set", enabled: true });
+    document
+      .getElementById("arena")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    const sel = socket.sent.map((m) => JSON.parse(m)).find((m) => m.type === "element:selected");
+    expect(sel.element.tagName).toBe("canvas");
+    expect(sel.source).toMatchObject({
+      relativePath: "index.html",
+      line: 4,
+      column: 3,
+      confidence: "exact",
+    });
+    rt.destroy();
+  });
+
+  it("shows the overlay for source-less elements", () => {
+    const { socket, rt } = makeRuntime(CFG_GENERIC);
+    document.body.innerHTML = "<div><p id='p'>plain</p></div>";
+    const overlay = new InspectorOverlay(document);
+    void overlay; // runtime owns its own overlay
+    rt.start();
+    handshake(socket);
+    socket.receive({ version: 1, type: "inspect:set", enabled: true });
+    document.getElementById("p")!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    // Flush the rAF-throttled highlight.
+    return new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        const host = document.documentElement.querySelector(`[${OVERLAY_HOST_ATTR}]`);
+        const label = host?.shadowRoot?.querySelector(".rr-label");
+        expect(label?.textContent).toContain("no source");
+        rt.destroy();
+        resolve();
+      });
+    });
+  });
+
+  it("suppresses clicks on every element while inspecting", () => {
+    const { socket, rt } = makeRuntime(CFG_GENERIC);
+    document.body.innerHTML = "<p>plain</p>";
+    let clicks = 0;
+    document.querySelector("p")!.addEventListener("click", () => clicks++);
+    rt.start();
+    handshake(socket);
+    socket.receive({ version: 1, type: "inspect:set", enabled: true });
+    document
+      .querySelector("p")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(clicks).toBe(0);
+    rt.destroy();
   });
 });

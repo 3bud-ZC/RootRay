@@ -91,8 +91,9 @@ fn start_requires_project() {
 #[test]
 fn start_rejects_target_without_runner() {
     let (core, _tmp) = core();
-    // Static-web workspace: fully browsable, but nothing to run.
-    core.analyze(&fixtures().join("static-web")).unwrap();
+    // A non-web tool with no dev script has nothing to run — unlike
+    // static-web, which RootRay serves itself.
+    core.analyze(&fixtures().join("node-cli")).unwrap();
     let err = core.start_dev_server(noop_sink(), false).unwrap_err();
     assert_eq!(err.code(), "TARGET_RUNNER_UNAVAILABLE");
     assert_eq!(core.state().phase, RuntimePhase::Ready); // not left dangling

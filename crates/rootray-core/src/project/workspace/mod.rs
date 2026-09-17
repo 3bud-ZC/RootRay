@@ -170,10 +170,9 @@ pub fn analyze_workspace(root: &Path) -> CoreResult<WorkspaceAnalysis> {
             detect::detect_target(&root, dir, ws_pm, &workspace_kind, &mut metrics, &mut warnings)
         })
         .collect();
-    // Static-web target when no manifest target covers the HTML entry.
-    if let Some(t) = detect::static_target(&root, &scan, &mut findings) {
-        targets.push(t);
-    }
+    // Static-web targets: index.html dirs not covered by a manifest
+    // target (nested sites included).
+    targets.extend(detect::static_targets(&root, &scan, &mut findings));
     targets.sort_by(|a, b| a.id.cmp(&b.id));
 
     // --- active target -------------------------------------------------

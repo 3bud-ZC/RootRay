@@ -41,8 +41,8 @@ describe("runtime message parsing", () => {
     const r = parseRuntimeMessage(selection);
     expect(r.ok).toBe(true);
     if (r.ok && r.message.type === "element:selected") {
-      expect(r.message.source.relativePath).toBe("src/components/LoginButton.tsx");
-      expect(r.message.source.line).toBe(3);
+      expect(r.message.source?.relativePath).toBe("src/components/LoginButton.tsx");
+      expect(r.message.source?.line).toBe(3);
       expect(r.message.element.tagName).toBe("button");
     }
   });
@@ -76,10 +76,62 @@ describe("runtime message parsing", () => {
     expect(parseRuntimeMessage(JSON.stringify(msg)).ok).toBe(false);
   });
 
-  it("rejects a selection without source", () => {
+  it("accepts a selection without source (generic DOM inspection)", () => {
+    // Additive v1 change: `source` may be absent — a runtime-created DOM
+    // element has no authored mapping and must not carry a fake one.
     const msg = JSON.parse(selection);
     delete msg.source;
+    const r = parseRuntimeMessage(JSON.stringify(msg));
+    expect(r.ok).toBe(true);
+    if (r.ok && r.message.type === "element:selected") {
+      expect(r.message.source).toBeUndefined();
+      expect(r.message.element.tagName).toBe("button");
+    }
+  });
+
+  it("accepts styles on a source-less selection", () => {
+    const msg = elementSelectedMessage("sess-1", { tagName: "div" }, undefined, {
+      classes: ["x"],
+      box: {
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+        margin: { top: 0, right: 0, bottom: 0, left: 0 },
+        padding: { top: 0, right: 0, bottom: 0, left: 0 },
+        border: { top: 0, right: 0, bottom: 0, left: 0 },
+      },
+      computed: { display: "block" },
+      matchedRules: [],
+    });
+    const r = parseRuntimeMessage(JSON.stringify(msg));
+    expect(r.ok).toBe(true);
+    if (r.ok && r.message.type === "element:selected") {
+      expect(r.message.source).toBeUndefined();
+      expect(r.message.styles?.classes).toEqual(["x"]);
+    }
+  });
+
+  it("rejects a present-but-invalid source (null is not 'absent')", () => {
+    const msg = JSON.parse(selection);
+    msg.source = null;
     expect(parseRuntimeMessage(JSON.stringify(msg)).ok).toBe(false);
+  });
+
+  it("rejects malformed source payloads rather than degrading", () => {
+    for (const bad of [
+      { relativePath: "C:/abs/x.html", line: 1, column: 1 },
+      { relativePath: "/rooted/x.html", line: 1, column: 1 },
+      { relativePath: "../escape.html", line: 1, column: 1 },
+      { relativePath: "x.html", line: 0, column: 1 },
+      { relativePath: "x.html", line: 1 },
+      "src/x.html",
+      42,
+    ]) {
+      const msg = JSON.parse(selection);
+      msg.source = bad;
+      expect(parseRuntimeMessage(JSON.stringify(msg)).ok).toBe(false);
+    }
   });
 
   it("rejects invalid line/column", () => {

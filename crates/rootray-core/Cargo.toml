@@ -7,6 +7,7 @@ description = "RootRay native core: project detection, dev-server lifecycle, lau
 
 [dependencies]
 getrandom = "0.3"
+lol_html = "3"
 notify = "8.2.0"
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -171,12 +171,7 @@ function isIntrinsicJsx(node: AnyNode): string | null {
   return tag;
 }
 
-function alreadyInstrumented(node: AnyNode): boolean {
-  if (!Array.isArray(node.attributes)) return false;
-  return node.attributes.some(
-    (a) => isNode(a) && a.type === "JSXAttribute" && isNode(a.name) && a.name.name === ATTR_FILE,
-  );
-}
+const RESERVED_ATTR_PREFIX = "data-rootray";
 
 interface CollectedInsertion {
   /** Absolute offset in `code` where attributes are appended. */
@@ -184,8 +179,68 @@ interface CollectedInsertion {
   attrs: string;
 }
 
-function collectInsertions(ast: AnyNode, relativePath: string): CollectedInsertion[] {
+interface CollectedRemoval {
+  /** Source range of an authored `data-rootray-*` attribute to delete. */
+  start: number;
+  end: number;
+}
+
+/**
+ * Reserved-attribute hygiene: authored `data-rootray-*` attributes are
+ * never trusted. We remove any of them (spoof attempts or leftovers from
+ * a previous pass) and stamp fresh values — instrumentation output is
+ * the only source of `data-rootray-*` the runtime accepts.
+ */
+function collectReservedRemovals(node: AnyNode, removals: CollectedRemoval[]): void {
+  if (!Array.isArray(node.attributes)) return;
+  for (const a of node.attributes) {
+    if (!isNode(a) || a.type !== "JSXAttribute") continue;
+    const name = a.name;
+    if (!isNode(name) || name.type !== "JSXIdentifier") continue;
+    if (
+      typeof name.name === "string" &&
+      name.name.startsWith(RESERVED_ATTR_PREFIX) &&
+      typeof a.start === "number" &&
+      typeof a.end === "number"
+    ) {
+      removals.push({ start: a.start, end: a.end });
+    }
+  }
+}
+
+/**
+ * Idempotency guard: an element already stamped with `data-rootray-file`
+ * equal to this module's real relative path carries positions recorded by
+ * a previous pass — keep them verbatim. Recomputing on transformed code
+ * would silently shift positions (e.g. the injected entry import adds a
+ * line above, and loaders may run more than once in a bundler chain).
+ *
+ * Stamps pointing at a DIFFERENT file are not trusted here: they get
+ * stripped and replaced with this element's true location.
+ */
+function stampedForThisFile(node: AnyNode, relativePath: string): boolean {
+  if (!Array.isArray(node.attributes)) return false;
+  return node.attributes.some((a) => {
+    if (!isNode(a) || a.type !== "JSXAttribute") return false;
+    const name = a.name;
+    const value = a.value;
+    return (
+      isNode(name) &&
+      name.type === "JSXIdentifier" &&
+      name.name === ATTR_FILE &&
+      isNode(value) &&
+      value.type === "StringLiteral" &&
+      value.value === relativePath
+    );
+  });
+}
+
+function collectInsertions(
+  ast: AnyNode,
+  relativePath: string,
+): { insertions: CollectedInsertion[]; removals: CollectedRemoval[] } {
   const out: CollectedInsertion[] = [];
+  const removals: CollectedRemoval[] = [];
   // Stack of boundary names; innermost non-null is the owning component.
   const stack: (string | null)[] = [];
 
@@ -202,7 +257,8 @@ function collectInsertions(ast: AnyNode, relativePath: string): CollectedInserti
     if (boundary) stack.push(boundaryName(node, parent));
 
     const tag = isIntrinsicJsx(node);
-    if (tag && !alreadyInstrumented(node) && node.loc && isNode(node.name)) {
+    if (tag && node.loc && isNode(node.name) && !stampedForThisFile(node, relativePath)) {
+      collectReservedRemovals(node, removals);
       const nameNode = node.name;
       if (typeof nameNode.end === "number") {
         const line = node.loc.start.line;
@@ -233,7 +289,7 @@ function collectInsertions(ast: AnyNode, relativePath: string): CollectedInserti
   };
 
   walk(ast, null);
-  return out;
+  return { insertions: out, removals };
 }
 
 // --- public API --------------------------------------------------------------------
@@ -275,10 +331,12 @@ export function instrumentSource(opts: InstrumentOptions): InstrumentResult | nu
     return null;
   }
 
-  const insertions = collectInsertions(ast.program as AnyNode, relativePath);
-  if (insertions.length === 0) return null;
+  const { insertions, removals } = collectInsertions(ast.program as AnyNode, relativePath);
+  if (insertions.length === 0 && removals.length === 0) return null;
 
   const ms = new MagicString(opts.code);
+  // Strip authored reserved attributes, then stamp trusted values.
+  for (const rm of removals) ms.remove(rm.start, rm.end);
   // Apply right-to-left so earlier offsets stay valid.
   for (const ins of insertions.sort((a, b) => b.at - a.at)) {
     ms.appendLeft(ins.at, ins.attrs);
@@ -304,6 +362,10 @@ export interface RuntimeBootstrap {
   version: number;
   /** Absolute project root — lets the runtime relativize stylesheet hints. */
   projectRoot: string;
+  /** Runtime element-picking mode — `generic-dom` for non-React surfaces. */
+  mode?: "generic-dom" | "jsx-meta";
+  /** Same-origin SSE endpoint that triggers a full page reload on save. */
+  reloadUrl?: string;
 }
 
 export function bootstrapConfig(opts: {
@@ -311,6 +373,8 @@ export function bootstrapConfig(opts: {
   sessionId: string;
   token: string;
   projectRoot: string;
+  mode?: "generic-dom" | "jsx-meta";
+  reloadUrl?: string;
 }): RuntimeBootstrap {
   return { ...opts, version: ROOTRAY_PROTOCOL_VERSION };
 }

@@ -107,10 +107,45 @@ describe("instrumentSource", () => {
     expect(out.code).not.toContain("<Foo.Bar data-rootray");
   });
 
-  it("does not double-instrument existing metadata", () => {
-    const code = `const A = () => <div data-rootray-file="src/App.tsx" data-rootray-line={1} data-rootray-column={3}>x</div>;`;
-    // Nothing to add → no transform at all.
-    expect(instrument(code)).toBeNull();
+  it("replaces authored data-rootray-* attributes with trusted stamps", () => {
+    // Authored reserved metadata is never trusted — it is stripped and
+    // restamped, so source markup cannot spoof a source identity.
+    const code = `const A = () => <div data-rootray-file="spoofed.ts" data-rootray-line={1} data-rootray-column={3}>x</div>;`;
+    const out = instrument(code)!;
+    expect(out).not.toBeNull();
+    expect(out.code).not.toContain("spoofed.ts");
+    expect(out.code).toContain('data-rootray-file="src/App.tsx"');
+    expect(out.code).toContain("data-rootray-line={1}");
+  });
+
+  it("is idempotent — a second pass preserves first-pass positions", () => {
+    // Bundler chains can run the loader more than once; the injected
+    // entry import shifts the second parse's line numbers, so recomputing
+    // stamps would corrupt the mapping. Elements already carrying this
+    // file's stamp keep their recorded positions verbatim.
+    const code = [
+      '"use client";',
+      "",
+      "export function Btn() {",
+      "  return <button>go</button>;",
+      "}",
+    ].join("\n");
+    const once = instrumentSource({
+      id: ID,
+      projectRoot: ROOT,
+      code,
+      entryImport: "./node_modules/.cache/rootray/entry.js",
+    })!;
+    expect(once.code).toContain("data-rootray-line={4}");
+    const twice = instrumentSource({
+      id: ID,
+      projectRoot: ROOT,
+      code: once.code,
+      entryImport: "./node_modules/.cache/rootray/entry.js",
+    });
+    // Either left untouched or byte-identical — positions stay authored.
+    expect(twice === null || twice.code === once.code).toBe(true);
+    expect(once.code).toContain("data-rootray-line={4}");
   });
 
   it("supports svg and namespaced-free native tags", () => {

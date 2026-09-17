@@ -132,6 +132,7 @@ async function main(): Promise<void> {
     process.env.ROOTRAY_SESSION_TOKEN ?? fail("ROOTRAY_SESSION_TOKEN is not set");
   const pluginPath = process.env.ROOTRAY_PLUGIN_PATH ?? fail("ROOTRAY_PLUGIN_PATH is not set");
   const runtimePath = process.env.ROOTRAY_RUNTIME_PATH ?? fail("ROOTRAY_RUNTIME_PATH is not set");
+  const inspectorMode = process.env.ROOTRAY_INSPECTOR_MODE;
   if (!isAbsolute(pluginPath) || !isAbsolute(runtimePath)) {
     fail("plugin/runtime paths must be absolute");
   }
@@ -158,6 +159,7 @@ async function main(): Promise<void> {
     sessionToken,
     runtimePath,
     projectRoot,
+    ...(inspectorMode ? { mode: inspectorMode } : {}),
   });
 
   const server = await vite.createServer({

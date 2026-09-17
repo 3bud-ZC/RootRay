@@ -3,14 +3,21 @@
  *
  * - `transform` (enforce: "pre") stamps JSX source identity before the
  *   React plugin compiles it away.
- * - `transformIndexHtml` injects the session bootstrap + runtime script.
+ * - `transformIndexHtml` stamps authored HTML source identity and injects
+ *   the session bootstrap + runtime script.
  * - `configureServer` serves the bundled inspector runtime from memory.
  *
  * `apply: "serve"` guarantees nothing here ever touches production builds.
  */
 
 import { readFileSync } from "node:fs";
-import { bootstrapConfig, instrumentSource, shouldInstrument } from "@rootray/jsx-instrument";
+import { instrumentHtml } from "@rootray/html-instrument";
+import {
+  bootstrapConfig,
+  instrumentSource,
+  relativeSourcePath,
+  shouldInstrument,
+} from "@rootray/jsx-instrument";
 import type { Plugin } from "vite";
 
 export const RUNTIME_URL = "/__rootray/runtime.js";
@@ -24,6 +31,17 @@ export interface RootRayInspectorOptions {
   runtimePath: string;
   /** Canonical absolute project root — source paths are relative to it. */
   projectRoot: string;
+  /**
+   * Runtime element-picking mode:
+   * - `jsx-meta` (default) — nearest instrumented ancestor; used for
+   *   React projects.
+   * - `generic-dom` — every DOM element is inspectable; used for Vite
+   *   projects without React. JSX stamping still runs (a JSX-using
+   *   project without React, e.g. Solid/Preact, keeps element mapping).
+   */
+  mode?: "generic-dom" | "jsx-meta";
+  /** Same-origin SSE endpoint for save-driven reload (static server only). */
+  reloadUrl?: string;
 }
 
 export default function rootrayInspector(opts: RootRayInspectorOptions): Plugin {
@@ -62,30 +80,52 @@ export default function rootrayInspector(opts: RootRayInspectorOptions): Plugin 
       });
     },
 
-    transformIndexHtml(html) {
-      const cfg = JSON.stringify(
-        bootstrapConfig({
-          bridgeUrl: opts.bridgeUrl,
-          sessionId: opts.sessionId,
-          token: opts.sessionToken,
-          projectRoot: opts.projectRoot,
-        }),
-      ).replace(/</g, "\\u003c");
-      return {
-        html,
-        tags: [
-          {
-            tag: "script",
-            injectTo: "head-prepend",
-            children: `window.__ROOTRAY__=${cfg};`,
-          },
-          {
-            tag: "script",
-            injectTo: "head-prepend",
-            attrs: { src: RUNTIME_URL },
-          },
-        ],
-      };
+    // `order: "pre"` is required (not just plugin `enforce: "pre"`): Vite's
+    // internal `devHtmlHook` — which prepends `/@vite/client` to <head> —
+    // runs after "pre" hooks but before "normal" hooks. Stamping positions
+    // from the raw authored HTML keeps line/column numbers factual against
+    // the file on disk.
+    transformIndexHtml: {
+      order: "pre",
+      handler(html, ctx) {
+        // Parser-based HTML instrumentation: every authored element gets a
+        // data-rootray-* identity stamped from its real source location,
+        // and authored spoofed attributes are stripped. Applies to BOTH
+        // modes — authored index.html elements (app shells, canvases,
+        // static markup outside a framework root) map to their source.
+        let stampedHtml = html;
+        try {
+          const rel = relativeSourcePath(ctx.filename, opts.projectRoot);
+          if (rel) stampedHtml = instrumentHtml(html, rel).code;
+        } catch {
+          // Never break the dev server over HTML instrumentation.
+        }
+        const cfg = JSON.stringify(
+          bootstrapConfig({
+            bridgeUrl: opts.bridgeUrl,
+            sessionId: opts.sessionId,
+            token: opts.sessionToken,
+            projectRoot: opts.projectRoot,
+            ...(opts.mode ? { mode: opts.mode } : {}),
+            ...(opts.reloadUrl ? { reloadUrl: opts.reloadUrl } : {}),
+          }),
+        ).replace(/</g, "\\u003c");
+        return {
+          html: stampedHtml,
+          tags: [
+            {
+              tag: "script",
+              injectTo: "head-prepend",
+              children: `window.__ROOTRAY__=${cfg};`,
+            },
+            {
+              tag: "script",
+              injectTo: "head-prepend",
+              attrs: { src: RUNTIME_URL },
+            },
+          ],
+        };
+      },
     },
   };
 }

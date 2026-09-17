@@ -3,8 +3,65 @@
 ## Current Development
 **v0.2.0-dev** — Universal Project Workspace
 
-**Milestone:** 02 — Next.js Runtime & Visual Source Inspection
-**Progress:** 40% of the v0.2.0 track
+**Milestone:** 03 — Generic Browser Runtime, Static Web & Non-React Inspection
+**Progress:** 60% of the v0.2.0 track
+
+### Milestone 03 — Generic Browser Runtime, Static Web & Non-React Inspection
+
+The enduring objective: **RootRay stays useful when the page is not
+React.** This milestone delivers framework-free DOM inspection on every
+supported runtime, exact authored-HTML source mapping, a native static
+server for `index.html` projects, and honest source-less selections for
+runtime-created DOM.
+
+- **Source-optional protocol** — `element:selected.source` is now
+  optional in `@rootray/source-protocol`, `packages/shared`, and the Rust
+  mirror. Validation stays strict whenever a source IS present; a
+  runtime-created element reports facts and styles with no fabricated
+  location.
+- **`@rootray/html-instrument`** — parser-based (parse5 + magic-string)
+  HTML stamping: every authored renderable element gets
+  `data-rootray-file/line/column` from real parse locations. Structural
+  tags (`html/head/body/meta/script/…`) are skipped; template contents
+  are traversed; authored `data-rootray-*` is stripped before trusted
+  stamps — spoofing can't survive. The Rust mirror
+  (`html_instrument.rs`, lol_html) implements the identical contract for
+  the static server.
+- **Generic DOM runtime mode** — `inspector-runtime` gains
+  `mode: "generic-dom" | "jsx-meta"` plus `reloadUrl`. generic-dom picks
+  the element itself (every DOM node is inspectable, `<canvas>` included)
+  and reports source only when the element itself carries a valid stamp.
+  jsx-meta keeps the legacy nearest-instrumented-ancestor contract —
+  React/Next behavior is unchanged. The overlay shows "no source" instead
+  of hiding. An `EventSource` client on `reloadUrl` reloads the page on
+  save-driven notifications.
+- **Vite generic path** — `InspectorAdapter::ViteGeneric` for
+  `Framework::Vite`; the runner forwards `ROOTRAY_INSPECTOR_MODE`. The
+  plugin's `transformIndexHtml` now runs with `order: "pre"` — Vite's
+  internal `devHtmlHook` injects `/@vite/client` *before* normal hooks,
+  which had silently offset stamped lines by +2 on the first e2e run.
+  Stamping raw authored HTML keeps positions factual.
+- **Native static server** (`static_server.rs`) — loopback-only HTTP
+  for projects with no dev script: traversal/junction/host-header safe,
+  GET+HEAD, nested-target subdirectory support, Rust-side HTML
+  instrumentation + runtime/bootstrap injection, and an SSE endpoint
+  (`/__rootray/events`) that reloads connected pages after RootRay saves.
+  AppCore owns its lifecycle; Stop/Restart treat it like any other
+  server. Event ordering is fixed so `UrlDetected` reaches the UI with
+  the Running state already applied (the installed app previously sat
+  at "starting" — a stale state snapshot raced the URL event).
+- **Instrumentation idempotency** — `jsx-instrument` now keeps a
+  previous pass's stamp when `data-rootray-file` already names the real
+  module: bundler chains may run the loader twice, and recomputing on
+  transformed code had silently shifted the Next golden path by one line
+  (the injected entry import). Mismatched/absent stamps are still
+  stripped and restamped.
+- **Frontend** — every source-dependent action guards on `sel.source`:
+  Open Source / Quick Edit / Copy Path / Copy Context / component
+  intelligence / source preview / editor sync. Source-less selections
+  show DOM facts and styles and are marked "No authored source".
+- **Fixtures** — `fixtures/vite-vanilla` (TS, no framework) and
+  `fixtures/nested-static/app` (subdirectory static site).
 
 ### Milestone 02 — Next.js Runtime & Visual Source Inspection
 
@@ -130,27 +187,39 @@
 
 ### Deferred to later milestones
 
-- Milestone 03 — Generic Browser Runtime, Static Web & Non-React
-  Inspection.
-- Built-in static server for `index.html`-only projects.
-- Vue/Svelte/Astro/Nuxt/Angular runtime adapters.
+- Milestone 04+ — remaining v0.2.0 scope.
+- Vue/Svelte/Astro/Nuxt/Angular runtime adapters (generic DOM inspection
+  already covers every served page; framework-specific component
+  intelligence is the remaining gap).
 
 ### v0.2.0 verification
 
-- `cargo test -p rootray-core` — 172 passed, 0 failed, 1 ignored
+- `cargo test -p rootray-core` — 189 passed, 0 failed, 1 ignored
   (`golden_path_real_vite_server` — real `npm run dev` run, passes with
-  `--ignored`).
-- `pnpm -r test` — Vitest 137 green (shared 7, source-protocol 18,
-  intelligence 17, jsx-instrument 19, vite-plugin 3, inspector-runtime
-  16, next-adapter 5, desktop 52).
-- `pnpm --filter @rootray/e2e test` — Playwright 31 e2e green (22 prior
-  + 9 Next: turbopack full flow 7, webpack 16+15 fallback 2).
+  `--ignored`). New coverage: `static_server` (14 tests — serving,
+  traversal/host-header/junction safety, HTML stamping, SSE reload,
+  nested targets, AppCore run/stop, event-ordering contract) and
+  `html_instrument` unit tests.
+- `pnpm -r test` — Vitest 161 green (shared 7, source-protocol 21,
+  intelligence 17, jsx-instrument 20, html-instrument 11, vite-plugin 7,
+  inspector-runtime 21, next-adapter 5, desktop 52).
+- `pnpm --filter @rootray/e2e test` — Playwright 36 e2e green (31 prior
+  + 5 generic-dom: connect/auth, exact authored HTML mapping,
+  source-less runtime-DOM selection, canvas mapping + click suppression,
+  Escape-off).
 - `pnpm -r typecheck`, `pnpm exec biome check .`, `cargo check` (both
   crates), `cargo build -p rootray-desktop` — green.
-- `pnpm build:tauri` — release build + NSIS bundle green (`RootRay_0.2.0_x64-setup.exe`).
+- `pnpm build:tauri` — release build + NSIS bundle green
+  (`RootRay_0.2.0_x64-setup.exe`); `scripts/installer-smoke.ps1` — PASS.
 - **Installed-app golden paths — ALL PASS** (all drive the real installed
-  `rootray-desktop.exe` via WebView2 CDP + a controlled Chromium page with direct
-  network probes for server shutdown):
+  `rootray-desktop.exe` via WebView2 CDP + a controlled Chromium page with
+  direct network probes for server shutdown):
+  - `installed-golden-static.mjs` (static-web fixture — native server,
+    authored `<canvas>` → `index.html:8:5`, unmapped runtime element,
+    Quick Edit → SSE reload, clean stop): PASS
+  - `installed-verify-shadow-runner.mjs` (real Vite 6.2.0 + Phaser game —
+    authored `#game-container` → `index.html:24:5`, runtime canvas
+    honestly unmapped): PASS
   - `installed-verify-clientflow.mjs` (ClientFlow-CRM, Next.js 16.2.12): PASS
   - `installed-golden-monorepo.mjs` (pnpm monorepo nested Next target): PASS
   - `installed-golden-next.mjs` (Next.js fixture): PASS
@@ -159,7 +228,8 @@
   `data-rootray-*` on real SSR output (`/login`, 200) and passes 4-element
   source mapping with style intelligence; `ELHABAK-Construction-System-V1`
   monorepo → 8 targets, `apps/web` Next.js 16.0.3 auto-selected with runtime
-  caps available.
+  caps available; Shadow Runner runs under the generic Vite adapter with
+  honest source-less selection on runtime-created DOM.
 
 ---
 

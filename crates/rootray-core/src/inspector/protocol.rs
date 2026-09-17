@@ -102,7 +102,12 @@ pub struct ElementFacts {
 #[serde(rename_all = "camelCase")]
 pub struct ElementSelection {
     pub element: ElementFacts,
-    pub source: SourceLocation,
+    /// Authored source identity — `None` when the selected DOM element
+    /// has no trustworthy mapping (e.g. dynamically created by plain
+    /// JavaScript). A *present* source is always fully validated; absent
+    /// is a normal state, never a protocol failure.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<SourceLocation>,
     /// Style snapshot — optional; malformed styles degrade to `None`,
     /// never to a rejected selection.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -206,8 +211,15 @@ pub fn parse_runtime_message(raw: &str) -> Result<RuntimeMessage, ProtocolError>
             let session_id = required_str(obj, "sessionId")?;
             let element = parse_element_facts(obj.get("element"))
                 .ok_or(ProtocolError::InvalidElement)?;
-            let source = parse_source_location(obj.get("source"))
-                .ok_or(ProtocolError::InvalidSource)?;
+            // `source` is optional — but when the key is present it must
+            // validate completely (a malformed source, `null` included,
+            // rejects the message rather than degrading to trusted data).
+            let source = match obj.get("source") {
+                None => None,
+                Some(v) => {
+                    Some(parse_source_location(Some(v)).ok_or(ProtocolError::InvalidSource)?)
+                }
+            };
             let styles = parse_style_details(obj.get("styles"));
             Ok(RuntimeMessage::ElementSelected {
                 session_id,

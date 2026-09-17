@@ -51,10 +51,11 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
       .catch(() => {});
   }, []);
 
-  // Fetch the read-only preview whenever the selection changes.
+  // Fetch the read-only preview whenever the selection changes. A
+  // runtime-created element has no authored source — nothing to preview.
   useEffect(() => {
     const id = ++reqId.current;
-    if (!sel) {
+    if (!sel?.source) {
       setPreview(null);
       setPreviewErr(null);
       return;
@@ -86,7 +87,7 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
   };
 
   const openSource = async () => {
-    if (!sel || !editorId) return;
+    if (!sel?.source || !editorId) return;
     try {
       await openSourceLocation(
         editorId,
@@ -100,7 +101,7 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
   };
 
   const copyPath = async () => {
-    if (!sel) return;
+    if (!sel?.source) return;
     try {
       await navigator.clipboard.writeText(
         `${sel.source.relativePath}:${sel.source.line}:${sel.source.column}`,
@@ -114,7 +115,7 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
     if (!sel) return;
     const root = state.runtime.workspace?.root;
     let usedBy = null;
-    if (root && sel.source.componentName) {
+    if (root && sel.source?.componentName) {
       usedBy = await describeComponent(root, sel.source.componentName, sel.source.relativePath)
         .then((s) => s.usedBy)
         .catch(() => null);
@@ -200,19 +201,27 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
           </div>
           <div className="selection-facts">
             <span className="sel-tag">&lt;{sel.element.tagName}&gt;</span>
-            {sel.source.componentName && (
+            {sel.source?.componentName && (
               <span className="sel-component">{sel.source.componentName}</span>
             )}
             {sel.element.textPreview && (
               <span className="sel-text">“{sel.element.textPreview}”</span>
             )}
           </div>
-          <div className="selection-loc">
-            <span className="sel-file">{sel.source.relativePath}</span>
-            <span className="sel-pos">
-              Line {sel.source.line} · Column {sel.source.column}
-            </span>
-          </div>
+          {sel.source ? (
+            <div className="selection-loc">
+              <span className="sel-file">{sel.source.relativePath}</span>
+              <span className="sel-pos">
+                Line {sel.source.line} · Column {sel.source.column}
+              </span>
+            </div>
+          ) : (
+            <div className="selection-loc">
+              <span className="muted sel-unmapped">
+                No authored source — this element was created at runtime
+              </span>
+            </div>
+          )}
 
           {preview && (
             <pre className="source-preview">
@@ -229,7 +238,7 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
           )}
           {previewErr && <p className="muted">Preview unavailable: {previewErr}</p>}
 
-          <ComponentSection source={sel.source} />
+          {sel.source && <ComponentSection source={sel.source} />}
           {sel.styles && <StylesSection styles={sel.styles} onSearch={onSearch} />}
 
           <div className="selection-actions">
@@ -252,15 +261,27 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
             <button
               type="button"
               className="btn btn-primary"
-              onClick={() => quickEdit(state, dispatch, sel.source.relativePath, sel.source)}
-              title="Open this source inside RootRay"
+              disabled={!sel.source}
+              onClick={() =>
+                sel.source && quickEdit(state, dispatch, sel.source.relativePath, sel.source)
+              }
+              title={
+                sel.source
+                  ? "Open this source inside RootRay"
+                  : "No authored source — this element was created at runtime"
+              }
             >
               Quick Edit
             </button>
-            <button type="button" className="btn" disabled={!editorId} onClick={openSource}>
+            <button
+              type="button"
+              className="btn"
+              disabled={!editorId || !sel.source}
+              onClick={openSource}
+            >
               Open Source
             </button>
-            <button type="button" className="btn" onClick={copyPath}>
+            <button type="button" className="btn" disabled={!sel.source} onClick={copyPath}>
               Copy Path
             </button>
             <button
