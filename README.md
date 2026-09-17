@@ -7,11 +7,11 @@ rendered web UI back to its editable source code. Open almost any local
 project or workspace, let RootRay discover its structure, and get universal
 workspace tooling — Explorer, Quick Open, Workspace Search, Quick Edit —
 everywhere. Where a supported runtime exists (React + Vite, Next.js, any
-Vite project, or a plain `index.html` site served by RootRay's built-in
-static server), run it, point at any element on the page, and RootRay
-shows you the exact file, line, and component that produced it — plus its
-styles, its usages, and a safe in-place editor when you just need a quick
-fix.
+Vite project — including Vue and Svelte on Vite — or a plain `index.html`
+site served by RootRay's built-in static server), run it, point at any
+element on the page, and RootRay shows you the exact file, line, and
+component that produced it — plus its styles, its usages, and a safe
+in-place editor when you just need a quick fix.
 
 RootRay is not an IDE. It is the missing bridge between *what you see* and
 *where it lives*. Bigger changes belong in your real editor — RootRay opens
@@ -54,7 +54,7 @@ Open Project → Run → Inspect UI → point at an element
 2. Verify the checksum (optional but recommended):
 
    ```powershell
-   Get-FileHash .\RootRay_0.1.0_x64-setup.exe
+   Get-FileHash .\RootRay_0.1.1_x64-setup.exe
    # compare with the hash inside the .sha256 file
    ```
 
@@ -126,9 +126,19 @@ gets an honest **capability matrix**: `available`, `partial`,
 |---|---|---|
 | React + Vite | ✓ | ✓ full JSX instrumentation |
 | Vite (non-React) | ✓ | ✓ generic DOM inspect; authored `index.html` maps exactly |
+| Vue + Vite | ✓ | ✓ generic DOM inspect; authored `index.html` maps exactly |
+| Svelte + Vite | ✓ | ✓ generic DOM inspect; authored `index.html` maps exactly |
 | Next.js | ✓ | ✓ full instrumentation (Turbopack + webpack dev paths) |
 | Static web (index.html) | ✓ built-in static server | ✓ generic DOM inspect; authored HTML maps exactly |
+| SvelteKit / Astro / Nuxt / Angular / Remotion | ✓ declared dev script + browser open | ○ no runtime adapter — the capability rows explain why |
 | Node/Express/CLI/library | if a safe script exists | n/a |
+
+Generic-DOM tiers inspect every element the page renders — including
+framework-rendered and runtime-created DOM — with facts and styles.
+Authored `index.html` elements map to their exact file:line:column;
+elements rendered by framework code have no authored HTML to map to, so
+they are reported honestly without a source location rather than guessed.
+Component-level intelligence remains React/Next-only.
 
 - **Package managers:** pnpm, npm, yarn — detected per workspace from
   lockfiles or the `packageManager` field, and inherited by nested targets.
@@ -291,11 +301,13 @@ save ─▶ SHA-256 check ─▶ temp-file + rename ─▶ watcher ─▶ HMR/Fa
 ## Known limitations
 
 - JSX/component source inspection requires React + Vite or Next.js
-  (Turbopack and webpack dev paths). Other Vite projects and static sites
-  get full DOM inspection with authored-HTML mapping; runtime-created
-  elements report facts and styles without a fabricated source. Vue,
-  Svelte, Astro and Angular are first-class workspaces, but their
-  framework-specific runtime adapters are not implemented yet.
+  (Turbopack and webpack dev paths). Vue and Svelte projects on plain Vite
+  get generic DOM inspection with authored-HTML mapping; runtime-created
+  elements report facts and styles without a fabricated source.
+  SvelteKit, Astro, Nuxt, Angular and Remotion are detected and runnable —
+  RootRay runs their declared dev script and opens the printed URL — but
+  their servers render outside Vite's `transformIndexHtml` pipeline, so
+  no runtime adapter injects there yet; the capability rows say so.
 - Next.js instrumentation requires a dev script RootRay can safely
   reconstruct (`next dev` with plain flags); composed or wrapped scripts
   still run — the capability row explains why inspection is off.

@@ -1,10 +1,44 @@
 # RootRay Status
 
 ## Current Development
-**v0.2.0-dev** — Universal Project Workspace
+**v0.2.0** — Universal Project Workspace
 
-**Milestone:** 03 — Generic Browser Runtime, Static Web & Non-React Inspection
-**Progress:** 60% of the v0.2.0 track
+**Phase:** release closure — framework compatibility, real-repo
+validation, hardening, installer + release verification
+
+### Framework compatibility & capability tiers
+
+- **Evidence-based framework detection** — the `Framework` enum gains
+  `VueVite`, `SvelteVite`, `SvelteKit`, `Astro`, `Nuxt`, `Angular` and
+  `Remotion`, detected from real manifest dependencies and framework
+  config files (never directory names). The TypeScript `Framework` union
+  in `packages/shared` mirrors the Rust serialization.
+- **Generic Vite adapter reused honestly** — `InspectorAdapter::
+  ViteGeneric` now serves `Framework::Vite`, `VueVite` and `SvelteVite`:
+  any project whose dev script reconstructs to a plain `vite` invocation
+  runs under RootRay's in-memory plugin with `generic-dom` mode. Authored
+  `index.html` elements map exactly; framework-rendered DOM reports
+  facts + styles with no fabricated source; component intelligence is
+  `not-applicable` with a framework-named reason.
+- **SvelteKit / Astro / Nuxt / Angular / Remotion = detect & run** —
+  these servers render outside Vite's `transformIndexHtml` pipeline
+  (SvelteKit sets `appType: "custom"`), so no adapter injects. They are
+  detected with versions, run via their declared script, and open the
+  printed loopback URL — inspection capabilities report `unavailable`
+  with the factual reason instead of a dead-end or a false promise.
+- **Authored-bytes stamping guard** — `transformIndexHtml` now stamps
+  only when the served HTML is byte-identical to the authored file on
+  disk; if anything upstream has already transformed the document,
+  stamping is skipped rather than emitting fabricated coordinates.
+- **Fixtures** — `fixtures/vue-vite`, `fixtures/svelte-vite` (real deps,
+  real e2e through the inspector runner), plus detection-only manifests
+  for `sveltekit-basic`, `astro-basic`, `nuxt-basic`, `angular-basic`.
+- **`examples/serve.rs`** — a live static-server smoke: starts the real
+  loopback server with inspector injection on any directory and reports
+  stamping/runtime delivery over real HTTP. Used to validate
+  One-Bullet-Arena (real static site): `GET /` 200, authored HTML
+  stamped, runtime + bootstrap injected, `runtime.js` served, clean
+  shutdown.
 
 ### Milestone 03 — Generic Browser Runtime, Static Web & Non-React Inspection
 
@@ -174,40 +208,50 @@ runtime-created DOM.
 
 ### Real-repository read-only validation (measured, not claimed)
 
+Re-scanned this cycle with `cargo run -p rootray-core --example scan`:
+
 | Repository | Result |
 |---|---|
-| ClientFlow-CRM | Next.js 16.2.12 · npm · `npm run dev` · all runtime caps available · 24ms · **live shimmed `next dev` → `/login` SSR carries `data-rootray-*` on real sources** |
-| ELHABAK-Construction-System-V1 | pnpm workspace · 8 targets · `apps/web` Next.js 16.0.3 auto-selected, runtime caps available · `apps/api` Node server · libs classified · 71ms |
-| workfolw (video-factory-monorepo) | pnpm workspace · Next.js 15.1.7 web target · 104ms |
-| Shadow Runner | Vite 6.2.0 (non-React, Phaser) · run available · 26ms |
-| Egyptian-Russian-University-master | nested manifest discovered → React+Vite 5.1.0 · 15ms |
-| natega (bsnu-result-portal) | React+Vite 8.2.0 · npm · 17ms |
-| camera (gesturefx) | React+Vite 8.1.1 · npm · 14ms |
-| short (abud-shorts-engine-v2) | pnpm workspace · truncated at 400-dir cap (real bound) · 214ms |
-| PoseMeme | no manifests → usable workspace, 0 targets · <1ms |
+| ClientFlow-CRM | Next.js 16.2.12 · npm · `npm run dev` · all runtime caps available · 20ms · **live shimmed `next dev` → `/login` SSR carries `data-rootray-*` on real sources** |
+| ELHABAK-Construction-System-V1 | pnpm workspace · 8 targets · `apps/web` Next.js 16.0.3 auto-selected, runtime caps available · `apps/api` Node server (n/a caps) · libs classified · 130ms |
+| workfolw (video-factory-monorepo) | pnpm workspace · 8 targets · `apps/web` Next.js 15.1.7 full caps · Remotion render-worker honestly unavailable · 91ms |
+| ThreadForm | pnpm workspace · 13 targets · `apps/web` Next.js 15.1.4 full caps · 11 libraries classified · 142ms |
+| Shadow Runner | Vite 6.2.0 (non-React, Phaser) · generic-dom caps: inspect ✓ · srcmap partial (authored HTML exact) · hmr ✓ · 21ms |
+| One-Bullet-Arena | static-web · inspect ✓ · srcmap partial (authored exact) · live `serve` smoke: stamped + runtime injected · 15ms |
+| Beni-Suef-National | React+Vite 8.2.0 · npm · full caps · 12ms |
+| Egyptian-Russian-University-master | nested manifest discovered → React+Vite 5.1.0 · 14ms |
+| natega (bsnu-result-portal) | React+Vite 8.2.0 · npm · full caps · 14ms |
+| camera (gesturefx) | React+Vite 8.1.1 · npm · full caps · 17ms |
+| short-studio-server | pnpm workspace · Remotion root (unavailable, honest reason) + 2 nested static-web targets (inspect ✓) · 39ms |
+| short (abud-shorts-engine-v2) | pnpm workspace · truncated at 400-dir cap (real bound) · Remotion + nested static targets · 222ms |
+| PoseMeme | no manifests → usable workspace, 0 targets · 2ms |
+| RepoRadar-Ai | not found on the user's GitHub account or local disks — excluded from the matrix |
 
 ### Deferred to later milestones
 
-- Milestone 04+ — remaining v0.2.0 scope.
-- Vue/Svelte/Astro/Nuxt/Angular runtime adapters (generic DOM inspection
-  already covers every served page; framework-specific component
-  intelligence is the remaining gap).
+- Framework-specific runtime adapters for SvelteKit, Astro, Nuxt,
+  Angular, Remotion (they render outside Vite's `transformIndexHtml`;
+  each needs its own server-side injection point).
+- Component-level intelligence for Vue/Svelte (generic DOM inspection
+  already covers every element; component-tree mapping is the gap).
 
 ### v0.2.0 verification
 
-- `cargo test -p rootray-core` — 189 passed, 0 failed, 1 ignored
+- `cargo test -p rootray-core` — 195 passed, 0 failed, 1 ignored
   (`golden_path_real_vite_server` — real `npm run dev` run, passes with
-  `--ignored`). New coverage: `static_server` (14 tests — serving,
+  `--ignored`). Coverage includes `static_server` (14 tests — serving,
   traversal/host-header/junction safety, HTML stamping, SSE reload,
-  nested targets, AppCore run/stop, event-ordering contract) and
-  `html_instrument` unit tests.
-- `pnpm -r test` — Vitest 161 green (shared 7, source-protocol 21,
-  intelligence 17, jsx-instrument 20, html-instrument 11, vite-plugin 7,
+  nested targets, AppCore run/stop, event-ordering contract),
+  `html_instrument` units, and the new framework-detection/capability
+  matrix + adapter-dispatch cases.
+- `pnpm -r test` — Vitest 162 green (shared 7, source-protocol 21,
+  intelligence 17, jsx-instrument 20, html-instrument 11, vite-plugin 8,
   inspector-runtime 21, next-adapter 5, desktop 52).
-- `pnpm --filter @rootray/e2e test` — Playwright 36 e2e green (31 prior
-  + 5 generic-dom: connect/auth, exact authored HTML mapping,
-  source-less runtime-DOM selection, canvas mapping + click suppression,
-  Escape-off).
+- `pnpm --filter @rootray/e2e test` — Playwright 40 e2e green
+  (generic-dom connect/auth, exact authored HTML mapping, source-less
+  runtime-DOM selection, canvas mapping + click suppression, Escape-off;
+  + Vue+Vite and Svelte+Vite real-server specs: bridge handshake, exact
+  authored mapping, honest no-source on framework-rendered DOM).
 - `pnpm -r typecheck`, `pnpm exec biome check .`, `cargo check` (both
   crates), `cargo build -p rootray-desktop` — green.
 - `pnpm build:tauri` — release build + NSIS bundle green
