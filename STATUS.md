@@ -116,7 +116,8 @@ runtime-created DOM.
     `<form>` → `src/components/ui/label.tsx:9:5` (`Label`),
     `<input>` → `src/components/auth/login-form.tsx:46:11` (`LoginForm`).
     Style intelligence (box model) rendered for all selections. Stop confirmed via direct
-    network probe. ClientFlow repo remained pristine (`git status --porcelain` identical to baseline).
+    network probe. ClientFlow's git status remained identical to the pre-test
+    baseline; pre-existing repository state was not created or changed by RootRay.
     *Discovered test issue*: `page.goto(appUrl)` was an invalid server-death check on PWA apps because
     ClientFlow's Service Worker (`public/sw.js`) served offline fallback content even after the Next
     server was dead. All installed tests now use direct loopback network probes outside the browser context.

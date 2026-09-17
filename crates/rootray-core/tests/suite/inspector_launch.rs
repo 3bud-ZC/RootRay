@@ -32,9 +32,18 @@ fn vite_script_args_are_extracted() {
     );
     // --open is dropped — RootRay controls the browser itself.
     assert_eq!(vite_args_from_dev_script("vite --open"), Some(vec![]));
+    // `vite dev` / `vite serve` are aliases for a bare `vite` serve —
+    // the positional is a no-op for the programmatic runner.
+    assert_eq!(vite_args_from_dev_script("vite dev"), Some(vec![]));
+    assert_eq!(vite_args_from_dev_script("vite serve"), Some(vec![]));
+    assert_eq!(
+        vite_args_from_dev_script("vite dev --port 3000"),
+        Some(vec!["--port".into(), "3000".into()])
+    );
     // Non-plain-vite scripts are not inspector-compatible.
     assert_eq!(vite_args_from_dev_script("concurrently \"vite\" \"tsc\""), None);
     assert_eq!(vite_args_from_dev_script("vite build"), None);
+    assert_eq!(vite_args_from_dev_script("vite preview"), None);
     assert_eq!(vite_args_from_dev_script("cross-env X=1 vite"), None);
     assert_eq!(vite_args_from_dev_script("vite --unknown-flag"), None);
 }
@@ -162,7 +171,25 @@ fn adapter_selection_is_framework_aware() {
         InspectorAdapter::for_framework(&Framework::Vite),
         Some(InspectorAdapter::ViteGeneric)
     );
-    for f in [Framework::StaticWeb, Framework::NodeWeb, Framework::Unknown] {
+    // Every Vite-driven stack shares the generic DOM adapter — the dev
+    // command check decides at launch, not the framework name.
+    for f in [Framework::VueVite, Framework::SvelteVite] {
+        assert_eq!(
+            InspectorAdapter::for_framework(&f),
+            Some(InspectorAdapter::ViteGeneric),
+            "{f:?}"
+        );
+    }
+    for f in [
+        Framework::SvelteKit,
+        Framework::Astro,
+        Framework::Nuxt,
+        Framework::Angular,
+        Framework::Remotion,
+        Framework::StaticWeb,
+        Framework::NodeWeb,
+        Framework::Unknown,
+    ] {
         assert_eq!(InspectorAdapter::for_framework(&f), None, "{f:?}");
     }
 }

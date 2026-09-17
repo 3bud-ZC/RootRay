@@ -22,6 +22,18 @@ pub enum Framework {
     NextJs,
     ViteReact,
     Vite,
+    /// Vue on Vite — the generic DOM adapter covers it (no JSX).
+    VueVite,
+    /// Svelte on Vite — generic DOM inspection; no component mapping.
+    SvelteVite,
+    /// SvelteKit runs on Vite but sets `appType: "custom"` and renders
+    /// HTML outside `transformIndexHtml` — no safe injection point.
+    /// Workspace + run + browser open only.
+    SvelteKit,
+    Astro,
+    Nuxt,
+    Angular,
+    Remotion,
     StaticWeb,
     NodeWeb,
     Unknown,
@@ -33,6 +45,13 @@ impl Framework {
             Self::NextJs => "Next.js",
             Self::ViteReact => "React + Vite",
             Self::Vite => "Vite",
+            Self::VueVite => "Vue + Vite",
+            Self::SvelteVite => "Svelte + Vite",
+            Self::SvelteKit => "SvelteKit",
+            Self::Astro => "Astro",
+            Self::Nuxt => "Nuxt",
+            Self::Angular => "Angular",
+            Self::Remotion => "Remotion",
             Self::StaticWeb => "Static Web",
             Self::NodeWeb => "Node.js",
             Self::Unknown => "unknown",
@@ -418,6 +437,38 @@ fn detect_framework(
         return (Framework::NextJs, v, ev);
     }
 
+    // Meta-frameworks with their own toolchains must be classified before
+    // the plain-vite branch — several of them (SvelteKit, Astro) declare
+    // `vite` in their manifests but drive it through their own CLI/SSR.
+    if pkg.has_dependency("@sveltejs/kit") {
+        let v = normalize_version(pkg.dependency_version("@sveltejs/kit"));
+        ev.push("\"@sveltejs/kit\" dependency found".to_string());
+        if has_config(dir, "svelte.config") {
+            ev.push("svelte.config.* found".to_string());
+        }
+        return (Framework::SvelteKit, v, ev);
+    }
+    if pkg.has_dependency("nuxt") || has_config(dir, "nuxt.config") {
+        let v = normalize_version(pkg.dependency_version("nuxt"));
+        ev.push("nuxt dependency/config found".to_string());
+        return (Framework::Nuxt, v, ev);
+    }
+    if pkg.has_dependency("astro") || has_config(dir, "astro.config") {
+        let v = normalize_version(pkg.dependency_version("astro"));
+        ev.push("astro dependency/config found".to_string());
+        return (Framework::Astro, v, ev);
+    }
+    if pkg.has_dependency("@angular/core") || dir.join("angular.json").is_file() {
+        let v = normalize_version(pkg.dependency_version("@angular/core"));
+        ev.push("angular dependency/angular.json found".to_string());
+        return (Framework::Angular, v, ev);
+    }
+    if pkg.has_dependency("remotion") {
+        let v = normalize_version(pkg.dependency_version("remotion"));
+        ev.push("\"remotion\" dependency found".to_string());
+        return (Framework::Remotion, v, ev);
+    }
+
     if pkg.has_dependency("vite") {
         let v = normalize_version(pkg.dependency_version("vite"));
         ev.push("\"vite\" found in package.json dependencies".to_string());
@@ -428,24 +479,20 @@ fn detect_framework(
             ev.push("\"react\" found in package.json dependencies".to_string());
             return (Framework::ViteReact, v, ev);
         }
-        ev.push("\"react\" not found — plain Vite project".to_string());
+        if pkg.has_dependency("vue") || pkg.has_dependency("@vitejs/plugin-vue") {
+            ev.push("\"vue\" found in package.json dependencies".to_string());
+            return (Framework::VueVite, v, ev);
+        }
+        if pkg.has_dependency("svelte") || pkg.has_dependency("@sveltejs/vite-plugin-svelte") {
+            ev.push("\"svelte\" found in package.json dependencies".to_string());
+            return (Framework::SvelteVite, v, ev);
+        }
+        ev.push("no react/vue/svelte dependency — plain Vite project".to_string());
         return (Framework::Vite, v, ev);
     }
 
-    if has_config(dir, "astro.config") {
-        ev.push("astro.config.* found".to_string());
-        return (Framework::Unknown, None, ev); // adapter not implemented yet
-    }
     if has_config(dir, "svelte.config") || pkg.has_dependency("svelte") {
         ev.push("svelte config/dependency found".to_string());
-        return (Framework::Unknown, None, ev);
-    }
-    if pkg.has_dependency("nuxt") || has_config(dir, "nuxt.config") {
-        ev.push("nuxt dependency/config found".to_string());
-        return (Framework::Unknown, None, ev);
-    }
-    if pkg.has_dependency("@angular/core") || dir.join("angular.json").is_file() {
-        ev.push("angular dependency/angular.json found".to_string());
         return (Framework::Unknown, None, ev);
     }
 
@@ -476,7 +523,16 @@ fn classify_kind(
     evidence: &mut Vec<String>,
 ) -> TargetKind {
     match framework {
-        Framework::NextJs | Framework::ViteReact | Framework::Vite => {
+        Framework::NextJs
+        | Framework::ViteReact
+        | Framework::Vite
+        | Framework::VueVite
+        | Framework::SvelteVite
+        | Framework::SvelteKit
+        | Framework::Astro
+        | Framework::Nuxt
+        | Framework::Angular
+        | Framework::Remotion => {
             evidence.push("web framework detected".to_string());
             TargetKind::WebApp
         }
@@ -715,26 +771,111 @@ fn capabilities_for(
 
     match framework {
         Framework::ViteReact => {
-            caps.browser_open = Capability::available();
-            caps.dom_inspect = Capability::available();
-            caps.style_inspect = Capability::available();
-            caps.source_mapping = Capability::available();
-            caps.component_intelligence = Capability::available();
-            caps.hmr_aware = Capability::available();
+            // Same contract as Next: full inspection only when the dev
+            // script is a reconstructable `vite` invocation — a wrapped
+            // script still runs plainly and reports why.
+            let instrumentable = runnable
+                && dev_script
+                    .map(|s| {
+                        crate::inspector::launch::vite_args_from_dev_script(s).is_some()
+                    })
+                    .unwrap_or(false);
+            caps.browser_open = if runnable {
+                Capability::available()
+            } else {
+                Capability::unavailable("no resolvable run script")
+            };
+            if instrumentable {
+                caps.dom_inspect = Capability::available();
+                caps.style_inspect = Capability::available();
+                caps.source_mapping = Capability::available();
+                caps.component_intelligence = Capability::available();
+                caps.hmr_aware = Capability::available();
+            } else {
+                let reason = match dev_script {
+                    Some(_) => "dev script too complex for safe instrumentation",
+                    None => "no resolvable dev script",
+                };
+                caps.dom_inspect = Capability::unavailable(reason);
+                caps.style_inspect = Capability::unavailable(reason);
+                caps.source_mapping = Capability::unavailable(reason);
+                caps.component_intelligence = Capability::partial(
+                    "static React analysis only — no rendered-element mapping",
+                );
+                caps.hmr_aware = Capability::unavailable(reason);
+            }
         }
-        Framework::Vite => {
+        Framework::Vite | Framework::VueVite | Framework::SvelteVite => {
             // Generic DOM inspection runs through the same Vite adapter —
-            // no React required. Authored index.html elements map exactly;
-            // JSX-bearing files still get element stamps if present.
-            caps.browser_open = Capability::available();
-            caps.dom_inspect = Capability::available();
-            caps.style_inspect = Capability::available();
-            caps.source_mapping = Capability::partial(
-                "authored HTML elements map exactly; runtime-created DOM has no authored source",
+            // the deciding factor is a reconstructable `vite` dev command,
+            // not the framework name. Authored index.html elements map
+            // exactly; framework-rendered DOM stays inspectable but has no
+            // authored source.
+            let instrumentable = runnable
+                && dev_script
+                    .map(|s| {
+                        crate::inspector::launch::vite_args_from_dev_script(s).is_some()
+                    })
+                    .unwrap_or(false);
+            caps.browser_open = if runnable {
+                Capability::available()
+            } else {
+                Capability::unavailable("no resolvable run script")
+            };
+            if instrumentable {
+                caps.dom_inspect = Capability::available();
+                caps.style_inspect = Capability::available();
+                caps.source_mapping = Capability::partial(
+                    "authored HTML elements map exactly; runtime-created DOM has no authored source",
+                );
+                caps.hmr_aware = Capability::available();
+            } else {
+                let reason = match dev_script {
+                    Some(_) => "dev script too complex for safe instrumentation",
+                    None => "no resolvable dev script",
+                };
+                caps.dom_inspect = Capability::unavailable(reason);
+                caps.style_inspect = Capability::unavailable(reason);
+                caps.source_mapping = Capability::unavailable(reason);
+                caps.hmr_aware = Capability::unavailable(reason);
+            }
+            caps.component_intelligence = Capability::not_applicable_because(match framework {
+                Framework::VueVite => "Vue component-tree mapping is not implemented — generic DOM inspection only",
+                Framework::SvelteVite => "Svelte component-tree mapping is not implemented — generic DOM inspection only",
+                _ => "not a React project",
+            });
+        }
+        Framework::SvelteKit
+        | Framework::Astro
+        | Framework::Nuxt
+        | Framework::Angular
+        | Framework::Remotion => {
+            // These dev servers run through the framework's own toolchain.
+            // RootRay can run the declared script (argv via the package
+            // manager) and open the detected URL, but there is no safe
+            // in-memory instrumentation path — SSR HTML never reaches a
+            // RootRay adapter.
+            caps.browser_open = if runnable {
+                Capability::available()
+            } else {
+                Capability::unavailable("no resolvable run script")
+            };
+            let reason = match framework {
+                Framework::SvelteKit => {
+                    "SvelteKit renders HTML outside Vite's transform pipeline — no injection point"
+                }
+                Framework::Astro => "Astro dev runs its own server — no runtime adapter",
+                Framework::Nuxt => "Nuxt dev runs its own server — no runtime adapter",
+                Framework::Angular => "Angular CLI serves outside Vite — no runtime adapter",
+                _ => "Remotion studio runs its own server — no runtime adapter",
+            };
+            caps.dom_inspect = Capability::unavailable(reason);
+            caps.style_inspect = Capability::unavailable(reason);
+            caps.source_mapping = Capability::unavailable(reason);
+            caps.component_intelligence = Capability::unavailable(
+                "component-level source intelligence requires a framework adapter",
             );
-            caps.component_intelligence =
-                Capability::not_applicable_because("not a React project");
-            caps.hmr_aware = Capability::available();
+            caps.hmr_aware = Capability::unavailable(reason);
         }
         Framework::NextJs => {
             caps.browser_open = Capability::available();
@@ -796,7 +937,17 @@ fn capabilities_for(
             caps.hmr_aware = Capability::not_applicable();
         }
         Framework::Unknown => {
-            caps.browser_open = Capability::unavailable("no detected dev server");
+            caps.browser_open = if runnable
+                && matches!(kind, TargetKind::WebApp | TargetKind::Unknown | TargetKind::Server)
+            {
+                // The loopback URL detector is runtime-agnostic — any dev
+                // server that prints a local URL can be opened.
+                Capability::partial(
+                    "unrecognized stack — a browser opens only if the server prints a loopback URL",
+                )
+            } else {
+                Capability::unavailable("no detected dev server")
+            };
             caps.dom_inspect = Capability::unavailable(NO_ADAPTER);
             caps.style_inspect = Capability::unavailable(NO_ADAPTER);
             caps.source_mapping = Capability::unavailable(NO_ADAPTER);
@@ -804,7 +955,6 @@ fn capabilities_for(
             caps.hmr_aware = Capability::not_applicable();
         }
     }
-    let _ = kind;
     caps
 }
 

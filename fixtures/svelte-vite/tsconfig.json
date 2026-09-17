@@ -1,0 +1,1 @@
+{ "compilerOptions": { "strict": true, "module": "ESNext", "target": "ES2022", "moduleResolution": "bundler", "types": ["vite/client"] }, "include": ["src/**/*.ts", "vite.config.ts"] }

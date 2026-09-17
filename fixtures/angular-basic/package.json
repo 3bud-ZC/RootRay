@@ -1,0 +1,20 @@
+{
+  "name": "fixture-angular-basic",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "ng serve",
+    "build": "ng build",
+    "start": "ng serve"
+  },
+  "dependencies": {
+    "@angular/core": "^19.0.0",
+    "@angular/common": "^19.0.0",
+    "@angular/platform-browser": "^19.0.0"
+  },
+  "devDependencies": {
+    "@angular/cli": "^19.0.0",
+    "@angular/build": "^19.0.0",
+    "typescript": "^5.6.0"
+  }
+}

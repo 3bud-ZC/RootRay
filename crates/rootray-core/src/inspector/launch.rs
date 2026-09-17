@@ -127,11 +127,15 @@ impl InspectorAdapter {
     /// The adapter that can inspect this framework, if one exists.
     /// The start path asks this instead of matching on framework names —
     /// adding an adapter extends inspector support without touching the
-    /// launch flow.
+    /// launch flow. Every Vite-driven stack shares the generic DOM
+    /// adapter; `dev_command` still verifies the declared script is a
+    /// reconstructable `vite` invocation before instrumenting.
     pub fn for_framework(framework: &Framework) -> Option<Self> {
         match framework {
             Framework::ViteReact => Some(Self::ViteReact),
-            Framework::Vite => Some(Self::ViteGeneric),
+            Framework::Vite | Framework::VueVite | Framework::SvelteVite => {
+                Some(Self::ViteGeneric)
+            }
             Framework::NextJs => Some(Self::NextJs),
             _ => None,
         }
@@ -196,6 +200,12 @@ pub fn vite_args_from_dev_script(script: &str) -> Option<Vec<String>> {
     let mut tokens = script.split_whitespace().peekable();
     if tokens.next()? != "vite" {
         return None;
+    }
+    // `vite dev` and `vite serve` are aliases for a bare `vite` — the
+    // runner starts the dev server programmatically either way, so the
+    // positional is a no-op. `build`/`preview` stay rejected.
+    if matches!(tokens.peek(), Some(&"dev") | Some(&"serve")) {
+        tokens.next();
     }
     let mut out: Vec<String> = Vec::new();
     while let Some(arg) = tokens.next() {

@@ -8,7 +8,20 @@
  * are added here as their detection lands; absence of a runtime adapter
  * is expressed through capabilities, not through the framework value.
  */
-export type Framework = "next-js" | "vite-react" | "vite" | "static-web" | "node-web" | "unknown";
+export type Framework =
+  | "next-js"
+  | "vite-react"
+  | "vite"
+  | "vue-vite"
+  | "svelte-vite"
+  | "sveltekit"
+  | "astro"
+  | "nuxt"
+  | "angular"
+  | "remotion"
+  | "static-web"
+  | "node-web"
+  | "unknown";
 
 export type PackageManager = "pnpm" | "npm" | "yarn" | "unknown";
 

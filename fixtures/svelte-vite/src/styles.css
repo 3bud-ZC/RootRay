@@ -1,0 +1,14 @@
+.svelte-app {
+  font-family: system-ui, sans-serif;
+}
+
+.card {
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.primary {
+  background: #dc2626;
+  color: #fff;
+}

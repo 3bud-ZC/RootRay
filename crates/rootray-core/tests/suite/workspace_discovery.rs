@@ -352,6 +352,136 @@ fn nextjs_with_complex_dev_script_reports_unavailable_inspection() {
     assert_eq!(t.capabilities.hmr_aware.state, CapabilityState::Unavailable);
 }
 
+// ---- broader framework compatibility --------------------------------------
+
+#[test]
+fn vue_vite_target_gets_generic_dom_tier() {
+    let a = analyze_workspace(&fixtures().join("vue-vite")).unwrap();
+    let t = a.active_target().unwrap();
+    assert_eq!(t.framework, Framework::VueVite);
+    assert_eq!(t.kind, TargetKind::WebApp);
+    assert!(t.technologies.iter().any(|t| t.name == "Vue"));
+    assert!(t.technologies.iter().any(|t| t.name == "Vite"));
+    let c = &t.capabilities;
+    assert!(c.run.is_available());
+    assert!(c.browser_open.is_available());
+    // Tier B: generic DOM inspection — authored index.html maps exactly,
+    // Vue-rendered DOM stays inspectable without a source.
+    assert_eq!(c.dom_inspect.state, CapabilityState::Available);
+    assert_eq!(c.style_inspect.state, CapabilityState::Available);
+    assert_eq!(c.source_mapping.state, CapabilityState::Partial);
+    assert_eq!(c.hmr_aware.state, CapabilityState::Available);
+    // Honest: no Vue component-tree mapping is claimed.
+    assert_eq!(c.component_intelligence.state, CapabilityState::NotApplicable);
+    assert!(c
+        .component_intelligence
+        .reason
+        .as_deref()
+        .unwrap_or("")
+        .contains("Vue"));
+}
+
+#[test]
+fn svelte_vite_target_gets_generic_dom_tier() {
+    let a = analyze_workspace(&fixtures().join("svelte-vite")).unwrap();
+    let t = a.active_target().unwrap();
+    assert_eq!(t.framework, Framework::SvelteVite);
+    assert_eq!(t.kind, TargetKind::WebApp);
+    let c = &t.capabilities;
+    assert_eq!(c.dom_inspect.state, CapabilityState::Available);
+    assert_eq!(c.source_mapping.state, CapabilityState::Partial);
+    assert_eq!(c.component_intelligence.state, CapabilityState::NotApplicable);
+    assert!(c
+        .component_intelligence
+        .reason
+        .as_deref()
+        .unwrap_or("")
+        .contains("Svelte"));
+}
+
+#[test]
+fn sveltekit_is_workspace_run_tier_c() {
+    let a = analyze_workspace(&fixtures().join("sveltekit-basic")).unwrap();
+    let t = a.active_target().unwrap();
+    // SvelteKit must not collapse into plain Vite — it drives Vite with
+    // appType "custom" and bypasses transformIndexHtml entirely.
+    assert_eq!(t.framework, Framework::SvelteKit);
+    assert_eq!(t.kind, TargetKind::WebApp);
+    let c = &t.capabilities;
+    // Universal workspace + safe run + browser open remain.
+    assert!(c.workspace_browse.is_available());
+    assert!(c.quick_edit.is_available());
+    assert!(c.run.is_available()); // npm run dev → `vite dev`
+    assert!(c.browser_open.is_available());
+    assert_eq!(c.dom_inspect.state, CapabilityState::Unavailable);
+    assert!(c
+        .dom_inspect
+        .reason
+        .as_deref()
+        .unwrap_or("")
+        .contains("SvelteKit"));
+    assert_eq!(c.source_mapping.state, CapabilityState::Unavailable);
+}
+
+#[test]
+fn astro_nuxt_angular_are_workspace_run_tier() {
+    for (fixture, expected) in [
+        ("astro-basic", Framework::Astro),
+        ("nuxt-basic", Framework::Nuxt),
+        ("angular-basic", Framework::Angular),
+    ] {
+        let a = analyze_workspace(&fixtures().join(fixture)).unwrap();
+        let t = a.active_target().unwrap();
+        assert_eq!(t.framework, expected, "{fixture}");
+        assert_eq!(t.kind, TargetKind::WebApp, "{fixture}");
+        let c = &t.capabilities;
+        assert!(c.run.is_available(), "{fixture}");
+        assert!(c.browser_open.is_available(), "{fixture}");
+        assert_eq!(c.dom_inspect.state, CapabilityState::Unavailable, "{fixture}");
+        assert!(c.dom_inspect.reason.is_some(), "{fixture}");
+    }
+}
+
+#[test]
+fn vite_family_detection_is_dependency_driven() {
+    // A Vite-based project is never classified by folder names — only by
+    // the declared dependency graph.
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "package.json",
+        r#"{"name":"x","scripts":{"dev":"vite"},"devDependencies":{"vite":"^7","@vitejs/plugin-vue":"^5"},"dependencies":{"vue":"^3"}}"#,
+    );
+    write(dir.path(), "package-lock.json", "{}");
+    let a = analyze_workspace(dir.path()).unwrap();
+    assert_eq!(a.active_target().unwrap().framework, Framework::VueVite);
+}
+
+#[test]
+fn vite_project_with_wrapped_script_reports_unavailable_inspection() {
+    // `concurrently …` still runs (npm run dev), but the inspector cannot
+    // reconstruct it — the capability must say so up front.
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "package.json",
+        r#"{"name":"x","scripts":{"dev":"concurrently \"vite\" \"tsc -w\""},"devDependencies":{"vite":"^7"}}"#,
+    );
+    write(dir.path(), "package-lock.json", "{}");
+    let a = analyze_workspace(dir.path()).unwrap();
+    let t = a.active_target().unwrap();
+    assert_eq!(t.framework, Framework::Vite);
+    assert!(t.capabilities.run.is_available());
+    assert_eq!(t.capabilities.dom_inspect.state, CapabilityState::Unavailable);
+    assert!(t
+        .capabilities
+        .dom_inspect
+        .reason
+        .as_deref()
+        .unwrap_or("")
+        .contains("complex"));
+}
+
 #[test]
 fn metrics_are_real_and_bounded() {
     let a = analyze_workspace(&fixtures().join("pnpm-monorepo")).unwrap();

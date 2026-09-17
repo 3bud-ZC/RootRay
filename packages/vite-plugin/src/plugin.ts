@@ -93,10 +93,19 @@ export default function rootrayInspector(opts: RootRayInspectorOptions): Plugin 
         // and authored spoofed attributes are stripped. Applies to BOTH
         // modes — authored index.html elements (app shells, canvases,
         // static markup outside a framework root) map to their source.
+        //
+        // Stamps are only applied when the served markup is byte-identical
+        // to the file on disk. SSR frameworks can pipe *rendered* output
+        // through this hook — positions in that string would point at the
+        // wrong source lines, which is worse than no mapping. Runtime
+        // injection below still happens either way; only stamping is
+        // skipped for synthesized HTML.
         let stampedHtml = html;
         try {
           const rel = relativeSourcePath(ctx.filename, opts.projectRoot);
-          if (rel) stampedHtml = instrumentHtml(html, rel).code;
+          if (rel && readFileSync(ctx.filename, "utf8") === html) {
+            stampedHtml = instrumentHtml(html, rel).code;
+          }
         } catch {
           // Never break the dev server over HTML instrumentation.
         }
