@@ -19,6 +19,11 @@
 - Installer lifecycle: fresh silent install → launch (no auto-run) →
   clean terminate → silent uninstall PASS; upgrade 0.1.1 → 0.2.0
   in-place PASS
+- Version sync: `0.2.0` across root `package.json`, all `packages/*`,
+  `apps/desktop/package.json`, `tauri.conf.json`, and both `Cargo.toml`
+  manifests
+- Current test counts: Rust **195 passed** / 1 ignored · Vitest **162
+  passed** · Playwright **40 passed**
 
 ### Framework compatibility & capability tiers
 
@@ -294,13 +299,18 @@ Re-scanned this cycle with `cargo run -p rootray-core --example scan`:
 
 ## Release History (published — do not alter)
 
+> **Everything below this line is historical v0.1.x record.** It is
+> preserved verbatim for audit, uses only v0.1.x-era facts and counts,
+> and is superseded wherever the v0.2.0 sections above differ (test
+> counts, installer artifact, release SHAs, capability scope).
+
 ## Overall Progress (v0.1.x)
 100% — MVP complete
 
-## Milestone 05
+## Historical v0.1.x — Milestone 05
 Release Hardening, Windows Packaging & MVP Final Acceptance — **Complete**
 
-## Release Status
+## Historical v0.1.x — Release Status
 MVP READY — **v0.1.1 published**
 
 - Published patch: `v0.1.1` —
@@ -320,7 +330,7 @@ MVP READY — **v0.1.1 published**
 - License: **MIT**
 - Copyright: `Copyright (c) 2026 Abdallah — ABUD FUN`
 
-## Patch — v0.1.1 (published)
+## Historical v0.1.x — Patch v0.1.1 (published)
 
 A release-blocking bug was found during first-user testing of the
 published v0.1.0 build:
@@ -351,13 +361,7 @@ published v0.1.0 build:
 - **Status:** published — `v0.1.0` history preserved below; `v0.1.1` tag
   and GitHub Release are live with the verified Actions artifact.
 
-## Release Version
-Working tree is **0.2.0** — consistent across root `package.json`,
-all `packages/*`, `apps/desktop/package.json`, `tauri.conf.json`, and both
-`Cargo.toml` manifests. Published release: `v0.2.0` (top of file);
-`v0.1.x` history below is immutable.
-
-## Implemented (Milestone 05 additions)
+## Historical v0.1.x — Implemented (Milestone 05 additions)
 
 Everything from Milestones 01–04, plus release hardening:
 
@@ -413,14 +417,14 @@ Everything from Milestones 01–04, plus release hardening:
   supported projects, security/privacy statement, troubleshooting table,
   unsigned-build disclosure.
 
-## Architecture
+## Historical v0.1.x — Architecture
 
 Unchanged in shape (see `docs/architecture.md`): rootray-core holds all
 logic with zero Tauri deps; the frontend receives events only. New in M5:
 `process/job.rs` containment and `ROOTRAY_INSPECTOR_ASSETS_DIR`-based
 asset resolution for packaged builds.
 
-## Installer
+## Historical v0.1.0 — Installer
 
 - **Artifact:** `RootRay_0.1.0_x64-setup.exe` (NSIS, per-user install into
   `%LOCALAPPDATA%\RootRay` — no admin)
@@ -435,9 +439,13 @@ asset resolution for packaged builds.
   Actions artifact is authoritative.
 - **Unsigned** — SmartScreen/Smart App Control may warn; documented.
 
-## Verification
+## Historical v0.1.x — Verification
 
-### Automated (final counts)
+> v0.1.x-era counts — superseded. Current v0.2.0 counts are in the
+> `v0.2.0 verification` section above (Rust 195 + 1 ignored, Vitest 162,
+> Playwright 40).
+
+### Historical v0.1.x automated counts
 
 - `cargo test -p rootray-core`: **129 passed, 0 failed, 1 ignored**
   (+5 vs M4: process containment, large-project caps).
@@ -451,13 +459,13 @@ asset resolution for packaged builds.
 - `cargo build -p rootray-desktop`: clean (debug + release).
 - `pnpm --filter @rootray/desktop build`: clean.
 
-### Release Build
+### Historical v0.1.0 Release Build
 
 `pnpm build:tauri` → release `rootray-desktop.exe` (10,604,032 bytes,
 10.1 MB, local measurement) + the NSIS installer above. The Release
 workflow ran the identical command remotely.
 
-### Installer Smoke Test
+### Historical v0.1.0 Installer Smoke Test
 
 - **Local:** `scripts/installer-smoke.ps1` on the locally built artifact —
   silent install OK → exe + all three `inspector-assets` present → app
@@ -467,7 +475,7 @@ workflow ran the identical command remotely.
 - **Remote:** the same script ran inside Release run #1 on
   `windows-latest` and passed.
 
-### End-to-End Acceptance
+### Historical v0.1.x End-to-End Acceptance
 
 Browser-driven golden path is covered by Playwright against real Vite:
 inspect → source → component intelligence → style intelligence →
@@ -477,7 +485,7 @@ the DOM-level pass only). Installed-app launch verified by the smoke
 script both locally and in Actions. Driving every GUI step inside
 WebView2 remains environment-limited (no WebView2 test driver).
 
-### Security Audit
+### Historical v0.1.x Security Audit
 
 - **IPC/capabilities:** `core:default` + `dialog:allow-open`; commands are
   narrow and re-validate the canonical root on every call.
@@ -490,7 +498,7 @@ WebView2 remains environment-limited (no WebView2 test driver).
 - **Process:** owned trees in a kill-on-close job; unrelated processes
   never touched; nothing killed by port.
 
-### Dependency Audit
+### Historical v0.1.x Dependency Audit
 
 - `pnpm audit --prod`: **0 vulnerabilities**.
 - `cargo audit` (474 crates): **0 vulnerabilities**; 7 warnings, all
@@ -500,7 +508,7 @@ WebView2 remains environment-limited (no WebView2 test driver).
 - Secret scan of tracked files: clean — no `.env`, keys, tokens,
   credentials, or machine paths committed.
 
-### Performance (measured, local build)
+### Historical v0.1.x Performance (measured, local build)
 
 - Frontend entry: **274 KB JS** (84 KB gzip) + 18 KB CSS — +3 KB vs the
   M4 baseline for diagnostics/boundary code.
@@ -513,7 +521,7 @@ WebView2 remains environment-limited (no WebView2 test driver).
   flag `truncated` in ~1 s.
 - No startup scan, no idle watcher, no auto-run — by design and by test.
 
-## Known Issues
+## Historical v0.1.x — Known Issues
 
 - **Unsigned Windows binary** — SmartScreen/Smart App Control may warn
   (documented; signing deferred — no cert provided).
@@ -532,13 +540,18 @@ WebView2 remains environment-limited (no WebView2 test driver).
 - `cargo audit` warnings listed above — unmaintained transitive crates,
   no reachable vuln; tracked upstream via Tauri.
 
-## Deferred
+## Historical v0.1.x — Deferred Items
+
+> v0.1.x-era list — partially superseded: v0.2.0's generic-DOM path now
+> covers non-React Vite, Vue+Vite, Svelte+Vite, and static sites.
+> Current deferrals are in the v0.2.0 "Deferred to later milestones"
+> section above.
 
 - Code signing + auto-updater (needs cert + key infra — out of MVP scope).
 - GUI-level WebView2 automation; multi-file tabs; selector-line CSS
   resolution; deeper import resolution; non-React frameworks.
 
-## Release Artifacts
+## Historical v0.1.0 — Release Artifacts
 
 | Artifact | Location | Notes |
 |---|---|---|
@@ -547,7 +560,7 @@ WebView2 remains environment-limited (no WebView2 test driver).
 | Checksum manifest | `RootRay_0.1.0_x64-setup.exe.sha256` | matches installer |
 | Executable | `target/release/rootray-desktop.exe` | 10.1 MB, local |
 
-## Remote Release Verification
+## Historical v0.1.0 — Remote Release Verification
 
 - Workflow: `Release` (`.github/workflows/release.yml`)
 - Trigger: `workflow_dispatch`
@@ -567,14 +580,19 @@ WebView2 remains environment-limited (no WebView2 test driver).
 - Checksum manifest: `RootRay_0.1.0_x64-setup.exe.sha256`
 - Manifest checksum verified to match the installer.
 
-## Release Source SHA
+## Historical v0.1.0 — Release Source SHA
 `eedfee2f0da19665d1089e30b82d76013e3e70c3` — the commit Release run #1
-built the installer from.
+built the v0.1.0 installer from.
 
-## Final Repository SHA
-See `git log` on `main` — the tip after this documentation-only commit.
-It is newer than the release source SHA by documentation changes only;
-the installer was NOT built from it.
+## Release Source & Documentation SHAs
+
+- **v0.2.0 release source SHA** (what the release workflow and installer
+  were built from): `29b9b6751a12893a027a1db4ed956398946e675b`
+- **Post-release documentation SHA** (the v0.2.0 docs-finalization
+  commit on `main`): `9a46534eaa78d9d77afe4d172e17097981d6e26b`
+- This STATUS-consistency correction lands as one further
+  documentation-only commit on `main` (tip above `9a46534e`); the
+  installer was NOT built from it and the `v0.2.0` tag is unchanged.
 
 ## Last Updated
-2026-09-16
+2026-09-17
