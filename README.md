@@ -17,8 +17,8 @@ RootRay is not an IDE. It is the missing bridge between *what you see* and
 *where it lives*. Bigger changes belong in your real editor — RootRay opens
 VS Code, Cursor, or Windsurf at the exact location.
 
-- **Published stable:** `v0.1.1` — MVP for Windows 10/11 x64
-- **Main:** `v0.2.0` under development — Universal Project Workspace
+- **Published stable:** `v0.2.0` — Universal Project Workspace for Windows 10/11 x64
+- **Prior releases:** `v0.1.1`, `v0.1.0` — see [STATUS.md](STATUS.md)
 - **License:** MIT — see [LICENSE](LICENSE)
 
 ## What RootRay does
@@ -50,11 +50,12 @@ Open Project → Run → Inspect UI → point at an element
 
 ## Install (Windows)
 
-1. Download `RootRay_0.1.1_x64-setup.exe` and its `.sha256` file.
+1. Download `RootRay_0.2.0_x64-setup.exe` and its `.sha256` file from the
+   [v0.2.0 release](https://github.com/3bud-ZC/RootRay/releases/tag/v0.2.0).
 2. Verify the checksum (optional but recommended):
 
    ```powershell
-   Get-FileHash .\RootRay_0.1.1_x64-setup.exe
+   Get-FileHash .\RootRay_0.2.0_x64-setup.exe
    # compare with the hash inside the .sha256 file
    ```
 

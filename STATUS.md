@@ -1,10 +1,24 @@
 # RootRay Status
 
-## Current Development
-**v0.2.0** — Universal Project Workspace
+## Current Release
+**v0.2.0** — Universal Project Workspace — **published, 100%**
 
-**Phase:** release closure — framework compatibility, real-repo
-validation, hardening, installer + release verification
+- Tag: `v0.2.0` → `29b9b6751a12893a027a1db4ed956398946e675b`
+  (annotated, immutable — pushed once, never moved)
+- GitHub Release: https://github.com/3bud-ZC/RootRay/releases/tag/v0.2.0
+  (non-draft, non-prerelease)
+- Pre-tag main CI: run `35220278389` on the release SHA — **success**
+- Release workflow: run `35221296320` (tag-triggered) — **success**
+- Authoritative installer: `RootRay_0.2.0_x64-setup.exe` —
+  `2,937,342 bytes`, SHA-256
+  `d0381b680187ab824541451ec2073215aef5b9a362cdabd19b3fd25e445005c7`,
+  attached to the release with its `.sha256` manifest
+- Public download re-verified: unauthenticated fetch of the release
+  asset → checksum match → `scripts/installer-smoke.ps1` PASS on the
+  exact public binary
+- Installer lifecycle: fresh silent install → launch (no auto-run) →
+  clean terminate → silent uninstall PASS; upgrade 0.1.1 → 0.2.0
+  in-place PASS
 
 ### Framework compatibility & capability tiers
 
@@ -338,9 +352,10 @@ published v0.1.0 build:
   and GitHub Release are live with the verified Actions artifact.
 
 ## Release Version
-Working tree is **0.2.0-dev** — consistent across root `package.json`,
+Working tree is **0.2.0** — consistent across root `package.json`,
 all `packages/*`, `apps/desktop/package.json`, `tauri.conf.json`, and both
-`Cargo.toml` manifests. Latest published release: `v0.1.1` (above).
+`Cargo.toml` manifests. Published release: `v0.2.0` (top of file);
+`v0.1.x` history below is immutable.
 
 ## Implemented (Milestone 05 additions)
 
