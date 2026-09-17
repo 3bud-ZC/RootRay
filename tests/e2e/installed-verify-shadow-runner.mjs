@@ -25,8 +25,7 @@ import { chromium } from "@playwright/test";
 
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "..", "..", "..");
 const PROJECT =
-  process.argv[2] ??
-  join(process.env.USERPROFILE ?? "", "Desktop", "git hub", "Shadow Runner");
+  process.argv[2] ?? join(process.env.USERPROFILE ?? "", "Desktop", "git hub", "Shadow Runner");
 const EXE = join(process.env.LOCALAPPDATA ?? "", "RootRay", "rootray-desktop.exe");
 const CFG_DIR = join(process.env.APPDATA ?? "", "dev.rootray.app");
 const SHOTS = join(REPO_ROOT, "target", "installed-verify");
@@ -193,9 +192,12 @@ async function main() {
       /No authored source/i,
     );
     // Styles still attach to the unmapped selection.
-    await appPage.locator(".boxmodel").waitFor({ timeout: 10_000 }).catch(() => {
-      // box model may collapse for a 0-margin canvas — styles section is enough
-    });
+    await appPage
+      .locator(".boxmodel")
+      .waitFor({ timeout: 10_000 })
+      .catch(() => {
+        // box model may collapse for a 0-margin canvas — styles section is enough
+      });
     await shot(appPage, "sr-05-unmapped-canvas");
     console.log("  ok  runtime canvas: facts + styles, honestly unmapped (no fabricated source)");
 

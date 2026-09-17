@@ -34,8 +34,7 @@ const CDP_PORT = 9230;
 
 const INDEX = join(FIXTURE, "index.html");
 const ORIGINAL_HTML = readFileSync(INDEX, "utf8");
-const CANVAS_LINE =
-  ORIGINAL_HTML.split(/\r?\n/).findIndex((l) => l.includes("<canvas")) + 1;
+const CANVAS_LINE = ORIGINAL_HTML.split(/\r?\n/).findIndex((l) => l.includes("<canvas")) + 1;
 assert.ok(CANVAS_LINE > 0, "canvas not found in fixture index.html");
 const EDITED_HTML = ORIGINAL_HTML.replace(
   '<canvas id="arena"></canvas>',
@@ -205,9 +204,7 @@ async function main() {
     const unmapped = (await appPage.locator(".sel-unmapped").innerText()).trim();
     assert.match(unmapped, /No authored source/i);
     // Source-dependent actions stay disabled.
-    const qeDisabled = await appPage
-      .locator("button", { hasText: "Quick Edit" })
-      .isDisabled();
+    const qeDisabled = await appPage.locator("button", { hasText: "Quick Edit" }).isDisabled();
     assert.ok(qeDisabled, "Quick Edit must be disabled for source-less selection");
     await shot(appPage, "06-unmapped-selection");
     console.log("  ok  runtime-created element: facts + styles, honestly unmapped");
