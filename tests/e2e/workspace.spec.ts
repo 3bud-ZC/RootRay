@@ -1,9 +1,10 @@
 /**
  * Universal-workspace specs on the REAL built desktop UI (vite preview +
  * Tauri stub). Verifies the v0.2.0 capability model end-to-end in the DOM:
- * Next.js shows version + runner + honest inspection limits, a monorepo
- * gets a working target selector, and a static project stays usable
- * without a runner — none of them hit a global "Unsupported" dead-end.
+ * Next.js shows version + runner + full inspection support, a monorepo
+ * gets a working target selector, and a static project is served and
+ * inspected by RootRay's built-in server — none of them hit a global
+ * "Unsupported" dead-end.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -72,11 +73,13 @@ const NEXT_TARGET = {
     ...UNIVERSAL,
     run: CAP,
     browserOpen: CAP,
-    domInspect: UNAVAIL("Next.js runtime adapter is not implemented yet"),
-    styleInspect: UNAVAIL("Next.js runtime adapter is not implemented yet"),
-    sourceMapping: UNAVAIL("Next.js runtime adapter is not implemented yet"),
-    componentIntelligence: PARTIAL("static React analysis only — no rendered-element mapping"),
-    hmrAware: UNAVAIL("runtime source adapter for this framework is not implemented yet"),
+    domInspect: CAP,
+    styleInspect: CAP,
+    sourceMapping: CAP,
+    componentIntelligence: PARTIAL(
+      "rendered-element mapping via build instrumentation; server-component ownership is static",
+    ),
+    hmrAware: CAP,
   },
   evidence: ['"next" dependency: ^16.2.12', "next.config.* found"],
 };
@@ -197,16 +200,18 @@ const STATIC_TARGET = {
   selectedRunner: null,
   capabilities: {
     ...UNIVERSAL,
-    run: UNAVAIL("no declared dev script — RootRay does not fabricate a server command"),
-    browserOpen: UNAVAIL("no dev server to produce a URL"),
-    domInspect: UNAVAIL("runtime source adapter for this framework is not implemented yet"),
-    styleInspect: UNAVAIL("runtime source adapter for this framework is not implemented yet"),
-    sourceMapping: UNAVAIL("runtime source adapter for this framework is not implemented yet"),
+    run: CAP,
+    browserOpen: CAP,
+    domInspect: CAP,
+    styleInspect: CAP,
+    sourceMapping: PARTIAL(
+      "authored HTML elements map exactly; runtime-created DOM has no authored source",
+    ),
     componentIntelligence: {
       state: "not-applicable",
       reason: "not a React project",
     },
-    hmrAware: NA,
+    hmrAware: PARTIAL("RootRay reloads the page on save — no HMR"),
   },
   evidence: ["index.html present"],
 };
@@ -326,7 +331,7 @@ test("Next.js workspace: detected, runnable, no unsupported dead-end", async ({ 
   await expect(page.locator(".fact code", { hasText: "Next.js 16.2.12" })).toBeVisible();
   await expect(page.getByText("npm", { exact: true })).toBeVisible();
   await expect(page.locator("text=npm run dev")).toBeVisible();
-  await expect(page.locator("text=Partial runtime support")).toBeVisible();
+  await expect(page.locator("text=Full runtime support")).toBeVisible();
   // The global dead-end is gone.
   await expect(page.locator("text=Unsupported")).toHaveCount(0);
   await expect(page.locator("text=UNSUPPORTED PROJECT")).toHaveCount(0);
@@ -335,10 +340,11 @@ test("Next.js workspace: detected, runnable, no unsupported dead-end", async ({ 
   for (const label of ["Explorer", "Quick Open", "Search", "Quick Edit"]) {
     await expect(page.locator(".cap-row", { hasText: label })).toBeVisible();
   }
-  // Run is available; source mapping is honestly unavailable with reason.
+  // Run is available; inspection caps show real support, and the
+  // server-component caveat is surfaced as an honest partial reason.
   await expect(page.getByRole("button", { name: "Run Project" })).toBeVisible();
-  const mapping = page.locator(".cap-row", { hasText: "Source mapping" });
-  await expect(mapping).toContainText("Next.js runtime adapter is not implemented yet");
+  const components = page.locator(".cap-row", { hasText: "Components" });
+  await expect(components).toContainText("server-component ownership is static");
 
   // Universal features work — Ctrl+P, Ctrl+Shift+F, Explorer rows render.
   await expect(page.locator(".ex-row", { hasText: "src" })).toBeVisible();
@@ -383,7 +389,7 @@ test("monorepo: target selector switches runtime, workspace stays put", async ({
 
 // ---- CASE C — static web stays usable -------------------------------------------
 
-test("static web workspace: usable without a runner", async ({ page }) => {
+test("static web workspace: served and inspected by the built-in server", async ({ page }) => {
   const { canned, runtime } = cannedFor(STATIC_WORKSPACE);
   await stubTauri(page, { canned, runtime });
   await page.goto(URL);
@@ -391,9 +397,12 @@ test("static web workspace: usable without a runner", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "arena" })).toBeVisible({ timeout: 10_000 });
   await expect(page.locator("text=Static Web")).toBeVisible();
-  await expect(page.locator("text=Workspace support")).toBeVisible();
-  // No fabricated run command — the Run button must not appear.
-  await expect(page.getByRole("button", { name: "Run Project" })).toHaveCount(0);
+  await expect(page.locator("text=Full runtime support")).toBeVisible();
+  // RootRay serves static targets itself — the Run button is real.
+  await expect(page.getByRole("button", { name: "Run Project" })).toBeVisible();
+  // Authored-HTML mapping is honest about runtime-created DOM.
+  const mapping = page.locator(".cap-row", { hasText: "Source mapping" });
+  await expect(mapping).toContainText("runtime-created DOM has no authored source");
   // Universal features still render.
   await expect(page.locator(".ex-row", { hasText: "src" })).toBeVisible();
   await expect(page.locator(".cap-row", { hasText: "Quick Edit" })).toBeVisible();
