@@ -118,6 +118,9 @@ export class InspectorRuntime {
 
   start(): void {
     if (this.destroyed) return;
+    // The inspect toggle works regardless of mode — unlike the inspect
+    // listeners, this one is always attached.
+    this.doc.addEventListener("keydown", this.onToggleKey, true);
     this.connect();
     this.connectReload();
   }
@@ -125,6 +128,7 @@ export class InspectorRuntime {
   /** Full teardown: listeners off, overlay removed, socket closed, no retry. */
   destroy(): void {
     this.destroyed = true;
+    this.doc.removeEventListener("keydown", this.onToggleKey, true);
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.removeListeners();
     this.overlay.destroy();
@@ -356,6 +360,22 @@ export class InspectorRuntime {
     this.send(serializeMessage(inspectSetMessage(false)));
     this.setInspecting(false);
     this.setPhase("ready");
+  };
+
+  /**
+   * Ctrl+Shift+C — the inspect toggle for keyboard-first use. Always
+   * listening (inspect or not), applies locally and reports the request
+   * so the bridge stays the single source of truth.
+   */
+  private onToggleKey = (event: Event): void => {
+    const e = event as KeyboardEvent;
+    if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || e.code !== "KeyC") return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const next = !this.inspecting;
+    this.send(serializeMessage(inspectSetMessage(next)));
+    this.setInspecting(next);
+    this.setPhase(next ? "inspecting" : "ready");
   };
 
   private onRefresh = (): void => {

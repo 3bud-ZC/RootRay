@@ -10,16 +10,52 @@ use crate::error::{CoreError, CoreResult};
 
 const MAX_RECENT_PROJECTS: usize = 10;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub recent_projects: Vec<PathBuf>,
     pub preferred_launcher: Option<String>,
+    /// Deprecated v0.2 key — kept so old settings files migrate instead
+    /// of crashing. Always normalized to match `open_preview_automatically`
+    /// on load/save; never read directly.
     pub open_browser_automatically: bool,
+    /// `None` in files written before the internal preview existed —
+    /// `load()` migrates the legacy `open_browser_automatically` value.
+    /// `Some` is the authoritative preference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_preview_automatically: Option<bool>,
     /// Last successfully analyzed project — used to restore context on
     /// the next launch. Read-only restore: nothing is ever started
     /// automatically.
     pub last_project: Option<PathBuf>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            recent_projects: Vec::new(),
+            preferred_launcher: None,
+            open_browser_automatically: true,
+            // The internal preview is the primary surface — on for a
+            // fresh install, migrated (not reset) for existing users.
+            open_preview_automatically: Some(true),
+            last_project: None,
+        }
+    }
+}
+
+impl Settings {
+    /// Folds the legacy `openBrowserAutomatically` value into the new
+    /// `openPreviewAutomatically` field and keeps the two in sync on the
+    /// way back out so neither an old nor a new reader sees drift.
+    fn normalize(mut self) -> Self {
+        let resolved = self
+            .open_preview_automatically
+            .unwrap_or(self.open_browser_automatically);
+        self.open_preview_automatically = Some(resolved);
+        self.open_browser_automatically = resolved;
+        self
+    }
 }
 
 /// JSON-file-backed settings store. The path is injected so tests can use
@@ -42,7 +78,7 @@ impl SettingsStore {
     pub fn load(&self) -> CoreResult<Settings> {
         match std::fs::read_to_string(&self.path) {
             Ok(raw) => match serde_json::from_str::<Settings>(&raw) {
-                Ok(s) => Ok(s),
+                Ok(s) => Ok(s.normalize()),
                 Err(_) => {
                     let backup = self.path.with_extension("json.corrupt");
                     let _ = std::fs::rename(&self.path, &backup);
@@ -102,7 +138,12 @@ impl SettingsStore {
     }
 
     pub fn set_open_browser_automatically(&self, value: bool) -> CoreResult<Settings> {
+        self.set_open_preview_automatically(value)
+    }
+
+    pub fn set_open_preview_automatically(&self, value: bool) -> CoreResult<Settings> {
         let mut s = self.load()?;
+        s.open_preview_automatically = Some(value);
         s.open_browser_automatically = value;
         self.save(&s)?;
         Ok(s)

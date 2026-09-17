@@ -248,6 +248,71 @@ describe("inspection", () => {
     rt.destroy();
   });
 
+  it("Ctrl+Shift+C toggles inspection on and off from the page", () => {
+    const { socket, rt } = makeRuntime();
+    const btn = instrumentedButton();
+    let clicks = 0;
+    btn.addEventListener("click", () => clicks++);
+    rt.start();
+    handshake(socket);
+
+    // Toggle ON — the request goes to the bridge and applies locally.
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        code: "KeyC",
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    let req = socket.sent.map((m) => JSON.parse(m)).find((m) => m.type === "inspect:set");
+    expect(req).toMatchObject({ enabled: true });
+    expect(rt.isInspecting()).toBe(true);
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(clicks).toBe(0); // inspect click suppressed
+
+    // Toggle OFF — back to interact.
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        code: "KeyC",
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    req = socket.sent
+      .map((m) => JSON.parse(m))
+      .filter((m) => m.type === "inspect:set")
+      .pop();
+    expect(req).toMatchObject({ enabled: false });
+    expect(rt.isInspecting()).toBe(false);
+    btn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(clicks).toBe(1);
+    rt.destroy();
+  });
+
+  it("Ctrl+Shift+C does not fire without the modifier chord", () => {
+    const { socket, rt } = makeRuntime();
+    rt.start();
+    handshake(socket);
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { code: "KeyC", bubbles: true, cancelable: true }),
+    );
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        code: "KeyC",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    expect(socket.sent.some((m) => m.includes("inspect:set"))).toBe(false);
+    expect(rt.isInspecting()).toBe(false);
+    rt.destroy();
+  });
+
   it("Escape requests inspection off and restores app clicks", () => {
     const { socket, rt } = makeRuntime();
     const btn = instrumentedButton();

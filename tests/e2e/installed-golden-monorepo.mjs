@@ -1,6 +1,6 @@
 /**
- * Installed-app monorepo verification — nested Next.js target
- * (v0.2.0 Milestone 02 acceptance, GAP 2).
+ * Installed-app monorepo verification — nested Next.js target,
+ * v0.3.0 internal preview.
  *
  * Drives the REAL installed RootRay binary against the pnpm workspace
  * fixture `fixtures/pnpm-monorepo`, where workspace root ≠ target root:
@@ -9,61 +9,46 @@
  *   active target  = fixtures/pnpm-monorepo/apps/web   (Next.js app, dev cwd)
  *
  *   installed exe → auto-analyze workspace → apps/web auto-selected →
- *   Run → next dev from apps/web → URL → real Chromium → bridge →
+ *   Run → next dev from apps/web → URL → EMBEDDED child webview loads
+ *   the page inside RootRay → adversarial IPC probe → bridge →
  *   Inspect UI → click <h1> rendered by apps/web/components/Banner.tsx →
  *   selection must report WORKSPACE-relative `apps/web/...` (not `src/...`,
- *   not an absolute path) → Quick Edit opens that file (no save) →
- *   Explorer still shows workspace-root dirs outside apps/web →
- *   workspace Search finds + opens files OUTSIDE the target root
- *   (search/security root = workspace root) →
- *   Stop → owned tree exits → scratch cleaned.
+ *   not an absolute path) → auto-reveal opens that file beside the
+ *   preview → Explorer still shows workspace-root dirs outside apps/web →
+ *   workspace Search finds + opens files OUTSIDE the target root →
+ *   Stop → preview teardown + owned tree exits → scratch cleaned.
  *
  * Usage (repo root, app installed via the NSIS setup):
  *   node tests/e2e/installed-golden-monorepo.mjs
  */
 
 import assert from "node:assert/strict";
-import { execFileSync, execSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { chromium } from "@playwright/test";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  allPages,
+  assertPreviewHasNoIpc,
+  attachCdp,
+  attachPreview,
+  attachUI,
+  childProcs,
+  EXE,
+  existsSync,
+  killApp,
+  launchApp,
+  makeShotDir,
+  REPO_ROOT,
+  seedSettings,
+  shot,
+  sleep,
+  until,
+  waitText,
+} from "./installed-preview.mjs";
 
-const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "..", "..", "..");
 const WORKSPACE = join(REPO_ROOT, "fixtures", "pnpm-monorepo");
 const TARGET = join(WORKSPACE, "apps", "web");
-const EXE = join(process.env.LOCALAPPDATA ?? "", "RootRay", "rootray-desktop.exe");
-const CFG_DIR = join(process.env.APPDATA ?? "", "dev.rootray.app");
-const SHOTS = join(REPO_ROOT, "target", "installed-verify-monorepo");
+const SHOTS = makeShotDir("installed-verify-monorepo");
 const CDP_PORT = 9232;
-
-mkdirSync(SHOTS, { recursive: true });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function shot(page, name) {
-  try {
-    await page.screenshot({ path: join(SHOTS, `${name}.png`) });
-  } catch {}
-}
-
-async function waitText(page, text, timeout = 30_000) {
-  await page.locator(`text=${text}`).first().waitFor({ timeout });
-}
-
-function childProcs(pid) {
-  try {
-    const out = execSync(
-      `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"ParentProcessId=${pid}\\" | Select-Object -Expand Name"`,
-      { encoding: "utf8" },
-    );
-    return out
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
-}
 
 const ENTRY_FILE = join(TARGET, "node_modules", ".cache", "rootray", "entry.js");
 
@@ -82,53 +67,13 @@ async function main() {
   );
   const scratchBefore = rootrayScratch();
 
-  const settings = {
-    lastProject: WORKSPACE,
-    recentProjects: [WORKSPACE],
-    preferredLauncher: null,
-    openBrowserAutomatically: false,
-  };
-  writeFileSync(join(CFG_DIR, "settings.json"), JSON.stringify(settings), { encoding: "utf8" });
-  console.log(`seeded lastProject = ${WORKSPACE}`);
-
-  const appProc = spawn(EXE, [], {
-    env: {
-      ...process.env,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT}`,
-    },
-    stdio: "ignore",
-  });
-  console.log(`launched installed app (pid ${appProc.pid})`);
+  seedSettings(WORKSPACE);
+  const appProc = launchApp(CDP_PORT);
 
   let cdp;
-  let browser;
   try {
-    const deadline = Date.now() + 30_000;
-    while (Date.now() < deadline) {
-      try {
-        cdp = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`);
-        break;
-      } catch {
-        await sleep(500);
-      }
-    }
-    assert.ok(cdp, "could not attach to installed app WebView2 over CDP");
-
-    let appPage;
-    while (Date.now() < deadline + 15_000) {
-      for (const ctx of cdp.contexts()) {
-        for (const p of ctx.pages()) {
-          if (p.url().includes("tauri") || (await p.title()) === "RootRay") {
-            appPage = p;
-            break;
-          }
-        }
-        if (appPage) break;
-      }
-      if (appPage) break;
-      await sleep(500);
-    }
-    assert.ok(appPage, "RootRay app page not found over CDP");
+    cdp = await attachCdp(CDP_PORT);
+    const appPage = await attachUI(cdp);
     console.log("attached to installed app UI");
 
     // ---- workspace analysis; nested Next target must be active -----------
@@ -151,7 +96,7 @@ async function main() {
     const factsAfter = await appPage.locator(".facts").innerText();
     assert.match(factsAfter, /Next\.js/, "framework not resolved for apps/web");
     assert.match(factsAfter, /pnpm run dev/, "runner not resolved");
-    await shot(appPage, "01-workspace-analyzed");
+    await shot(appPage, SHOTS, "01-workspace-analyzed");
     console.log(
       `  ok  workspace: pnpm workspace · active target apps/web (${await targetSelect.inputValue()})`,
     );
@@ -164,7 +109,7 @@ async function main() {
     try {
       await urlChip.waitFor({ timeout: 120_000 });
     } catch (e) {
-      await shot(appPage, "run-timeout");
+      await shot(appPage, SHOTS, "run-timeout");
       const notice = await appPage
         .locator(".notice")
         .innerText()
@@ -174,6 +119,7 @@ async function main() {
     }
     const appUrl = (await urlChip.innerText()).trim();
     assert.match(appUrl, /^https?:\/\/(localhost|127\.0\.0\.1):\d+/, `bad URL: ${appUrl}`);
+    await appPage.locator(".preview-toolbar").waitFor({ timeout: 15_000 });
 
     // The session entry must appear under the TARGET's node_modules/.cache
     // at the stable path — factual proof the dev server rooted at apps/web
@@ -193,19 +139,19 @@ async function main() {
     }
     assert.ok(entrySeen, "no RootRay entry under apps/web/node_modules/.cache/rootray");
     console.log(`  ok  dev server running: ${appUrl} (entry: .cache/rootray/entry.js)`);
-    await shot(appPage, "02-running");
 
-    // ---- real browser → bridge → inspect → workspace-relative mapping -----
-    browser = await chromium.launch();
-    const devPage = await browser.newPage();
-    await devPage.goto(appUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    // ---- embedded preview → bridge → inspect → workspace-relative mapping --
+    const devPage = await attachPreview(cdp, appUrl);
     const banner = devPage.locator("h1.mono-banner");
     await banner.waitFor({ timeout: 60_000 });
-    console.log("  ok  apps/web page rendered in Chromium");
+    await shot(appPage, SHOTS, "02-internal-preview");
+    console.log("  ok  apps/web page rendered inside RootRay");
+
+    await assertPreviewHasNoIpc(devPage);
 
     await waitText(appPage, "Browser Connected", 30_000);
-    await shot(appPage, "03-bridge-connected");
-    console.log("  ok  inspector bridge connected");
+    await shot(appPage, SHOTS, "03-bridge-connected");
+    console.log("  ok  inspector bridge connected from the embedded preview");
 
     await appPage.locator("button", { hasText: "Inspect UI" }).click();
     await waitText(appPage, "Inspecting", 15_000);
@@ -228,7 +174,7 @@ async function main() {
       .innerText()
       .then((s) => s.trim())
       .catch(() => null);
-    await shot(appPage, "04-selected");
+    await shot(appPage, SHOTS, "04-selected");
 
     // THE acceptance condition: workspace-relative, path-safe identity.
     assert.equal(
@@ -247,16 +193,16 @@ async function main() {
     await appPage.locator(".boxmodel").waitFor({ timeout: 10_000 });
     console.log("  ok  style intelligence rendered for nested-target selection");
 
-    // ---- Quick Edit opens the workspace-rooted file (no save) -------------
-    await appPage.locator("button", { hasText: "Quick Edit" }).click();
+    // ---- auto-reveal opened the workspace-rooted file beside the preview ----
     const editor = appPage.locator(".qeditor");
     await editor.waitFor({ timeout: 15_000 });
     const qePath = (await editor.locator(".qe-path").innerText()).trim();
-    assert.equal(qePath, "apps/web/components/Banner.tsx", `Quick Edit opened: ${qePath}`);
-    await shot(appPage, "05-quick-edit-open");
+    assert.equal(qePath, "apps/web/components/Banner.tsx", `auto-reveal opened: ${qePath}`);
+    await appPage.locator(".preview-host").waitFor({ timeout: 5_000 });
+    await shot(appPage, SHOTS, "05-auto-reveal");
     await appPage.locator('button[aria-label="Close editor"]').click();
     await editor.waitFor({ state: "detached", timeout: 10_000 });
-    console.log(`  ok  Quick Edit opened ${qePath} (closed without saving)`);
+    console.log(`  ok  click-to-source opened ${qePath} beside the preview (closed, unsaved)`);
 
     // ---- Explorer/Search scope stays at the workspace root -----------------
     const treeText = await appPage.locator(".ex-tree").innerText();
@@ -293,18 +239,26 @@ async function main() {
     await editor.waitFor({ state: "detached", timeout: 10_000 });
     console.log(`  ok  Security root = workspace root (opened ${apiPath} outside target root)`);
 
-    // ---- Stop → process tree + scratch cleanup -----------------------------
+    // ---- Stop → preview teardown + process tree + scratch cleanup ----------
     await appPage.locator(".runner-actions button", { hasText: "Stop" }).first().click();
     await waitText(appPage, "Stopped", 30_000).catch(async () => {
       await appPage.locator(".run-state").waitFor({ timeout: 30_000 });
     });
-    await shot(appPage, "06-stopped");
+    await shot(appPage, SHOTS, "06-stopped");
+
+    const origin = appUrl.endsWith("/") ? appUrl.slice(0, -1) : appUrl;
+    await until(
+      () => !allPages(cdp).some((p) => p.url().startsWith(origin)),
+      "preview CDP target teardown",
+      15_000,
+    ).catch(async () => {
+      await until(() => devPage.isClosed(), "preview page close", 10_000);
+    });
+    console.log("  ok  embedded preview surface torn down on stop");
 
     await sleep(1500);
     const kids = childProcs(appProc.pid).filter((n) => /node|pnpm|next|cmd/i.test(n));
     assert.deepEqual(kids, [], `dev process tree still alive: ${kids.join(", ")}`);
-    // Probe the TCP listener directly — a browser navigation can be served
-    // by a service worker / cache with the server already dead.
     let urlDead = false;
     const urlDeadline = Date.now() + 6000;
     do {
@@ -333,23 +287,17 @@ async function main() {
       `  ok  scratch dirs: [${scratchAfter.join(", ") || "none"}] · entry stubbed in place`,
     );
 
-    console.log("\nMONOREPO INSTALLED VERIFICATION: PASS");
+    console.log("\nMONOREPO INSTALLED VERIFICATION (INTERNAL PREVIEW): PASS");
     console.log(`  workspace root : ${WORKSPACE}`);
     console.log(`  target root    : ${TARGET}`);
     console.log(`  selected source: ${selFile} ${selPos}`);
   } finally {
-    await browser?.close().catch(() => {});
-    try {
-      process.kill(appProc.pid);
-    } catch {}
-    await sleep(1000);
-    try {
-      execFileSync("taskkill", ["/PID", String(appProc.pid), "/T", "/F"], { stdio: "ignore" });
-    } catch {}
+    await cdp?.close().catch(() => {});
+    await killApp(appProc);
   }
 }
 
 main().catch((e) => {
-  console.error(`\nMONOREPO INSTALLED VERIFICATION: FAIL — ${e.message}`);
+  console.error(`\nMONOREPO INSTALLED VERIFICATION (INTERNAL PREVIEW): FAIL — ${e.message}`);
   process.exit(1);
 });

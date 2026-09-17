@@ -1,5 +1,6 @@
 import { activeTarget, type Capability, errorMessage } from "@rootray/shared";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Splitter } from "../../components/Splitter";
 import { projectDisplayName } from "../../lib/format";
 import {
   analyzeProject,
@@ -7,14 +8,17 @@ import {
   openInEditor,
   pickProjectDirectory,
   setActiveTarget,
+  setInspection,
   startDevServer,
 } from "../../lib/ipc";
 import { useStore } from "../../state/store";
 import { EditorPanel } from "../editor/EditorPanel";
 import { ExplorerPanel } from "../explorer/ExplorerPanel";
 import { InspectorPanel } from "../inspector/InspectorPanel";
+import { useSelectionAutoReveal } from "../inspector/useAutoReveal";
 import { QuickOpen } from "../nav/QuickOpen";
 import { SearchPanel } from "../nav/SearchPanel";
+import { PreviewPanel } from "../preview/PreviewPanel";
 import { LogPanel } from "../runner/LogPanel";
 import { RunnerPanel } from "../runner/RunnerPanel";
 
@@ -75,14 +79,54 @@ export function ProjectView() {
     open: false,
     query: "",
   });
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  // Pane widths in px — the center takes whatever space remains.
+  const [leftW, setLeftW] = useState(220);
+  const [rightW, setRightW] = useState(340);
+  // Widths snapshotted at drag start — deltas apply to a stable base.
+  const leftBase = useRef(220);
+  const rightBase = useRef(340);
+
+  const dragStart = (side: "left" | "right") => (d: boolean) => {
+    if (d) {
+      if (side === "left") leftBase.current = leftW;
+      else rightBase.current = rightW;
+    }
+    setDragging(d);
+  };
+
+  // Inspect click → source opens beside the preview automatically.
+  useSelectionAutoReveal();
+
+  const modalOpen = quickOpen || search.open || state.settingsOpen || state.editorClosePrompt;
 
   // Global workspace shortcuts — active only while a workspace is loaded.
-  // Ctrl+P: quick open · Ctrl+Shift+F: workspace search. CodeMirror's own
-  // Ctrl+S / Ctrl+F keep working inside the editor.
+  // Ctrl+P: quick open · Ctrl+Shift+F: workspace search · Ctrl+Shift+C:
+  // inspect toggle · Esc: back to Interact (when no modal owns it).
+  // CodeMirror's own Ctrl+S / Ctrl+F keep working inside the editor.
+  const inspectorEnabled = state.inspector.inspectionEnabled;
+  const inspectorConnected =
+    state.inspector.phase === "connected" || state.inspector.phase === "inspecting";
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        // The in-page runtime handles Escape inside the preview; this
+        // covers Escape pressed while the RootRay UI has focus. Modals
+        // keep their own Escape.
+        if (inspectorEnabled && !modalOpen) {
+          e.preventDefault();
+          setInspection(false).catch(() => {});
+        }
+        return;
+      }
       if (!(e.ctrlKey || e.metaKey)) return;
-      if (e.key === "p" && !e.shiftKey && !e.altKey) {
+      if (e.code === "KeyC" && e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        if (inspectorConnected) {
+          setInspection(!inspectorEnabled).catch(() => {});
+        }
+      } else if (e.key === "p" && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         setSearch({ open: false, query: "" });
         setQuickOpen((v) => !v);
@@ -94,7 +138,7 @@ export function ProjectView() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [inspectorEnabled, inspectorConnected, modalOpen]);
 
   if (!workspace) return null;
   const target = activeTarget(workspace);
@@ -155,6 +199,189 @@ export function ProjectView() {
         ? { cls: "warn", label: "Partial runtime support" }
         : { cls: "muted", label: "Workspace support" };
 
+  const targetSelect = workspace.targets.length > 1 && (
+    <select
+      aria-label="Active target"
+      className="target-select"
+      value={workspace.activeTargetId ?? ""}
+      onChange={(e) => switchTarget(e.target.value)}
+    >
+      {workspace.targets.map((t) => (
+        <option key={t.id} value={t.id}>
+          {t.id} — {frameworkLabel(t.framework, t.frameworkVersion)}
+        </option>
+      ))}
+    </select>
+  );
+
+  const projectDetails = (
+    <>
+      <dl className="facts">
+        <div className="fact">
+          <dt>Workspace</dt>
+          <dd>
+            <code>{KIND_LABELS[workspace.workspaceKind] ?? workspace.workspaceKind}</code>
+          </dd>
+        </div>
+        <div className="fact">
+          <dt>Framework</dt>
+          <dd>
+            <code>{target ? frameworkLabel(target.framework, target.frameworkVersion) : "—"}</code>
+          </dd>
+        </div>
+        <div className="fact">
+          <dt>Package manager</dt>
+          <dd>
+            <code>{target?.packageManager ?? workspace.packageManager}</code>
+          </dd>
+        </div>
+        <div className="fact">
+          <dt>Dev command</dt>
+          <dd>
+            <code>{target?.selectedRunner?.display ?? "—"}</code>
+          </dd>
+        </div>
+        <div className="fact">
+          <dt>Support</dt>
+          <dd>
+            <span className={supportLevel.cls}>{supportLevel.label}</span>
+          </dd>
+        </div>
+      </dl>
+
+      {target && target.technologies.length > 0 && (
+        <div className="tech-list">
+          {target.technologies.map((t) => (
+            <span key={t.name} className="tech-chip" title={t.evidence.join("\n")}>
+              {t.name}
+              {t.version ? ` ${t.version}` : ""}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="cap-groups">
+        <div className="cap-group">
+          <h3 className="cap-title">Workspace</h3>
+          <ul>
+            <CapRow label="Explorer" cap={caps.workspaceBrowse} />
+            <CapRow label="Quick Open" cap={caps.quickOpen} />
+            <CapRow label="Search" cap={caps.workspaceSearch} />
+            <CapRow label="Quick Edit" cap={caps.quickEdit} />
+          </ul>
+        </div>
+        <div className="cap-group">
+          <h3 className="cap-title">Runtime</h3>
+          <ul>
+            <CapRow label="Run" cap={caps.run} />
+            <CapRow label="Browser" cap={caps.browserOpen} />
+            <CapRow label="HMR-aware" cap={caps.hmrAware} />
+          </ul>
+        </div>
+        <div className="cap-group">
+          <h3 className="cap-title">Inspection</h3>
+          <ul>
+            <CapRow label="DOM inspect" cap={caps.domInspect} />
+            <CapRow label="Style inspect" cap={caps.styleInspect} />
+            <CapRow label="Source mapping" cap={caps.sourceMapping} />
+            <CapRow label="Components" cap={caps.componentIntelligence} />
+          </ul>
+        </div>
+      </div>
+    </>
+  );
+
+  // ---- workbench mode: the project is (or is becoming) live -----------
+  if (isLive) {
+    const covered = modalOpen || dragging;
+    return (
+      <div className="project workbench">
+        <div className="wb-head">
+          <div className="wb-id">
+            <h1 className="project-name" title={workspace.root}>
+              {projectDisplayName(workspace.name, workspace.root)}
+            </h1>
+            {targetSelect}
+          </div>
+          <div className="wb-head-actions">
+            <button
+              type="button"
+              className="btn"
+              aria-expanded={detailsOpen}
+              onClick={() => setDetailsOpen((v) => !v)}
+            >
+              Details
+            </button>
+            <button type="button" className="btn" onClick={changeProject}>
+              Change…
+            </button>
+          </div>
+        </div>
+
+        {detailsOpen && <section className="project-card wb-details">{projectDetails}</section>}
+
+        <RunnerPanel />
+
+        <div className="wb-body">
+          <aside className="wb-left" style={{ width: leftW }}>
+            <ExplorerPanel onSearch={(query) => setSearch({ open: true, query })} />
+          </aside>
+          <Splitter
+            label="Explorer width"
+            valueNow={leftW}
+            valueMin={140}
+            valueMax={480}
+            onDelta={(dx) => setLeftW(clamp(leftBase.current + dx, 140, 480))}
+            onDragState={dragStart("left")}
+            onNudge={(d) => setLeftW((w) => clamp(w + d, 140, 480))}
+          />
+          <div className="wb-center">
+            <PreviewPanel
+              covered={covered}
+              tab={state.workspaceTab}
+              onTab={(tab) => dispatch({ type: "workspace-tab", tab })}
+            >
+              {state.workspaceTab !== "preview" && (
+                <div className="wb-code">
+                  {state.editor ? (
+                    <EditorPanel />
+                  ) : (
+                    <div className="wb-code-empty muted">
+                      No source open — inspect an element or pick a file in the Explorer.
+                    </div>
+                  )}
+                </div>
+              )}
+            </PreviewPanel>
+          </div>
+          <Splitter
+            label="Inspector width"
+            valueNow={rightW}
+            valueMin={240}
+            valueMax={560}
+            onDelta={(dx) => setRightW(clamp(rightBase.current - dx, 240, 560))}
+            onDragState={dragStart("right")}
+            onNudge={(d) => setRightW((w) => clamp(w + d, 240, 560))}
+          />
+          <aside className="wb-right" style={{ width: rightW }}>
+            <InspectorPanel onSearch={(query) => setSearch({ open: true, query })} />
+          </aside>
+        </div>
+
+        {(state.logs.length > 0 || isLive) && <LogPanel logs={state.logs} />}
+
+        {quickOpen && <QuickOpen onClose={() => setQuickOpen(false)} />}
+        {search.open && (
+          <SearchPanel
+            initialQuery={search.query}
+            onClose={() => setSearch((s) => ({ ...s, open: false }))}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ---- analysis mode: no running project ------------------------------
   return (
     <div className="project">
       <section className="project-card">
@@ -165,104 +392,15 @@ export function ProjectView() {
               {workspace.root}
             </div>
           </div>
-          <button type="button" className="btn" onClick={changeProject}>
-            Change…
-          </button>
-        </div>
-
-        <dl className="facts">
-          <div className="fact">
-            <dt>Workspace</dt>
-            <dd>
-              <code>{KIND_LABELS[workspace.workspaceKind] ?? workspace.workspaceKind}</code>
-            </dd>
-          </div>
-          {workspace.targets.length > 1 && (
-            <div className="fact">
-              <dt>Active target</dt>
-              <dd>
-                <select
-                  aria-label="Active target"
-                  className="target-select"
-                  value={workspace.activeTargetId ?? ""}
-                  onChange={(e) => switchTarget(e.target.value)}
-                >
-                  {workspace.targets.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.id} — {frameworkLabel(t.framework, t.frameworkVersion)}
-                    </option>
-                  ))}
-                </select>
-              </dd>
-            </div>
-          )}
-          <div className="fact">
-            <dt>Framework</dt>
-            <dd>
-              <code>
-                {target ? frameworkLabel(target.framework, target.frameworkVersion) : "—"}
-              </code>
-            </dd>
-          </div>
-          <div className="fact">
-            <dt>Package manager</dt>
-            <dd>
-              <code>{target?.packageManager ?? workspace.packageManager}</code>
-            </dd>
-          </div>
-          <div className="fact">
-            <dt>Dev command</dt>
-            <dd>
-              <code>{target?.selectedRunner?.display ?? "—"}</code>
-            </dd>
-          </div>
-          <div className="fact">
-            <dt>Support</dt>
-            <dd>
-              <span className={supportLevel.cls}>{supportLevel.label}</span>
-            </dd>
-          </div>
-        </dl>
-
-        {target && target.technologies.length > 0 && (
-          <div className="tech-list">
-            {target.technologies.map((t) => (
-              <span key={t.name} className="tech-chip" title={t.evidence.join("\n")}>
-                {t.name}
-                {t.version ? ` ${t.version}` : ""}
-              </span>
-            ))}
-          </div>
-        )}
-
-        <div className="cap-groups">
-          <div className="cap-group">
-            <h3 className="cap-title">Workspace</h3>
-            <ul>
-              <CapRow label="Explorer" cap={caps.workspaceBrowse} />
-              <CapRow label="Quick Open" cap={caps.quickOpen} />
-              <CapRow label="Search" cap={caps.workspaceSearch} />
-              <CapRow label="Quick Edit" cap={caps.quickEdit} />
-            </ul>
-          </div>
-          <div className="cap-group">
-            <h3 className="cap-title">Runtime</h3>
-            <ul>
-              <CapRow label="Run" cap={caps.run} />
-              <CapRow label="Browser" cap={caps.browserOpen} />
-              <CapRow label="HMR-aware" cap={caps.hmrAware} />
-            </ul>
-          </div>
-          <div className="cap-group">
-            <h3 className="cap-title">Inspection</h3>
-            <ul>
-              <CapRow label="DOM inspect" cap={caps.domInspect} />
-              <CapRow label="Style inspect" cap={caps.styleInspect} />
-              <CapRow label="Source mapping" cap={caps.sourceMapping} />
-              <CapRow label="Components" cap={caps.componentIntelligence} />
-            </ul>
+          <div className="project-head-actions">
+            {targetSelect}
+            <button type="button" className="btn" onClick={changeProject}>
+              Change…
+            </button>
           </div>
         </div>
+
+        {projectDetails}
 
         {workspace.warnings.length > 0 && (
           <div className="reasons">
@@ -283,7 +421,7 @@ export function ProjectView() {
         )}
 
         <div className="project-actions">
-          {!isLive && caps.run.state === "available" && (
+          {caps.run.state === "available" && (
             <button type="button" className="btn btn-primary" onClick={run}>
               Run Project
             </button>
@@ -294,20 +432,13 @@ export function ProjectView() {
         </div>
       </section>
 
-      {(isLive || runtime.phase === "stopped" || runtime.phase === "failed") && <RunnerPanel />}
+      {(runtime.phase === "stopped" || runtime.phase === "failed") && <RunnerPanel />}
 
       <div className="workspace">
         <ExplorerPanel onSearch={(query) => setSearch({ open: true, query })} />
         <div className="workspace-main">
-          {isLive &&
-            caps.domInspect.state === "available" &&
-            state.inspector.phase !== "inactive" && (
-              <InspectorPanel onSearch={(query) => setSearch({ open: true, query })} />
-            )}
-
           <EditorPanel />
-
-          {(state.logs.length > 0 || isLive) && <LogPanel logs={state.logs} />}
+          {(state.logs.length > 0 || runtime.phase === "stopped") && <LogPanel logs={state.logs} />}
         </div>
       </div>
 
@@ -320,4 +451,8 @@ export function ProjectView() {
       )}
     </div>
   );
+}
+
+function clamp(v: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, v));
 }

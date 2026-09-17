@@ -13,6 +13,7 @@ pub mod filesystem;
 pub mod html_instrument;
 pub mod inspector;
 pub mod launcher;
+pub mod preview;
 pub mod process;
 pub mod project;
 pub mod settings;

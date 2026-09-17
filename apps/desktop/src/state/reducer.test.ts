@@ -67,4 +67,35 @@ describe("uiReducer", () => {
     s = uiReducer(s, { type: "notice", message: null });
     expect(s.notice).toBeNull();
   });
+
+  it("applies preview snapshots and rejects stale generations", () => {
+    let s = uiReducer(initialUiState, {
+      type: "preview-state",
+      state: { phase: "ready", url: "http://localhost:5173/", error: null, generation: 3 },
+    });
+    expect(s.preview.phase).toBe("ready");
+    expect(s.preview.url).toBe("http://localhost:5173/");
+    // An out-of-order older snapshot must not resurrect dead state.
+    s = uiReducer(s, {
+      type: "preview-state",
+      state: { phase: "loading", url: "http://localhost:5173/old", error: null, generation: 2 },
+    });
+    expect(s.preview.phase).toBe("ready");
+    expect(s.preview.url).toBe("http://localhost:5173/");
+    // A newer snapshot applies normally.
+    s = uiReducer(s, {
+      type: "preview-state",
+      state: { phase: "stopped", url: null, error: null, generation: 4 },
+    });
+    expect(s.preview.phase).toBe("stopped");
+  });
+
+  it("tracks the workspace tab and the auto-preview preference", () => {
+    let s = uiReducer(initialUiState, { type: "workspace-tab", tab: "split" });
+    expect(s.workspaceTab).toBe("split");
+    s = uiReducer(s, { type: "auto-preview", enabled: false });
+    expect(s.autoPreview).toBe(false);
+    s = uiReducer(s, { type: "workspace-tab", tab: "code" });
+    expect(s.workspaceTab).toBe("code");
+  });
 });

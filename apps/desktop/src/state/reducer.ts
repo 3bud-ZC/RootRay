@@ -3,6 +3,7 @@ import type {
   EditSession,
   InspectorState,
   LogLine,
+  PreviewState,
   ProcessEventPayload,
   RuntimeState,
   SourceFileRead,
@@ -25,6 +26,12 @@ export interface UiState {
   pendingOpen: { relativePath: string; source: SourceLocation } | null;
   /** Live-appended log tail (mirrors backend recentLogs, streams realtime). */
   logs: LogLine[];
+  /** Embedded project-preview snapshot — driven by `rootray://preview-state`. */
+  preview: PreviewState;
+  /** Settings-backed preference: open the internal preview on URL detect. */
+  autoPreview: boolean;
+  /** Center workbench mode: preview only, code only, or side-by-side. */
+  workspaceTab: "preview" | "code" | "split";
   settingsOpen: boolean;
   /** Transient user-facing error from the last failed action. */
   notice: string | null;
@@ -55,6 +62,13 @@ export const emptyInspector: InspectorState = {
   error: null,
 };
 
+export const emptyPreview: PreviewState = {
+  phase: "hidden",
+  url: null,
+  error: null,
+  generation: 0,
+};
+
 export const initialUiState: UiState = {
   runtime: emptyRuntime,
   inspector: emptyInspector,
@@ -63,6 +77,9 @@ export const initialUiState: UiState = {
   editorClosePrompt: false,
   pendingOpen: null,
   logs: [],
+  preview: emptyPreview,
+  autoPreview: true,
+  workspaceTab: "preview",
   settingsOpen: false,
   notice: null,
   recentErrors: [],
@@ -74,6 +91,9 @@ export type UiAction =
   | { type: "process-event"; event: ProcessEventPayload }
   | { type: "toggle-settings"; open?: boolean }
   | { type: "notice"; message: string | null; isError?: boolean }
+  | { type: "preview-state"; state: PreviewState }
+  | { type: "auto-preview"; enabled: boolean }
+  | { type: "workspace-tab"; tab: "preview" | "code" | "split" }
   // --- quick editor -----------------------------------------------------------
   | { type: "edit-open"; relativePath: string; source: SourceLocation }
   | { type: "edit-opened"; read: SourceFileRead; source: SourceLocation }
@@ -133,6 +153,16 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
     }
     case "toggle-settings":
       return { ...state, settingsOpen: action.open ?? !state.settingsOpen };
+    case "preview-state": {
+      // Stale snapshot guard — out-of-order native events never regress
+      // the phase or resurrect a dead URL.
+      if (action.state.generation < state.preview.generation) return state;
+      return { ...state, preview: action.state };
+    }
+    case "auto-preview":
+      return { ...state, autoPreview: action.enabled };
+    case "workspace-tab":
+      return { ...state, workspaceTab: action.tab };
     case "notice": {
       const recentErrors =
         action.message && action.isError !== false

@@ -1,15 +1,16 @@
 /**
- * Installed-app Next.js golden path verification (v0.2.0 Milestone 02
- * acceptance) — the Next counterpart of installed-golden.mjs.
+ * Installed-app Next.js golden path — v0.3.0 internal preview.
  *
- * Drives the REAL installed RootRay binary — not a dev server, not a stub:
+ * Drives the REAL installed RootRay binary — no stubs, no external
+ * browser:
  *
- *   installed exe (WebView2 CDP) → auto-analyze Next fixture → Run Project →
- *   real `next dev` spawned by the app under the RootRay shim (Turbopack) →
- *   URL detected → real Chromium loads the page → inspector bridge
- *   connects → Inspect UI → click element → source mapping → component +
- *   style intelligence → Quick Edit → save → Next Fast Refresh →
- *   re-inspect → route navigation → Stop → owned process tree exits.
+ *   installed exe (WebView2 CDP) → auto-analyze Next fixture → Run →
+ *   real `next dev` under the RootRay shim (Turbopack) → URL detected →
+ *   EMBEDDED child webview loads the page inside RootRay → adversarial
+ *   IPC probe → inspector bridge connects → Inspect → click → source
+ *   auto-opens beside the preview → Quick Edit → save → Fast Refresh
+ *   inside the embedded preview → re-inspect → route navigation keeps
+ *   instrumentation → Stop → preview + process tree teardown.
  *
  * Usage (repo root, app already installed via the NSIS setup):
  *   node tests/e2e/installed-golden-next.mjs
@@ -18,55 +19,36 @@
  */
 
 import assert from "node:assert/strict";
-import { execFileSync, execSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { chromium } from "@playwright/test";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  allPages,
+  assertPreviewHasNoIpc,
+  attachCdp,
+  attachPreview,
+  attachUI,
+  childProcs,
+  EXE,
+  existsSync,
+  killApp,
+  launchApp,
+  makeShotDir,
+  REPO_ROOT,
+  seedSettings,
+  shot,
+  sleep,
+  until,
+  waitText,
+} from "./installed-preview.mjs";
 
-const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "..", "..", "..");
 const FIXTURE = join(REPO_ROOT, "fixtures", "nextjs-inspector");
-const EXE = join(process.env.LOCALAPPDATA ?? "", "RootRay", "rootray-desktop.exe");
-const CFG_DIR = join(process.env.APPDATA ?? "", "dev.rootray.app");
-const SHOTS = join(REPO_ROOT, "target", "installed-verify-next");
+const SHOTS = makeShotDir("installed-verify-next");
 const CDP_PORT = 9230;
 
 const EDIT_TARGET = join(FIXTURE, "components", "ActionButton.tsx");
 const ORIGINAL_SOURCE = readFileSync(EDIT_TARGET, "utf8");
 const EDITED_SOURCE = ORIGINAL_SOURCE.replace("Count is {count}", "Count is now {count}");
 assert.notEqual(EDITED_SOURCE, ORIGINAL_SOURCE, "edit needle must exist in fixture");
-
-mkdirSync(SHOTS, { recursive: true });
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function shot(page, name) {
-  try {
-    await page.screenshot({ path: join(SHOTS, `${name}.png`) });
-  } catch (e) {
-    console.warn(`  (screenshot ${name} failed: ${e.message})`);
-  }
-}
-
-async function waitText(page, text, timeout = 30_000) {
-  await page.locator(`text=${text}`).first().waitFor({ timeout });
-}
-
-/** Child processes of the installed app, via CIM. */
-function childProcs(pid) {
-  try {
-    const out = execSync(
-      `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"ParentProcessId=${pid}\\" | Select-Object -Expand Name"`,
-      { encoding: "utf8" },
-    );
-    return out
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
-}
 
 async function main() {
   assert.ok(existsSync(EXE), `installed exe missing: ${EXE}`);
@@ -75,53 +57,13 @@ async function main() {
     "fixture deps missing — run `npm install` in fixtures/nextjs-inspector",
   );
 
-  const settings = {
-    lastProject: FIXTURE,
-    recentProjects: [FIXTURE],
-    preferredLauncher: null,
-    openBrowserAutomatically: false,
-  };
-  writeFileSync(join(CFG_DIR, "settings.json"), JSON.stringify(settings), { encoding: "utf8" });
-  console.log(`seeded lastProject = ${FIXTURE}`);
-
-  const appProc = spawn(EXE, [], {
-    env: {
-      ...process.env,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT}`,
-    },
-    stdio: "ignore",
-  });
-  console.log(`launched installed app (pid ${appProc.pid})`);
+  seedSettings(FIXTURE);
+  const appProc = launchApp(CDP_PORT);
 
   let cdp;
-  let fixtureBrowser;
   try {
-    const deadline = Date.now() + 30_000;
-    while (Date.now() < deadline) {
-      try {
-        cdp = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`);
-        break;
-      } catch {
-        await sleep(500);
-      }
-    }
-    assert.ok(cdp, "could not attach to installed app WebView2 over CDP");
-
-    let appPage;
-    while (Date.now() < deadline + 15_000) {
-      for (const ctx of cdp.contexts()) {
-        for (const p of ctx.pages()) {
-          if (p.url().includes("tauri") || (await p.title()) === "RootRay") {
-            appPage = p;
-            break;
-          }
-        }
-        if (appPage) break;
-      }
-      if (appPage) break;
-      await sleep(500);
-    }
-    assert.ok(appPage, "RootRay app page not found over CDP");
+    cdp = await attachCdp(CDP_PORT);
+    const appPage = await attachUI(cdp);
     console.log("attached to installed app UI");
 
     // ---- analyze ----------------------------------------------------------
@@ -130,7 +72,7 @@ async function main() {
     assert.match(facts, /Next\.js 16\.2\.12/, "framework not resolved");
     assert.match(facts, /\bnpm\b/, "package manager not resolved to npm");
     assert.match(facts, /npm run dev/, "dev command not resolved");
-    await shot(appPage, "01-analyzed");
+    await shot(appPage, SHOTS, "01-analyzed");
     console.log("  ok  analysis: Next.js 16.2.12 · npm · npm run dev");
 
     // ---- Run (next dev under the RootRay shim, Turbopack) -------------------
@@ -139,7 +81,7 @@ async function main() {
     try {
       await urlChip.waitFor({ timeout: 180_000 }); // first turbopack compile is slow
     } catch (e) {
-      await shot(appPage, "run-timeout");
+      await shot(appPage, SHOTS, "run-timeout");
       const notice = await appPage
         .locator(".notice")
         .innerText()
@@ -153,30 +95,32 @@ async function main() {
     }
     const appUrl = (await urlChip.innerText()).trim();
     assert.match(appUrl, /^https?:\/\/(localhost|127\.0\.0\.1):\d+/, `bad URL: ${appUrl}`);
-    await shot(appPage, "02-running");
+    await appPage.locator(".preview-toolbar").waitFor({ timeout: 15_000 });
     console.log(`  ok  next dev running: ${appUrl}`);
 
-    // ---- real browser loads the rendered app -------------------------------
-    fixtureBrowser = await chromium.launch();
-    const devPage = await fixtureBrowser.newPage();
-    await devPage.goto(appUrl);
+    // ---- the embedded preview renders the app --------------------------------
+    const devPage = await attachPreview(cdp, appUrl);
     await waitText(devPage, "Inspector fixture", 60_000);
     const button = devPage.locator("button", { hasText: "Count is" }).first();
     await button.waitFor();
-    // Instrumentation landed in the real rendered DOM.
+    // Instrumentation landed in the real rendered DOM inside the preview.
     assert.equal(await button.getAttribute("data-rootray-file"), "components/ActionButton.tsx");
-    console.log("  ok  fixture rendered in Chromium with source attributes");
+    await appPage.locator(".preview-phase-ready").waitFor({ timeout: 30_000 });
+    await shot(appPage, SHOTS, "02-internal-preview");
+    console.log("  ok  fixture rendered inside RootRay with source attributes");
+
+    await assertPreviewHasNoIpc(devPage);
 
     await waitText(appPage, "Browser Connected", 30_000);
-    await shot(appPage, "03-bridge-connected");
-    console.log("  ok  inspector bridge connected");
+    await shot(appPage, SHOTS, "03-bridge-connected");
+    console.log("  ok  inspector bridge connected from the embedded preview");
 
-    // ---- inspect → select → source mapping ----------------------------------
+    // ---- inspect → select → source auto-opens beside the preview --------------
     await appPage.locator("button", { hasText: "Inspect UI" }).click();
     await waitText(appPage, "Inspecting", 15_000);
     await button.hover();
     await devPage.locator(".rr-box").waitFor({ timeout: 15_000 });
-    await shot(devPage, "04-inspect-overlay");
+    await shot(devPage, SHOTS, "04-inspect-overlay");
     await button.click();
 
     await appPage.locator(".selection").waitFor({ timeout: 15_000 });
@@ -187,8 +131,13 @@ async function main() {
     const selComponent = (await appPage.locator(".sel-component").innerText()).trim();
     assert.equal(selComponent, "ActionButton");
     assert.match(await button.innerText(), /Count is 0/); // click suppressed
-    await shot(appPage, "05-selected");
-    console.log(`  ok  source mapping: ${selFile} ${selPos} · component ActionButton`);
+
+    const editor = appPage.locator(".qeditor");
+    await editor.waitFor({ timeout: 15_000 });
+    assert.match(await editor.locator(".qe-path").innerText(), /ActionButton\.tsx/);
+    await editor.locator(".cm-rootray-marked-line").waitFor({ timeout: 10_000 });
+    await shot(appPage, SHOTS, "05-click-to-source");
+    console.log(`  ok  click-to-source: ${selFile} ${selPos} opened beside the preview`);
 
     await appPage.locator(".intel-section").first().waitFor({ timeout: 10_000 });
     const intelText = await appPage.locator(".inspector").innerText();
@@ -196,26 +145,21 @@ async function main() {
     await appPage.locator(".boxmodel").waitFor({ timeout: 10_000 });
     console.log("  ok  component + style intelligence rendered");
 
-    // ---- Quick Edit → save → Fast Refresh ------------------------------------
-    await appPage.locator("button", { hasText: "Quick Edit" }).click();
-    const editor = appPage.locator(".qeditor");
-    await editor.waitFor({ timeout: 15_000 });
-    assert.match(await editor.locator(".qe-path").innerText(), /ActionButton\.tsx/);
+    // ---- edit in place → save → Fast Refresh inside the preview ---------------
     await appPage.locator(".cm-content").click();
     await appPage.keyboard.press("ControlOrMeta+a");
     await appPage.keyboard.insertText(EDITED_SOURCE);
     await appPage.locator(".qe-foot button", { hasText: "Save" }).click();
     await waitText(appPage, "Saved", 15_000);
-    await shot(appPage, "06-quick-edit-saved");
+    await shot(appPage, SHOTS, "06-quick-edit-saved");
     console.log("  ok  Quick Edit saved through the installed app");
 
-    // Fast Refresh applies the edit in the running Next app.
     await devPage
       .locator("button", { hasText: "Count is now 0" })
       .first()
       .waitFor({ timeout: 45_000 });
-    await shot(devPage, "07-fast-refresh");
-    console.log("  ok  Next Fast Refresh applied the edit in the rendered page");
+    await shot(devPage, SHOTS, "07-fast-refresh");
+    console.log("  ok  Next Fast Refresh applied the edit inside the preview");
 
     // ---- re-inspect after Fast Refresh --------------------------------------
     await appPage.locator('button[aria-label="Clear selection"]').click();
@@ -228,7 +172,7 @@ async function main() {
     console.log("  ok  re-inspection after Fast Refresh resolves the same source");
 
     // ---- navigation: client-side route change stays instrumented -------------
-    // Inspect mode is still on — its clicks are suppressed, so turn it off
+    // Inspect mode is still on — its clicks are suppressed, so leave it
     // before driving a real navigation.
     await appPage.locator("button", { hasText: "Stop Inspecting" }).click();
     await devPage.locator("a", { hasText: "About" }).click();
@@ -237,21 +181,35 @@ async function main() {
       await devPage.locator("h1", { hasText: "About RootRay" }).getAttribute("data-rootray-file"),
       "app/about/page.tsx",
     );
+    // The toolbar URL followed the client-side navigation.
+    await until(
+      async () => (await appPage.locator(".preview-url").inputValue()).includes("/about"),
+      "preview URL to track client-side navigation",
+      15_000,
+    ).catch(() => console.log("  (note: toolbar URL did not track client-side nav — non-fatal)"));
     console.log("  ok  route navigation keeps instrumentation (app router)");
 
-    // ---- Stop → process tree cleanup ------------------------------------------
-    await devPage.goto(appUrl.endsWith("/") ? appUrl : `${appUrl}/`); // back to /
+    // ---- Stop → preview teardown + process tree cleanup -----------------------
+    await devPage.goto(appUrl.endsWith("/") ? appUrl : `${appUrl}/`);
     await appPage.locator(".runner-actions button", { hasText: "Stop" }).first().click();
     await waitText(appPage, "Stopped", 30_000).catch(async () => {
       await appPage.locator(".run-state").waitFor({ timeout: 30_000 });
     });
-    await shot(appPage, "08-stopped");
+    await shot(appPage, SHOTS, "08-stopped");
+
+    const origin = appUrl.endsWith("/") ? appUrl.slice(0, -1) : appUrl;
+    await until(
+      () => !allPages(cdp).some((p) => p.url().startsWith(origin)),
+      "preview CDP target teardown",
+      15_000,
+    ).catch(async () => {
+      await until(() => devPage.isClosed(), "preview page close", 10_000);
+    });
+    console.log("  ok  embedded preview surface torn down on stop");
 
     await sleep(2500); // Next spawns worker processes — give the tree a beat
     const kids = childProcs(appProc.pid).filter((n) => /node|npm|next|cmd/i.test(n));
     assert.deepEqual(kids, [], `dev process tree still alive: ${kids.join(", ")}`);
-    // Probe the TCP listener directly — a browser navigation can be served
-    // by a service worker / cache with the server already dead.
     let urlDead = false;
     const urlDeadline = Date.now() + 6000;
     do {
@@ -266,21 +224,15 @@ async function main() {
     assert.ok(urlDead, "dev server still responds after Stop");
     console.log("  ok  next dev stopped; owned process tree exited; URL dead");
 
-    console.log("\nINSTALLED NEXT GOLDEN PATH: PASS");
+    console.log("\nINSTALLED NEXT GOLDEN PATH (INTERNAL PREVIEW): PASS");
   } finally {
     writeFileSync(EDIT_TARGET, ORIGINAL_SOURCE, "utf8");
-    await fixtureBrowser?.close().catch(() => {});
-    try {
-      process.kill(appProc.pid);
-    } catch {}
-    await sleep(1000);
-    try {
-      execFileSync("taskkill", ["/PID", String(appProc.pid), "/T", "/F"], { stdio: "ignore" });
-    } catch {}
+    await cdp?.close().catch(() => {});
+    await killApp(appProc);
   }
 }
 
 main().catch((e) => {
-  console.error(`\nINSTALLED NEXT GOLDEN PATH: FAIL — ${e.message}`);
+  console.error(`\nINSTALLED NEXT GOLDEN PATH (INTERNAL PREVIEW): FAIL — ${e.message}`);
   process.exit(1);
 });

@@ -1,14 +1,18 @@
 /**
- * Installed-app golden path verification (v0.2.0 Milestone 01 acceptance).
+ * Installed-app golden path verification (v0.3.0 Integrated Browser
+ * Workbench acceptance).
  *
- * Drives the REAL installed RootRay binary — not a dev server, not a stub:
+ * Drives the REAL installed RootRay binary — no stubs, no external
+ * browser:
  *
  *   installed exe (WebView2 CDP) → auto-analyze fixture → Run Project →
  *   real Vite dev server (spawned by the app) → URL detected →
- *   real Chromium loads the page → inspector bridge connects →
- *   Inspect UI → click element → source mapping → component/style
- *   intelligence → Quick Edit → save → Vite HMR → re-inspect →
- *   Stop → owned process tree exits.
+ *   EMBEDDED child webview loads the page inside RootRay → adversarial
+ *   IPC probe proves the preview holds no command access → inspector
+ *   bridge connects from inside the preview → Inspect → click element →
+ *   source auto-opens beside the preview → Quick Edit → save → Vite HMR
+ *   inside the embedded preview → Back/Forward/Reload/popup policy →
+ *   Escape + Ctrl+Shift+C → Stop → preview + process tree cleanup.
  *
  * Usage (repo root, app already installed via the NSIS setup):
  *   node tests/e2e/installed-golden.mjs
@@ -17,55 +21,36 @@
  */
 
 import assert from "node:assert/strict";
-import { execFileSync, execSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { chromium } from "@playwright/test";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  allPages,
+  assertPreviewHasNoIpc,
+  attachCdp,
+  attachPreview,
+  attachUI,
+  childProcs,
+  EXE,
+  existsSync,
+  killApp,
+  launchApp,
+  makeShotDir,
+  REPO_ROOT,
+  seedSettings,
+  shot,
+  sleep,
+  until,
+  waitText,
+} from "./installed-preview.mjs";
 
-const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "..", "..", "..");
 const FIXTURE = join(REPO_ROOT, "fixtures", "vite-react-inspector");
-const EXE = join(process.env.LOCALAPPDATA ?? "", "RootRay", "rootray-desktop.exe");
-const CFG_DIR = join(process.env.APPDATA ?? "", "dev.rootray.app");
-const SHOTS = join(REPO_ROOT, "target", "installed-verify");
+const SHOTS = makeShotDir("installed-verify");
 const CDP_PORT = 9229;
 
 const EDIT_TARGET = join(FIXTURE, "src", "components", "ActionButton.tsx");
 const ORIGINAL_SOURCE = readFileSync(EDIT_TARGET, "utf8");
 const EDITED_SOURCE = ORIGINAL_SOURCE.replace("Count is {count}", "Count is now {count}");
 assert.notEqual(EDITED_SOURCE, ORIGINAL_SOURCE, "edit needle must exist in fixture");
-
-mkdirSync(SHOTS, { recursive: true });
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function shot(page, name) {
-  try {
-    await page.screenshot({ path: join(SHOTS, `${name}.png`) });
-  } catch (e) {
-    console.warn(`  (screenshot ${name} failed: ${e.message})`);
-  }
-}
-
-async function waitText(page, text, timeout = 30_000) {
-  await page.locator(`text=${text}`).first().waitFor({ timeout });
-}
-
-/** Child processes of the installed app, via CIM. */
-function childProcs(pid) {
-  try {
-    const out = execSync(
-      `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"ParentProcessId=${pid}\\" | Select-Object -Expand Name"`,
-      { encoding: "utf8" },
-    );
-    return out
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
-}
 
 async function main() {
   assert.ok(existsSync(EXE), `installed exe missing: ${EXE}`);
@@ -74,56 +59,14 @@ async function main() {
     "fixture deps missing — run `npm install` in fixtures/vite-react-inspector",
   );
 
-  // Seed settings: auto-restore this workspace on launch; never auto-open a
-  // browser — the harness opens the page itself in controlled Chromium.
-  const settings = {
-    lastProject: FIXTURE,
-    recentProjects: [FIXTURE],
-    preferredLauncher: null,
-    openBrowserAutomatically: false,
-  };
-  writeFileSync(join(CFG_DIR, "settings.json"), JSON.stringify(settings), { encoding: "utf8" });
-  console.log(`seeded lastProject = ${FIXTURE}`);
-
-  const appProc = spawn(EXE, [], {
-    env: {
-      ...process.env,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT}`,
-    },
-    stdio: "ignore",
-  });
-  console.log(`launched installed app (pid ${appProc.pid})`);
+  seedSettings(FIXTURE);
+  const appProc = launchApp(CDP_PORT);
 
   let cdp;
-  let fixtureBrowser;
   try {
     // ---- attach to the installed app's WebView2 -------------------------
-    const deadline = Date.now() + 30_000;
-    while (Date.now() < deadline) {
-      try {
-        cdp = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`);
-        break;
-      } catch {
-        await sleep(500);
-      }
-    }
-    assert.ok(cdp, "could not attach to installed app WebView2 over CDP");
-
-    let appPage;
-    while (Date.now() < deadline + 15_000) {
-      for (const ctx of cdp.contexts()) {
-        for (const p of ctx.pages()) {
-          if (p.url().includes("tauri") || (await p.title()) === "RootRay") {
-            appPage = p;
-            break;
-          }
-        }
-        if (appPage) break;
-      }
-      if (appPage) break;
-      await sleep(500);
-    }
-    assert.ok(appPage, "RootRay app page not found over CDP");
+    cdp = await attachCdp(CDP_PORT);
+    const appPage = await attachUI(cdp);
     console.log("attached to installed app UI");
 
     // ---- analyze (auto-restored via lastProject) -------------------------
@@ -132,21 +75,16 @@ async function main() {
     assert.match(facts, /React \+ Vite 7\.1\.0/, "framework not resolved");
     assert.match(facts, /\bnpm\b/, "package manager not resolved to npm");
     assert.match(facts, /npm run dev/, "dev command not resolved");
-    await appPage
-      .locator(".run-state")
-      .waitFor({ state: "detached", timeout: 5000 })
-      .catch(() => {});
-    await shot(appPage, "01-analyzed");
+    await shot(appPage, SHOTS, "01-analyzed");
     console.log("  ok  analysis: React + Vite 7.1.0 · npm · npm run dev");
 
-    // ---- Run ------------------------------------------------------------
+    // ---- Run → the workbench appears with the preview toolbar ------------
     await appPage.locator("button", { hasText: "Run Project" }).click();
     const urlChip = appPage.locator(".url-chip");
     try {
       await urlChip.waitFor({ timeout: 120_000 });
     } catch (e) {
-      // Capture what the app actually shows before failing.
-      await shot(appPage, "run-timeout");
+      await shot(appPage, SHOTS, "run-timeout");
       const notice = await appPage
         .locator(".notice")
         .innerText()
@@ -155,37 +93,46 @@ async function main() {
         .locator(".logs, .log-panel")
         .innerText()
         .catch(() => "");
-      const runtime = await appPage
-        .evaluate(() => (window.__TAURI_INTERNALS__ ? "has-tauri" : "no-tauri"))
-        .catch(() => "eval-failed");
-      console.error(`notice=${notice}\nlogs=${logs}\nruntime=${runtime}`);
+      console.error(`notice=${notice}\nlogs=${logs}`);
       throw e;
     }
     const appUrl = (await urlChip.innerText()).trim();
     assert.match(appUrl, /^https?:\/\/(localhost|127\.0\.0\.1):\d+/, `bad URL: ${appUrl}`);
-    await shot(appPage, "02-running");
+    await appPage.locator(".preview-toolbar").waitFor({ timeout: 15_000 });
     console.log(`  ok  dev server running: ${appUrl}`);
 
-    // ---- real browser loads the rendered app -----------------------------
-    fixtureBrowser = await chromium.launch();
-    const devPage = await fixtureBrowser.newPage();
-    await devPage.goto(appUrl);
+    // ---- the embedded preview IS the browser ------------------------------
+    // No external browser is launched anywhere in this script: the child
+    // WebView2 surface appears as a second CDP target at the dev URL.
+    const devPage = await attachPreview(cdp, appUrl);
     await waitText(devPage, "Inspector fixture", 30_000);
     const button = devPage.locator("button", { hasText: "Count is" }).first();
     await button.waitFor();
-    console.log("  ok  fixture rendered in Chromium");
+    await appPage.locator(".preview-phase-ready").waitFor({ timeout: 30_000 });
+    await shot(appPage, SHOTS, "02-internal-preview");
+    console.log("  ok  project rendered INSIDE RootRay (embedded WebView2 surface)");
 
-    // Inspector bridge: runtime in the page connected back to the app.
+    // ---- adversarial: project content must hold no command access ---------
+    await assertPreviewHasNoIpc(devPage);
+
+    // ---- inspector bridge connects from inside the preview ----------------
     await waitText(appPage, "Browser Connected", 30_000);
-    await shot(appPage, "03-bridge-connected");
-    console.log("  ok  inspector bridge connected");
+    await shot(appPage, SHOTS, "03-bridge-connected");
+    console.log("  ok  inspector bridge connected from the embedded preview");
 
-    // ---- inspect → select → source mapping -------------------------------
+    // ---- interact first: a real click reaches the app ----------------------
+    await button.click();
+    await until(
+      async () => /Count is 1/.test(await button.innerText()),
+      "interact click to increment the counter",
+    );
+    console.log("  ok  Interact mode: app clicks work normally in the preview");
+
+    // ---- inspect → select → source auto-opens beside the preview -----------
     await appPage.locator("button", { hasText: "Inspect UI" }).click();
     await waitText(appPage, "Inspecting", 15_000);
     await button.hover();
     await devPage.locator(".rr-box").waitFor({ timeout: 15_000 });
-    await shot(devPage, "04-inspect-overlay");
     await button.click();
 
     await appPage.locator(".selection").waitFor({ timeout: 15_000 });
@@ -195,43 +142,46 @@ async function main() {
     assert.match(selPos, /Line \d+ · Column \d+/, selPos);
     const selComponent = (await appPage.locator(".sel-component").innerText()).trim();
     assert.equal(selComponent, "ActionButton");
-    // Inspected click was suppressed — counter still 0.
-    assert.match(await button.innerText(), /Count is 0/);
-    await shot(appPage, "05-selected");
-    console.log(`  ok  source mapping: ${selFile} ${selPos} · component ActionButton`);
+    // The inspected click was suppressed — counter is still 1.
+    assert.match(await button.innerText(), /Count is 1/);
 
-    // Component + style intelligence sections rendered from the selection.
-    await appPage.locator(".intel-section").first().waitFor({ timeout: 10_000 });
-    const intelText = await appPage.locator(".inspector").innerText();
-    assert.match(intelText, /ActionButton/, "component intelligence missing");
-    // Style intelligence: box model + matched CSS rules for the selection.
-    await appPage.locator(".boxmodel").waitFor({ timeout: 10_000 });
-    console.log("  ok  component + style intelligence rendered");
-
-    // ---- Quick Edit → save → HMR -------------------------------------------
-    await appPage.locator("button", { hasText: "Quick Edit" }).click();
+    // Auto-reveal: the source opened beside the preview with no Quick Edit
+    // click — this IS the workbench's click-to-source contract.
     const editor = appPage.locator(".qeditor");
     await editor.waitFor({ timeout: 15_000 });
     assert.match(await editor.locator(".qe-path").innerText(), /ActionButton\.tsx/);
-    await appPage.locator(".cm-content").click();
+    await editor.locator(".cm-rootray-marked-line").waitFor({ timeout: 10_000 });
+    // …and the preview host is still there — code revealed beside it.
+    await appPage.locator(".preview-host").waitFor({ timeout: 5_000 });
+    await shot(appPage, SHOTS, "04-click-to-source");
+    console.log(`  ok  click-to-source: ${selFile} ${selPos} opened beside the preview`);
+
+    await appPage.locator(".intel-section").first().waitFor({ timeout: 10_000 });
+    const intelText = await appPage.locator(".inspector").innerText();
+    assert.match(intelText, /ActionButton/, "component intelligence missing");
+    await appPage.locator(".boxmodel").waitFor({ timeout: 10_000 });
+    console.log("  ok  component + style intelligence rendered");
+
+    // ---- edit in place → save → HMR inside the embedded preview ------------
+    // .cm-content's box can extend past the scrollport under the right
+    // pane — click a line instead: its box is inside the visible editor.
+    await appPage.locator(".cm-line").first().click();
     await appPage.keyboard.press("ControlOrMeta+a");
     await appPage.keyboard.insertText(EDITED_SOURCE);
     await appPage.locator(".qe-foot button", { hasText: "Save" }).click();
     await waitText(appPage, "Saved", 15_000);
-    await shot(appPage, "06-quick-edit-saved");
-    console.log("  ok  Quick Edit saved through the installed app");
+    await shot(appPage, SHOTS, "05-saved");
 
-    // HMR: the running dev server must hot-update the rendered page.
     await devPage
-      .locator("button", { hasText: "Count is now 0" })
+      .locator("button", { hasText: "Count is now 1" })
       .first()
       .waitFor({ timeout: 20_000 });
-    await shot(devPage, "07-hmr-updated");
-    console.log("  ok  Vite HMR applied the edit in the rendered page");
+    await shot(devPage, SHOTS, "06-hmr-in-preview");
+    console.log("  ok  Quick Edit saved; Vite HMR updated the embedded preview");
 
     // ---- re-inspect after HMR ----------------------------------------------
     await appPage.locator('button[aria-label="Clear selection"]').click();
-    await button.click(); // still in inspect mode — select again
+    await button.click(); // still inspecting — select again
     await appPage.locator(".selection").waitFor({ timeout: 15_000 });
     assert.equal(
       (await appPage.locator(".sel-file").innerText()).trim(),
@@ -239,18 +189,77 @@ async function main() {
     );
     console.log("  ok  re-inspection after HMR resolves the same source");
 
-    // ---- Stop → process tree cleanup ----------------------------------------
+    // ---- Escape inside the preview returns to Interact ----------------------
+    await devPage.keyboard.press("Escape");
+    await waitText(appPage, "Browser Connected", 15_000);
+    console.log("  ok  Escape inside the preview exits Inspect mode");
+
+    // ---- Ctrl+Shift+C inside the preview toggles Inspect --------------------
+    await devPage.keyboard.press("Control+Shift+C");
+    await waitText(appPage, "Inspecting", 15_000);
+    await devPage.keyboard.press("Control+Shift+C");
+    await waitText(appPage, "Browser Connected", 15_000);
+    console.log("  ok  Ctrl+Shift+C toggles Inspect mode from the preview");
+
+    // ---- toolbar: navigate / back / forward / reload -------------------------
+    const urlInput = appPage.locator(".preview-url");
+    const base = appUrl.endsWith("/") ? appUrl : `${appUrl}/`;
+    const navUrl = `${base}?nav=1`;
+    await urlInput.fill(navUrl);
+    await urlInput.press("Enter");
+    await until(() => devPage.url().includes("nav=1"), "preview navigate", 15_000);
+
+    await appPage.locator('button[aria-label="Back"]').click();
+    await until(() => !devPage.url().includes("nav=1"), "preview back", 15_000);
+    await appPage.locator('button[aria-label="Forward"]').click();
+    await until(() => devPage.url().includes("nav=1"), "preview forward", 15_000);
+
+    // Reload: a page-global marker must not survive a real reload.
+    await devPage.evaluate(() => {
+      window.__rr_marker = 1;
+    });
+    await appPage.locator('button[aria-label="Reload"]').click();
+    await until(
+      async () => (await devPage.evaluate(() => window.__rr_marker)) === undefined,
+      "preview reload to clear page globals",
+      20_000,
+    );
+    await waitText(devPage, "Inspector fixture", 30_000);
+    console.log("  ok  toolbar: navigate · back · forward · reload all work");
+
+    // ---- popup policy: local window.open navigates the preview itself -------
+    await devPage.evaluate(() => window.open("?popup=1"));
+    await until(() => devPage.url().includes("popup=1"), "local popup to navigate preview", 15_000);
+    // No extra top-level window/target was spawned for it.
+    const stray = allPages(cdp).filter((p) => p.url().includes("popup=1") && p !== devPage);
+    assert.equal(stray.length, 0, "local popup must not spawn a second surface");
+    await devPage.goto(base);
+    console.log("  ok  window.open stays inside the preview — no child windows");
+
+    // ---- Stop → preview teardown + process tree cleanup ----------------------
     await appPage.locator(".runner-actions button", { hasText: "Stop" }).first().click();
     await waitText(appPage, "Stopped", 30_000).catch(async () => {
       await appPage.locator(".run-state").waitFor({ timeout: 30_000 });
     });
-    await shot(appPage, "08-stopped");
+    await shot(appPage, SHOTS, "07-stopped");
+
+    // The preview surface is gone — its CDP target must disappear. Match
+    // on the dev-server origin, not "localhost" — the app UI itself is
+    // served from tauri.localhost.
+    const origin = base.slice(0, -1);
+    await until(
+      () => !allPages(cdp).some((p) => p.url().startsWith(origin)),
+      "preview CDP target teardown",
+      15_000,
+    ).catch(async () => {
+      // A detached target can linger as closed — assert it is gone-or-dead.
+      await until(() => devPage.isClosed(), "preview page close", 10_000);
+    });
+    console.log("  ok  embedded preview surface torn down on stop");
 
     await sleep(1500);
     const kids = childProcs(appProc.pid).filter((n) => /node|npm|vite|cmd/i.test(n));
     assert.deepEqual(kids, [], `dev process tree still alive: ${kids.join(", ")}`);
-    // Probe the TCP listener directly — a browser navigation can be served
-    // by a service worker / cache with the server already dead.
     let urlDead = false;
     const urlDeadline = Date.now() + 6000;
     do {
@@ -265,22 +274,15 @@ async function main() {
     assert.ok(urlDead, "dev server still responds after Stop");
     console.log("  ok  dev server stopped; owned process tree exited; URL dead");
 
-    console.log("\nINSTALLED GOLDEN PATH: PASS");
+    console.log("\nINSTALLED GOLDEN PATH (INTERNAL PREVIEW): PASS");
   } finally {
-    // Always restore the fixture and kill the app.
     writeFileSync(EDIT_TARGET, ORIGINAL_SOURCE, "utf8");
-    await fixtureBrowser?.close().catch(() => {});
-    try {
-      process.kill(appProc.pid);
-    } catch {}
-    await sleep(1000);
-    try {
-      execFileSync("taskkill", ["/PID", String(appProc.pid), "/T", "/F"], { stdio: "ignore" });
-    } catch {}
+    await cdp?.close().catch(() => {});
+    await killApp(appProc);
   }
 }
 
 main().catch((e) => {
-  console.error(`\nINSTALLED GOLDEN PATH: FAIL — ${e.message}`);
+  console.error(`\nINSTALLED GOLDEN PATH (INTERNAL PREVIEW): FAIL — ${e.message}`);
   process.exit(1);
 });

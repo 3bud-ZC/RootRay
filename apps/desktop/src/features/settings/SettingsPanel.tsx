@@ -74,20 +74,24 @@ export function SettingsPanel() {
         </section>
 
         <section className="settings-section">
-          <h3 className="section-title">Browser</h3>
+          <h3 className="section-title">Preview</h3>
           <label className="check">
             <input
               type="checkbox"
-              checked={settings?.openBrowserAutomatically ?? false}
+              checked={settings?.openPreviewAutomatically ?? true}
               onChange={(e) =>
                 patch(
-                  { openBrowserAutomatically: e.target.checked },
-                  "Failed to save browser preference",
+                  { openPreviewAutomatically: e.target.checked },
+                  "Failed to save preview preference",
                 )
               }
             />
-            Open the app URL automatically when the dev server is ready
+            Open the internal preview automatically when the dev server is ready
           </label>
+          <p className="muted">
+            The project runs inside RootRay. Use External in the toolbar to open the system browser
+            manually.
+          </p>
         </section>
 
         <section className="settings-section">

@@ -4,6 +4,8 @@
 //! is deliberately no generic `execute(command)` — every operation is
 //! application-specific and validates its inputs in the core.
 
+mod preview;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -24,6 +26,7 @@ const EVENT_PROCESS: &str = "rootray://process-event";
 const EVENT_STATE: &str = "rootray://state";
 const EVENT_INSPECTOR: &str = "rootray://inspector-state";
 const EVENT_EDITOR: &str = "rootray://editor-event";
+const EVENT_PREVIEW: &str = "rootray://preview-state";
 
 type CmdResult<T> = Result<T, CommandError>;
 
@@ -293,6 +296,7 @@ pub fn run() {
                 .unwrap_or_else(|_| PathBuf::from("."));
             let core = Arc::new(AppCore::new(&dir));
             app.manage(core.clone());
+            app.manage(Arc::new(preview::PreviewManager::default()));
 
             // Packaged installs ship the inspector bundles as resources —
             // point the core at them. Dev workspaces fall back to packages/.
@@ -357,9 +361,23 @@ pub fn run() {
             get_diagnostics,
             get_settings,
             update_settings,
+            preview::preview_create,
+            preview::preview_set_bounds,
+            preview::preview_hide,
+            preview::preview_show,
+            preview::preview_navigate,
+            preview::preview_back,
+            preview::preview_forward,
+            preview::preview_reload,
+            preview::preview_url,
+            preview::preview_state,
+            preview::preview_mark_waiting,
+            preview::preview_mark_stopped,
+            preview::preview_dispose,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
+                preview::shutdown(&window.app_handle());
                 if let Some(core) = window.app_handle().try_state::<Arc<AppCore>>() {
                     // Best-effort cleanup — never leave orphan dev servers.
                     let _ = core.stop_dev_server();

@@ -13,6 +13,7 @@ import {
 import { useStore } from "../../state/store";
 import { quickEdit } from "../editor/controller";
 import { describeComponent } from "../intelligence/controller";
+import { CanvasSection } from "./CanvasSection";
 import { ComponentSection } from "./ComponentSection";
 import { buildContextBlock } from "./copyContext";
 import { StylesSection } from "./StylesSection";
@@ -222,6 +223,8 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
               </span>
             </div>
           )}
+
+          {sel.element.tagName === "canvas" && <CanvasSection hasSource={Boolean(sel.source)} />}
 
           {preview && (
             <pre className="source-preview">

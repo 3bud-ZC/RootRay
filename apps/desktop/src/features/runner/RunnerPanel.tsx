@@ -64,8 +64,14 @@ export function RunnerPanel() {
       </div>
 
       <div className="runner-actions">
-        <button type="button" className="btn" disabled={!running || !urlSafe} onClick={open}>
-          Open Browser
+        <button
+          type="button"
+          className="btn"
+          disabled={!running || !urlSafe}
+          onClick={open}
+          title="Open the project URL in the system browser"
+        >
+          Open External
         </button>
         <button
           type="button"

@@ -297,6 +297,78 @@ Re-scanned this cycle with `cargo run -p rootray-core --example scan`:
 
 ---
 
+## In development — v0.3.0 (unpublished, not tagged)
+
+**Integrated browser workbench.** The project now runs *inside* RootRay:
+Run → the dev-server URL opens in an embedded WebView2 child surface →
+normal app interaction → Inspect → click an element → source opens
+beside the preview → edit + save → HMR/Fast Refresh applies in place →
+stop tears the surface down with the process tree. External browser
+opening remains an explicit fallback action, never the default.
+
+### Architecture
+
+- **Native child webview** — a second WebView2 (`project-preview`)
+  parented to the main window, created via `Window::add_child` (Tauri
+  `unstable` feature). The React `.preview-host` div is only a
+  measurement rect; a `ResizeObserver`/rAF loop pushes bounds via
+  `preview_set_bounds`, and the surface is hidden while modals, palettes
+  or pane drags cover its pixels.
+- **Privilege isolation** — capabilities scope every privilege to
+  `webviews: ["main"]`; the preview gets zero command access (verified
+  by an in-page IPC probe — every invoke denied by ACL). All preview
+  commands additionally reject non-`main` callers natively.
+- **Navigation policy** — main-frame navigation is loopback-only;
+  `window.open`/`target=_blank` is denied, local URLs re-navigate the
+  preview, remote http(s) goes to the system browser unprivileged.
+- **Preview state** — `hidden → waiting → loading → ready → stopped →
+  error` with a monotonic generation; `rootray://preview-state` pushes
+  snapshots and the reducer drops stale ones (including across dispose).
+- **Workbench layout** — Preview/Code/Split tabs; inspect selections
+  auto-reveal the mapped source beside the preview; Ctrl+Shift+C and
+  Escape toggle Inspect from *inside* the preview (runtime keydown);
+  canvas/runtime-created DOM stays honestly source-unresolved.
+- **Settings** — `openPreviewAutomatically` (default on) migrates the
+  legacy `openBrowserAutomatically` value when unset.
+
+### Installed-app fixes found by golden-path verification
+
+- **`preview_create` must be `async`** — synchronous commands run inside
+  WebView2's IPC dispatch, where `add_child`'s controller creation never
+  receives its completion callback (tauri#4121 / wry#583): the app
+  deadlocked with all IPC wedged. Async commands run on the runtime, so
+  the build posts to the event loop with a clean stack.
+- **`.wb-right` width binding** — the inspector pane had `flex-shrink:0`
+  with no width, exploded to ~5600px over the workbench and swallowed
+  editor clicks; `style={{ width: rightW }}` restored.
+- **`stop_dev_server` notify gap** — the in-process static server emits
+  no process events, so the stopped transition never reached the UI
+  (and `preview_mark_stopped` never fired). `notify_state_changed()` now
+  fires on the static-stop and failed-stop paths.
+- **Editor flex fit** — `.qe-body`'s fixed 340px overflowed the split
+  pane and clipped Save; it now flexes inside `.wb-code`.
+- **Stale inspector bundle** — `packages/inspector-runtime/dist` must be
+  rebuilt (`pnpm -r build`) before bundling; `build.rs` stages dist
+  outputs into `inspector-assets/` automatically.
+
+### v0.3.0 verification so far
+
+- Rust **210 green** (197 suite + 13 units, 1 ignored) · Vitest **57
+  desktop + 23 runtime + 79 package** · Playwright **48/48** (8 new
+  workbench specs + full regression).
+- `pnpm -r build` + `pnpm build:tauri` green →
+  `RootRay_0.3.0_x64-setup.exe` NSIS bundle.
+- **Installed golden paths — ALL PASS** against the installer output:
+  `installed-golden` (Vite), `-static`, `-monorepo`, `-next`,
+  `installed-verify-clientflow` (real Next project), `-shadow-runner`
+  (real Vite game) — embedded preview renders, IPC isolation proven,
+  inspect→source→edit→HMR round-trips, shortcuts, popup policy, and
+  process+surface teardown all verified.
+
+**Not tagged, not published.**
+
+---
+
 ## Release History (published — do not alter)
 
 > **Everything below this line is historical v0.1.x record.** It is

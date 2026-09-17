@@ -6,4 +6,7 @@ members = ["apps/desktop/src-tauri", "crates/rootray-core"]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-tauri = "2"
+# `unstable` unlocks child/multi-webview APIs (Window::add_child) — the
+# integrated browser workbench hosts the project preview as a second,
+# unprivileged webview inside the main window.
+tauri = { version = "2", features = ["unstable"] }

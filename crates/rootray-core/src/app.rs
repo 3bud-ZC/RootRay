@@ -420,10 +420,15 @@ impl AppCore {
                 }
             }
             self.inspector.on_process_exit();
-            let mut s = self.lock_state()?;
-            if s.phase == RuntimePhase::Stopping {
-                s.transition(RuntimePhase::Stopped)?;
+            {
+                let mut s = self.lock_state()?;
+                if s.phase == RuntimePhase::Stopping {
+                    s.transition(RuntimePhase::Stopped)?;
+                }
             }
+            // The in-process static server emits no process events — the
+            // UI only learns about the stop through this notification.
+            self.notify_state_changed();
             return Ok(());
         }
         match self.processes.stop() {
@@ -436,9 +441,14 @@ impl AppCore {
                 Ok(())
             }
             Err(e) => {
-                let mut s = self.lock_state()?;
-                s.set_error(CommandError::from(CoreError::Internal(e.to_string())));
-                let _ = s.transition(RuntimePhase::Failed);
+                {
+                    let mut s = self.lock_state()?;
+                    s.set_error(CommandError::from(CoreError::Internal(e.to_string())));
+                    let _ = s.transition(RuntimePhase::Failed);
+                }
+                // A failed stop may produce no exit event — notify so the
+                // UI does not sit on a stale "stopping" phase forever.
+                self.notify_state_changed();
                 Err(e)
             }
         }
@@ -792,6 +802,17 @@ impl AppCore {
         open_url_in_browser(url)
     }
 
+    /// Opens an arbitrary http(s) URL in the system browser — used for
+    /// external links the embedded preview refused (popups, target=_blank).
+    /// Remote pages land in the user's own browser where they can never
+    /// reach RootRay's privileged IPC. Non-http(s) schemes are refused.
+    pub fn open_external_browser(&self, url: &str) -> CoreResult<()> {
+        if !crate::preview::is_http_url(url) {
+            return Err(CoreError::LocalUrlNotDetected);
+        }
+        open_url_in_browser(url)
+    }
+
     // --- settings ------------------------------------------------------------
 
     pub fn settings(&self) -> CoreResult<Settings> {
@@ -806,8 +827,8 @@ impl AppCore {
                 self.settings.set_preferred_launcher(Some(&launcher))?;
             }
         }
-        if let Some(v) = update.open_browser_automatically {
-            self.settings.set_open_browser_automatically(v)?;
+        if let Some(v) = update.open_preview_automatically.or(update.open_browser_automatically) {
+            self.settings.set_open_preview_automatically(v)?;
         }
         if update.clear_recent_projects {
             self.settings.clear_recent_projects()?;
@@ -825,6 +846,7 @@ impl AppCore {
 pub struct SettingsUpdate {
     pub preferred_launcher: Option<String>,
     pub open_browser_automatically: Option<bool>,
+    pub open_preview_automatically: Option<bool>,
     pub clear_recent_projects: bool,
     pub remove_recent_project: Option<String>,
 }

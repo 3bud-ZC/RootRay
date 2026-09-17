@@ -1,64 +1,53 @@
 /**
- * Installed-app real-project verification — ClientFlow-CRM
- * (v0.2.0 Milestone 02 acceptance, GAP 1).
+ * Installed-app real-project verification — ClientFlow-CRM,
+ * v0.3.0 internal preview.
  *
  * Drives the REAL installed RootRay binary against the real project:
  *
- *   installed exe → auto-analyze ClientFlow-CRM → Run → Next dev (Turbopack,
- *   shimmed by the app) → URL detected → real Chromium loads /login →
- *   inspector bridge connects → Inspect UI → select real rendered elements
- *   across several authored files → factual source mapping checked against
- *   the source preview RootRay itself renders → Stop → process tree exits →
- *   RootRay scratch removed → repo byte-identical to its baseline.
+ *   installed exe → auto-analyze ClientFlow-CRM → Run → Next dev
+ *   (Turbopack, shimmed by the app) → URL detected → EMBEDDED child
+ *   webview loads /login inside RootRay → adversarial IPC probe →
+ *   inspector bridge connects → Inspect UI → select real rendered
+ *   elements across several authored files → factual source mapping
+ *   checked against the source preview RootRay itself renders →
+ *   auto-reveal opens each file beside the preview → Stop → preview +
+ *   process tree exits → RootRay scratch removed → repo byte-identical
+ *   to its baseline.
  *
- * Read-only contract: no Quick Edit, no source modification, no migrations,
- * no seeds, no .env changes, no branch/commit in the project repo.
+ * Read-only contract: no Quick Edit save, no source modification, no
+ * migrations, no seeds, no .env changes, no branch/commit in the project
+ * repo. (Auto-reveal only *opens* files — it never writes.)
  *
  * Usage (repo root, app installed via the NSIS setup):
  *   node tests/e2e/installed-verify-clientflow.mjs
  */
 
 import assert from "node:assert/strict";
-import { execFileSync, execSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { chromium } from "@playwright/test";
+import { execSync } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  allPages,
+  assertPreviewHasNoIpc,
+  attachCdp,
+  attachPreview,
+  attachUI,
+  childProcs,
+  EXE,
+  existsSync,
+  killApp,
+  launchApp,
+  makeShotDir,
+  seedSettings,
+  shot,
+  sleep,
+  until,
+  waitText,
+} from "./installed-preview.mjs";
 
-const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "..", "..", "..");
 const PROJECT = "C:\\Users\\Abud\\Desktop\\git hub\\ClientFlow-CRM";
-const EXE = join(process.env.LOCALAPPDATA ?? "", "RootRay", "rootray-desktop.exe");
-const CFG_DIR = join(process.env.APPDATA ?? "", "dev.rootray.app");
-const SHOTS = join(REPO_ROOT, "target", "installed-verify-clientflow");
-const CDP_PORT = 9231;
-
-mkdirSync(SHOTS, { recursive: true });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function shot(page, name) {
-  try {
-    await page.screenshot({ path: join(SHOTS, `${name}.png`) });
-  } catch {}
-}
-
-async function waitText(page, text, timeout = 30_000) {
-  await page.locator(`text=${text}`).first().waitFor({ timeout });
-}
-
-function childProcs(pid) {
-  try {
-    const out = execSync(
-      `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"ParentProcessId=${pid}\\" | Select-Object -Expand Name"`,
-      { encoding: "utf8" },
-    );
-    return out
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
-}
+const SHOTS = makeShotDir("installed-verify-clientflow");
+const CDP_PORT = 9234;
 
 function gitPorcelain() {
   return execSync("git status --porcelain", { cwd: PROJECT, encoding: "utf8" });
@@ -118,8 +107,29 @@ async function inspectElement(appPage, devPage, cssSel, clickPos) {
     .first()
     .isVisible()
     .catch(() => false);
+  // Click-to-source: the auto-reveal opens the mapped file in the
+  // workbench. The open is async — .qe-path can briefly hold the previous
+  // file, so poll for the reported path rather than reading once.
+  let revealed = null;
+  try {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      const p = await appPage
+        .locator(".qe-path")
+        .innerText()
+        .then((s) => s.trim())
+        .catch(() => null);
+      if (p === selFile) {
+        revealed = p;
+        break;
+      }
+      await sleep(200);
+    }
+  } catch {
+    /* reveal never landed — asserted below */
+  }
 
-  await shot(appPage, `sel-${tag}-${Math.random().toString(36).slice(2, 7)}`);
+  await shot(appPage, SHOTS, `sel-${tag}-${Math.random().toString(36).slice(2, 7)}`);
 
   // Element must map inside the project, path-safe, and agree with the
   // stamped attribute the instrumentation emitted.
@@ -130,6 +140,8 @@ async function inspectElement(appPage, devPage, cssSel, clickPos) {
   // a different file than the locator's own stamp is then *correct*, not a
   // conflict. Record it; the preview-line check below proves the location.
   const nested = attrFile && attrFile !== selFile;
+  // Auto-reveal must have opened exactly the file the selection reported.
+  assert.equal(revealed, selFile, `auto-reveal opened ${revealed}, expected ${selFile}`);
 
   // The reported line must be real source containing a JSX opening tag for
   // the rendered element (or the element's stamped line, when attrs exist).
@@ -164,6 +176,7 @@ async function inspectElement(appPage, devPage, cssSel, clickPos) {
     componentIntel: hasComponent,
     text: selText,
     nested,
+    revealed,
   };
 }
 
@@ -178,54 +191,14 @@ async function main() {
   console.log(gitBefore || "(clean)");
   const scratchBefore = rootrayScratch();
 
-  const settings = {
-    lastProject: PROJECT,
-    recentProjects: [PROJECT],
-    preferredLauncher: null,
-    openBrowserAutomatically: false,
-  };
-  writeFileSync(join(CFG_DIR, "settings.json"), JSON.stringify(settings), { encoding: "utf8" });
-  console.log(`seeded lastProject = ${PROJECT}`);
-
-  const appProc = spawn(EXE, [], {
-    env: {
-      ...process.env,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT}`,
-    },
-    stdio: "ignore",
-  });
-  console.log(`launched installed app (pid ${appProc.pid})`);
+  seedSettings(PROJECT);
+  const appProc = launchApp(CDP_PORT);
 
   const results = [];
   let cdp;
-  let browser;
   try {
-    const deadline = Date.now() + 30_000;
-    while (Date.now() < deadline) {
-      try {
-        cdp = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`);
-        break;
-      } catch {
-        await sleep(500);
-      }
-    }
-    assert.ok(cdp, "could not attach to installed app WebView2 over CDP");
-
-    let appPage;
-    while (Date.now() < deadline + 15_000) {
-      for (const ctx of cdp.contexts()) {
-        for (const p of ctx.pages()) {
-          if (p.url().includes("tauri") || (await p.title()) === "RootRay") {
-            appPage = p;
-            break;
-          }
-        }
-        if (appPage) break;
-      }
-      if (appPage) break;
-      await sleep(500);
-    }
-    assert.ok(appPage, "RootRay app page not found over CDP");
+    cdp = await attachCdp(CDP_PORT);
+    const appPage = await attachUI(cdp);
     console.log("attached to installed app UI");
 
     // ---- Open Project → analyze (auto-restored via lastProject) ----------
@@ -234,7 +207,7 @@ async function main() {
     assert.match(facts, /Next\.js 16\.2\.12/, `framework not resolved:\n${facts}`);
     assert.match(facts, /\bnpm\b/, "package manager not resolved to npm");
     assert.match(facts, /npm run dev/, "dev command not resolved");
-    await shot(appPage, "01-analyzed");
+    await shot(appPage, SHOTS, "01-analyzed");
     console.log("  ok  analysis: Next.js 16.2.12 · npm · npm run dev");
 
     // ---- Run --------------------------------------------------------------
@@ -243,7 +216,7 @@ async function main() {
     try {
       await urlChip.waitFor({ timeout: 120_000 });
     } catch (e) {
-      await shot(appPage, "run-timeout");
+      await shot(appPage, SHOTS, "run-timeout");
       const notice = await appPage
         .locator(".notice")
         .innerText()
@@ -253,20 +226,22 @@ async function main() {
     }
     const appUrl = (await urlChip.innerText()).trim();
     assert.match(appUrl, /^https?:\/\/(localhost|127\.0\.0\.1):\d+/, `bad URL: ${appUrl}`);
-    await shot(appPage, "02-running");
+    await appPage.locator(".preview-toolbar").waitFor({ timeout: 15_000 });
     console.log(`  ok  dev server running: ${appUrl}`);
 
-    // ---- real browser loads /login ----------------------------------------
-    browser = await chromium.launch();
-    const devPage = await browser.newPage();
+    // ---- embedded preview loads the app; drive it to /login ----------------
+    const devPage = await attachPreview(cdp, appUrl);
     const loginUrl = new URL("/login", appUrl).href;
     await devPage.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await devPage.locator("input#email").waitFor({ timeout: 60_000 });
-    console.log(`  ok  /login rendered in Chromium (${loginUrl})`);
+    await shot(appPage, SHOTS, "02-internal-preview");
+    console.log(`  ok  /login rendered inside RootRay (${loginUrl})`);
+
+    await assertPreviewHasNoIpc(devPage);
 
     await waitText(appPage, "Browser Connected", 30_000);
-    await shot(appPage, "03-bridge-connected");
-    console.log("  ok  inspector bridge connected");
+    await shot(appPage, SHOTS, "03-bridge-connected");
+    console.log("  ok  inspector bridge connected from the embedded preview");
 
     // ---- Inspect Mode → select representative real elements ---------------
     await appPage.locator("button", { hasText: "Inspect UI" }).click();
@@ -285,7 +260,7 @@ async function main() {
       console.log(
         `  ok  <${r.tag}> → ${r.file}:${r.line}:${r.col}` +
           `${r.component ? ` · <${r.component}>` : ""}` +
-          ` | preview: ${(r.previewLine ?? "").slice(0, 80)}`,
+          ` | reveal: ${r.revealed ?? "—"} | preview: ${(r.previewLine ?? "").slice(0, 60)}`,
       );
       await appPage
         .locator('button[aria-label="Clear selection"]')
@@ -300,21 +275,32 @@ async function main() {
       results.every((r) => r.styles),
       "style intelligence (box model) missing for a selection",
     );
+    assert.ok(
+      results.every((r) => r.revealed === r.file),
+      "click-to-source opened a different file than the selection reported",
+    );
     console.log(`  ok  ${results.length} elements across ${files.size} authored files`);
 
-    // ---- Stop → owned process tree exits, scratch cleaned -----------------
+    // ---- Stop → preview teardown + owned tree exits + scratch cleaned ------
     await appPage.locator(".runner-actions button", { hasText: "Stop" }).first().click();
     await waitText(appPage, "Stopped", 30_000).catch(async () => {
       await appPage.locator(".run-state").waitFor({ timeout: 30_000 });
     });
-    await shot(appPage, "09-stopped");
+    await shot(appPage, SHOTS, "09-stopped");
+
+    const origin = appUrl.endsWith("/") ? appUrl.slice(0, -1) : appUrl;
+    await until(
+      () => !allPages(cdp).some((p) => p.url().startsWith(origin)),
+      "preview CDP target teardown",
+      15_000,
+    ).catch(async () => {
+      await until(() => devPage.isClosed(), "preview page close", 10_000);
+    });
+    console.log("  ok  embedded preview surface torn down on stop");
 
     await sleep(1500);
     const kids = childProcs(appProc.pid).filter((n) => /node|npm|next|cmd/i.test(n));
     assert.deepEqual(kids, [], `dev process tree still alive: ${kids.join(", ")}`);
-    // Probe the TCP listener directly — a browser navigation is unusable
-    // here: the project's service worker serves offline fallbacks for
-    // navigations, so page.goto() can succeed with the server dead.
     let urlDead = false;
     const urlDeadline = Date.now() + 6000;
     do {
@@ -369,7 +355,7 @@ async function main() {
     console.log(`  ok  git status --porcelain identical to baseline:`);
     console.log(gitAfter || "(clean)");
 
-    console.log("\nCLIENTFLOW-CRM INSTALLED VERIFICATION: PASS");
+    console.log("\nCLIENTFLOW-CRM INSTALLED VERIFICATION (INTERNAL PREVIEW): PASS");
     for (const r of results) {
       console.log(
         `  <${r.tag}> ${r.file}:${r.line}:${r.col} comp=${r.component ?? "—"}` +
@@ -377,18 +363,12 @@ async function main() {
       );
     }
   } finally {
-    await browser?.close().catch(() => {});
-    try {
-      process.kill(appProc.pid);
-    } catch {}
-    await sleep(1000);
-    try {
-      execFileSync("taskkill", ["/PID", String(appProc.pid), "/T", "/F"], { stdio: "ignore" });
-    } catch {}
+    await cdp?.close().catch(() => {});
+    await killApp(appProc);
   }
 }
 
 main().catch((e) => {
-  console.error(`\nCLIENTFLOW-CRM INSTALLED VERIFICATION: FAIL — ${e.message}`);
+  console.error(`\nCLIENTFLOW-CRM INSTALLED VERIFICATION (INTERNAL PREVIEW): FAIL — ${e.message}`);
   process.exit(1);
 });

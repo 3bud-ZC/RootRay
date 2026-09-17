@@ -49,6 +49,34 @@ export function ExplorerPanel({ onSearch }: { onSearch: (query: string) => void 
     setExpanded(next);
   };
 
+  // Reveal the file open in the editor — expand each ancestor directory
+  // lazily (one bounded fetch per level, never a full-tree materialize).
+  const activeFile = state.editor?.relativePath ?? null;
+  useEffect(() => {
+    if (!activeFile) return;
+    const parts = activeFile.split("/").slice(0, -1);
+    if (parts.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      for (let i = 0; i < parts.length; i++) {
+        if (cancelled) return;
+        const dir = parts.slice(0, i + 1).join("/");
+        setExpanded((prev) => {
+          if (prev.has(dir)) return prev;
+          const next = new Set(prev);
+          next.add(dir);
+          return next;
+        });
+        // Skip the fetch when this dir is already loaded — expanding a
+        // loaded dir must not flash it back to "Loading…".
+        if (!dirs.has(dir)) await loadDir(dir);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFile, dirs, loadDir]);
+
   const openQuickEdit = (rel: string, line = 1) => {
     void quickEdit(state, dispatch, rel, { relativePath: rel, line, column: 1 }).then(() =>
       forceRecents((n) => n + 1),
@@ -79,6 +107,7 @@ export function ExplorerPanel({ onSearch }: { onSearch: (query: string) => void 
         entry={entry}
         depth={depth}
         open={expanded.has(entry.relativePath)}
+        active={entry.relativePath === activeFile}
         onToggle={toggle}
         onQuickEdit={openQuickEdit}
         onExternal={openExternal}
@@ -122,6 +151,7 @@ function ExplorerRow({
   entry,
   depth,
   open,
+  active,
   onToggle,
   onQuickEdit,
   onExternal,
@@ -132,6 +162,7 @@ function ExplorerRow({
   entry: ProjectEntry;
   depth: number;
   open: boolean;
+  active: boolean;
   onToggle: (rel: string) => void;
   onQuickEdit: (rel: string) => void;
   onExternal: (rel: string) => void;
@@ -161,7 +192,7 @@ function ExplorerRow({
     <div className="ex-row ex-file-row" style={pad}>
       <button
         type="button"
-        className="ex-file"
+        className={`ex-file ${active ? "ex-active" : ""}`}
         onClick={() => onQuickEdit(entry.relativePath)}
         title={
           entry.editable

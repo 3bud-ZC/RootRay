@@ -328,6 +328,12 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+}
+
+.project-head-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
   gap: 12px;
 }
 
@@ -1590,4 +1596,337 @@ body {
   border-radius: 6px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ---- integrated browser workbench ---- */
+
+.project.workbench {
+  max-width: none;
+  height: 100%;
+  margin: 0;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.wb-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.wb-id {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.wb-id .project-name {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wb-head-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.wb-details {
+  flex-shrink: 0;
+  max-height: 40%;
+  overflow-y: auto;
+}
+
+.workbench .runner {
+  flex-shrink: 0;
+}
+
+.wb-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  gap: 0;
+}
+
+.wb-left {
+  flex-shrink: 0;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.wb-right {
+  flex-shrink: 0;
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.wb-right .inspector {
+  border: none;
+  border-radius: 0;
+  padding: 8px 12px 14px;
+}
+
+.wb-center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.splitter {
+  width: 5px;
+  flex-shrink: 0;
+  margin: 0;
+  cursor: col-resize;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+}
+
+.splitter:hover,
+.splitter.dragging,
+.splitter:focus-visible {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  border-left-color: var(--accent-dim);
+  outline: none;
+}
+
+/* ---- preview ---- */
+
+.preview-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+  flex-shrink: 0;
+}
+
+.preview-url {
+  flex: 1;
+  min-width: 60px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  padding: 4px 9px;
+}
+
+.preview-url:focus {
+  outline: 1px solid var(--accent-dim);
+}
+
+.preview-phase {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-dim);
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.preview-phase-ready {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 40%, var(--border));
+}
+
+.preview-phase-error {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 40%, var(--border));
+}
+
+.preview-phase-stopped,
+.preview-phase-hidden {
+  color: var(--text-dim);
+}
+
+.seg {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+fieldset.seg {
+  padding: 0;
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.seg-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.seg-btn + .seg-btn {
+  border-left: 1px solid var(--border);
+}
+
+.seg-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.seg-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.seg-btn:not(.active):not(:disabled):hover {
+  color: var(--text);
+  background: var(--bg-inset);
+}
+
+.preview-host {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+}
+
+/* The host is only the measurement rect — the native surface renders the
+   page. The overlay explains empty states without covering the surface
+   once it is live. */
+.preview-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 18px;
+}
+
+.preview-overlay-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.preview-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.wb-code {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+
+.wb-code .qeditor {
+  border: none;
+  border-radius: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The editor pane can be much shorter than the analysis view — let the
+   CodeMirror host absorb the slack so the footer actions stay visible. */
+.wb-code .qe-body {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.wb-code-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 18px;
+  text-align: center;
+}
+
+/* ---- explorer active file ---- */
+
+.ex-file.ex-active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- canvas context ---- */
+
+.canvas-section {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 8px 0;
+  background: var(--bg-inset);
+}
+
+.canvas-section .section-title {
+  margin: 0 0 4px;
+}
+
+.canvas-fw {
+  margin: 6px 0;
+}
+
+.canvas-candidates-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin: 6px 0 2px;
+}
+
+.canvas-candidates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.canvas-candidate {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 2px 0;
+  cursor: pointer;
+  text-align: left;
+  word-break: break-all;
+}
+
+.canvas-candidate:hover {
+  text-decoration: underline;
 }

@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability for the RootRay main window.",
-  "windows": ["main"],
+  "description": "Default capability — scoped to the privileged RootRay UI webview only. `windows` would leak permissions to every child webview in the window (including the untrusted project preview), so only `webviews` is used. The `project-preview` webview intentionally matches no capability and can invoke nothing.",
+  "webviews": ["main"],
   "permissions": [
     "core:default",
     "dialog:allow-open"

@@ -10,6 +10,7 @@ import type {
   EditorSessionInfo,
   FileListing,
   InspectorState,
+  PreviewState,
   RootRaySettings,
   RuntimeState,
   SourceCollection,
@@ -49,6 +50,46 @@ export const restartDevServer = (inspector = false) =>
 export const getRuntimeState = () => invoke<RuntimeState>("get_runtime_state");
 
 export const openBrowser = (url: string) => invoke<void>("open_browser", { url });
+
+// --- embedded preview ---------------------------------------------------------
+//
+// The project preview is a native child webview. These commands position,
+// navigate and control it — all inputs are re-validated natively, and the
+// commands only accept calls from the privileged UI webview.
+
+export interface PreviewRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export const previewCreate = (url: string, rect: PreviewRect) =>
+  invoke<void>("preview_create", { url, rect });
+
+export const previewSetBounds = (rect: PreviewRect) => invoke<void>("preview_set_bounds", { rect });
+
+export const previewHide = () => invoke<void>("preview_hide");
+
+export const previewShow = () => invoke<void>("preview_show");
+
+export const previewNavigate = (url: string) => invoke<void>("preview_navigate", { url });
+
+export const previewBack = () => invoke<void>("preview_back");
+
+export const previewForward = () => invoke<void>("preview_forward");
+
+export const previewReload = () => invoke<void>("preview_reload");
+
+export const previewUrl = () => invoke<string | null>("preview_url");
+
+export const previewState = () => invoke<PreviewState>("preview_state");
+
+export const previewMarkWaiting = () => invoke<void>("preview_mark_waiting");
+
+export const previewMarkStopped = () => invoke<void>("preview_mark_stopped");
+
+export const previewDispose = () => invoke<void>("preview_dispose");
 
 export const detectEditors = () => invoke<DetectedLauncher[]>("detect_editors");
 
@@ -126,6 +167,7 @@ export const getSettings = () => invoke<RootRaySettings>("get_settings");
 export interface SettingsPatch {
   preferredLauncher?: string;
   openBrowserAutomatically?: boolean;
+  openPreviewAutomatically?: boolean;
   clearRecentProjects?: boolean;
   removeRecentProject?: string;
 }

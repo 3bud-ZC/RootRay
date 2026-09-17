@@ -178,7 +178,13 @@ export interface DetectedLauncher {
 export interface RootRaySettings {
   recentProjects: string[];
   preferredLauncher: string | null;
+  /**
+   * Deprecated v0.2 key — mirrored for backward compatibility. The
+   * authoritative preference is `openPreviewAutomatically`.
+   */
   openBrowserAutomatically: boolean;
+  /** Automatically open the internal preview when a project URL appears. */
+  openPreviewAutomatically: boolean;
   /** Last successfully analyzed project — restored read-only on launch. */
   lastProject?: string | null;
 }
@@ -378,6 +384,22 @@ export interface EditorSessionInfo {
   diskHash: string | null;
   watching: boolean;
   canRevert: boolean;
+}
+
+// --- embedded preview ---------------------------------------------------------------
+
+/** Lifecycle of the embedded project-preview webview. */
+export type PreviewPhase = "hidden" | "waiting" | "loading" | "ready" | "error" | "stopped";
+
+/** Snapshot pushed on `rootray://preview-state`. */
+export interface PreviewState {
+  phase: PreviewPhase;
+  /** Current page URL — the toolbar's display source. */
+  url: string | null;
+  /** Last load/creation failure detail. */
+  error: string | null;
+  /** Monotonic generation — guards the UI against stale updates. */
+  generation: number;
 }
 
 /** Payload of the `rootray://editor-event` Tauri event. */
