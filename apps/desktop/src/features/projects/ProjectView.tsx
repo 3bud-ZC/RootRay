@@ -556,7 +556,12 @@ export function ProjectView() {
                     <EditorPanel />
                   ) : (
                     <div className="wb-code-empty muted">
-                      No source open — inspect an element or pick a file in the Explorer.
+                      <div>
+                        <img className="pane-mascot brand-img" src="/brand/mascot.png" alt="" />
+                        <div>
+                          No source open — inspect an element or pick a file in the Explorer.
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

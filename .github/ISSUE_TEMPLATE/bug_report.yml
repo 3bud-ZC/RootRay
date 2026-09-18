@@ -1,0 +1,81 @@
+name: Bug report
+description: Something in RootRay isn't working correctly
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Never paste secrets, `.env` contents,
+        tokens, or private source code** into an issue.
+        Security vulnerabilities → [private advisory](https://github.com/3bud-ZC/RootRay/security/advisories/new), not here.
+
+  - type: input
+    id: version
+    attributes:
+      label: RootRay version
+      description: Settings → About, or the installer filename
+      placeholder: e.g. 0.2.0
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: e.g. Windows 11 23H2
+    validations:
+      required: true
+
+  - type: input
+    id: framework
+    attributes:
+      label: Project framework
+      description: What kind of project were you working in?
+      placeholder: e.g. Next.js 15, React + Vite, static HTML
+    validations:
+      required: true
+
+  - type: input
+    id: pm
+    attributes:
+      label: Package manager
+      placeholder: e.g. pnpm 9, npm 10
+    validations:
+      required: false
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open project …
+        2. Run …
+        3. Inspect …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        Settings → Copy Diagnostics produces a bounded report safe to
+        paste (version, OS, phases, error codes — no tokens or source).
+      render: text
+    validations:
+      required: false

@@ -1,57 +1,88 @@
+<div align="center">
+
+<img src="docs/media/rootray-hero.png" alt="RootRay — a pixel-art robot fires an inspection ray at a rendered UI button, revealing Button.tsx" width="860" />
+
 # RootRay
 
 **Point at the UI. Reach the source.**
 
-RootRay is a lightweight, local-first Windows developer tool that connects a
-rendered web UI back to its editable source code. Open almost any local
-project or workspace, let RootRay discover its structure, and get universal
-workspace tooling — Explorer, Quick Open, Workspace Search, Quick Edit —
-everywhere. Where a supported runtime exists (React + Vite, Next.js, any
-Vite project — including Vue and Svelte on Vite — or a plain `index.html`
-site served by RootRay's built-in static server), run it, point at any
-element on the page, and RootRay shows you the exact file, line, and
-component that produced it — plus its styles, its usages, and a safe
-in-place editor when you just need a quick fix.
+RootRay is a local-first Windows developer tool that maps the rendered web
+UI back to the source code that produced it — run the project, click what
+you see, edit what it opens.
 
-RootRay is not an IDE. It is the missing bridge between *what you see* and
-*where it lives*. Bigger changes belong in your real editor — RootRay opens
-VS Code, Cursor, or Windsurf at the exact location.
+[![CI](https://github.com/3bud-ZC/RootRay/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/3bud-ZC/RootRay/actions/workflows/ci.yml)
+[![Latest stable](https://img.shields.io/github/v/release/3bud-ZC/RootRay?label=stable)](https://github.com/3bud-ZC/RootRay/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#install-windows)
+[![Built with Tauri](https://img.shields.io/badge/Tauri-2-24C8D8)](https://tauri.app)
 
-- **Published stable:** `v0.2.0` — Universal Project Workspace for Windows 10/11 x64
-- **Prior releases:** `v0.1.1`, `v0.1.0` — see [STATUS.md](STATUS.md)
-- **License:** MIT — see [LICENSE](LICENSE)
+[**Download v0.2.0 (latest stable)**](https://github.com/3bud-ZC/RootRay/releases/latest) ·
+[**Getting started**](#getting-started) ·
+[**Documentation**](docs/architecture.md)
 
-## What RootRay does
+</div>
+
+> **Status:** `main` is **v0.3.0 development** — the Integrated Browser
+> Workbench described here. The published stable release is
+> **v0.2.0** (universal workspace, external-browser inspection). Download
+> buttons always point at the stable release.
+
+## What is RootRay?
+
+RootRay opens your project **inside itself**. Press Run and the dev-server
+UI appears in an embedded Preview — not in a separate browser window.
+Flip to Inspect, click any element, and the exact source file opens in
+the Code pane beside it. Edit, save, and HMR/Fast Refresh updates the
+Preview in place. One window: Preview, code, Explorer, Inspector, Output.
 
 ```
-Open Project → Run → Inspect UI → point at an element
-  → source file:line:col
-  → owning component + definition + usages
-  → classes, box model, computed styles, matched CSS rules
-  → Quick Edit → safe save → HMR / Fast Refresh → inspect again
+Open Project → Run → app renders in RootRay's Preview
+  → Inspect → click an element
+  → source file:line opens beside the Preview
+  → component + styles + usages in the Inspector
+  → Quick Edit → save → HMR / Fast Refresh → keep going
 ```
 
-- **Inspect Mode** — hover highlights elements and shows
-  `ComponentName  src/file.tsx:line`; click to select. `Escape` cancels.
-- **Component intelligence** — static analysis (Babel parse, never executed)
-  resolves the owning component, its definition site, and every resolved
-  caller. Unresolvable relationships are labeled, never guessed.
-- **Style intelligence** — class tokens, box model, curated computed styles,
-  and matched CSSOM rules mapped back to real project stylesheets.
-- **Project Explorer** — lazy file tree, navigation-only (Quick Edit,
-  Open External, Copy Path). No delete/rename/move.
-- **Quick Open (`Ctrl+P`)** and **Workspace Search (`Ctrl+Shift+F`)** —
-  bounded, keyboard-first, both land in the same guarded Quick Edit session.
-- **Quick Edit** — CodeMirror 6, `Ctrl+S` saves with SHA-256 optimistic
-  concurrency + atomic writes; external changes raise a conflict banner
-  instead of clobbering either side.
-- **Copy Context** — a ≤4 KB block describing the selected element for
-  pasting into issues or chat. Relative paths only.
+## Why RootRay?
+
+Browser DevTools show you the DOM. Your editor shows you the files.
+RootRay closes the gap between them — the rendered element and the exact
+`file:line:column` that produced it — without leaving one window.
+
+- **Integrated Browser Workbench** — embedded WebView2 Preview with
+  Interact/Inspect modes, browser toolbar (back/forward/reload/URL),
+  Preview/Code/Split views plus Preview Focus and Code Focus.
+- **Click → source** — authored elements map to their real
+  `file:line:column`; runtime-created DOM reports honest facts and
+  styles instead of a fabricated location.
+- **Flexible layout** — collapsible, resizable Explorer, Inspector and
+  Output panes; persisted per machine; Reset Layout when you want it back.
+- **Component intelligence** — owning component, definition site and
+  resolved callers (React/Next), computed statically, never executed.
+- **Safe Quick Edit** — CodeMirror, SHA-256 optimistic concurrency,
+  atomic saves, conflict banners instead of clobbering.
+- **Universal workspace** — Explorer, Quick Open (`Ctrl+P`), Workspace
+  Search (`Ctrl+Shift+F`) on almost any local project.
+- **Local-first** — no account, no cloud, no telemetry. Loopback-only
+  preview navigation; the Preview webview has zero IPC privileges.
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/media/workbench-split.png" alt="RootRay workbench — embedded Preview beside source code, Inspector open" width="860" />
+</p>
+<p align="center">
+  <img src="docs/media/home.png" alt="RootRay home — Open a workspace" width="420" />
+  <img src="docs/media/inspect-source.png" alt="Inspect mode — clicked element maps to its authored source line" width="420" />
+</p>
+<p align="center">
+  <img src="docs/media/preview-focus.png" alt="Preview Focus — the app fills the workbench while you use it" width="420" />
+</p>
 
 ## Install (Windows)
 
-1. Download `RootRay_0.2.0_x64-setup.exe` and its `.sha256` file from the
-   [v0.2.0 release](https://github.com/3bud-ZC/RootRay/releases/tag/v0.2.0).
+1. Download `RootRay_0.2.0_x64-setup.exe` and its `.sha256` from the
+   [latest release](https://github.com/3bud-ZC/RootRay/releases/latest).
 2. Verify the checksum (optional but recommended):
 
    ```powershell
@@ -59,161 +90,121 @@ Open Project → Run → Inspect UI → point at an element
    # compare with the hash inside the .sha256 file
    ```
 
-3. Run the installer. It installs per-user to
-   `%LOCALAPPDATA%\RootRay` — no admin required.
+3. Run the installer — per-user install to `%LOCALAPPDATA%\RootRay`,
+   no admin required.
 4. Launch **RootRay** from the Start Menu.
 
-**Unsigned build:** this MVP is not code-signed. Windows SmartScreen or
-Smart App Control may warn on first launch — choose *More info → Run
-anyway* if you trust the source. Signing is planned post-MVP.
+**Unsigned build:** releases are not yet code-signed; SmartScreen may
+warn on first launch — *More info → Run anyway* if you trust the source.
+**WebView2:** required (preinstalled on most Windows 11 and recent
+Windows 10); the installer fetches Microsoft's bootstrapper if missing.
 
-**WebView2:** required. It is preinstalled on most Windows 11 and recent
-Windows 10. If missing, the installer downloads Microsoft's official
-bootstrapper automatically.
+## Getting started
 
-## Using RootRay
+1. **Open Project** — pick any local project folder. RootRay runs a
+   bounded, read-only discovery (workspace kind, package manager,
+   nested targets, per-target capabilities).
+2. **Run Project** — launches your dev script through an instrumented
+   runner (Vite/Next) or RootRay's loopback static server for
+   `index.html` projects. Your `vite.config.*`, `package.json` and
+   sources are never modified.
+3. **Use the app in the Preview** — it behaves like a browser: navigate,
+   click, type. Flip to **Inspect** (`Ctrl+Shift+C`) and click an
+   element — the source opens beside the Preview.
+4. **Edit and save** — Quick Edit writes through hash-checked atomic
+   saves; HMR/Fast Refresh updates the Preview in place.
+5. **Arrange the workspace** — collapse Explorer/Inspector/Output
+   (`Ctrl+B` / pane buttons / `Ctrl+J`), drag the splitters, or jump
+   into Preview Focus / Code Focus.
 
-1. **Open Project** — pick almost any local project folder. RootRay runs a
-   bounded, read-only discovery: workspace kind (single package, npm/pnpm/
-   yarn workspaces, Turborepo), nested targets (`apps/*`, `packages/*`),
-   technologies, and per-target capabilities. A monorepo's web target is
-   selected automatically; multiple runnable targets get a selector.
-2. **Run Project** — launches your own Vite dev server through a Node
-   runner that injects a development-only instrumentation plugin, or —
-   for a plain `index.html` project — serves the workspace through
-   RootRay's own loopback static server.
-   Your `vite.config.*`, `package.json`, and sources are never modified.
-   Live server logs stream into the Runner panel.
-3. **Open the printed localhost URL** — your app loads with a
-   `data-rootray-*` instrumented DOM and the inspector runtime connected.
-4. **Enable Inspect Mode** and point at the UI. Authored markup maps to
-   its file and line; elements the page created at runtime report facts
-   and styles honestly — with no invented source location.
-5. **Quick Edit** or **Open Source** at the exact location.
-6. **Save** — Vite's own watcher hot-reloads; on the static server a
-   save-driven reload applies the change. Inspect again.
-
-RootRay never starts a dev server on its own — not on launch, not on
-project restore. You press Run.
+RootRay never starts a dev server on its own — you press Run.
 
 ## Keyboard shortcuts
 
 | Key | Action |
 |---|---|
+| `Ctrl+Shift+C` | Toggle Inspect mode (works inside the Preview) |
+| `Escape` | Leave Inspect mode / close palettes |
 | `Ctrl+P` | Quick Open — fuzzy file navigation |
 | `Ctrl+Shift+F` | Workspace Search |
 | `Ctrl+S` | Quick Edit — save (hash-checked, atomic) |
-| `Ctrl+F` | Quick Edit — find in current file |
-| `Ctrl+Z` / `Ctrl+Shift+Z` / `Ctrl+Y` | Quick Edit — undo / redo |
-| `Escape` | Cancel Inspect Mode / close palettes |
+| `Ctrl+B` | Toggle Explorer pane |
+| `Ctrl+J` | Toggle Output pane |
 
-All views, palettes, the explorer tree, and editor controls are fully
-keyboard reachable; focus is always visible.
+## Supported stacks
 
-## Workspaces and capabilities
+Honest capabilities — what each target actually gets:
 
-RootRay no longer gates a project on a global "supported" flag. Every
-safely-opened directory is a **workspace** with universal features —
-Explorer, Quick Open, Workspace Search, Quick Edit, Open External — that
-never depend on the framework.
-
-Inside the workspace, discovery finds **targets** (web apps, servers,
-libraries, tools, static sites) and classifies each by evidence:
-dependencies, scripts, framework configs — never folder names. Each target
-gets an honest **capability matrix**: `available`, `partial`,
-`unavailable` (with a factual reason), or `not-applicable`.
-
-| Framework | Run | DOM inspect / source mapping |
+| Stack | Run | Inspection |
 |---|---|---|
-| React + Vite | ✓ | ✓ full JSX instrumentation |
-| Vite (non-React) | ✓ | ✓ generic DOM inspect; authored `index.html` maps exactly |
-| Vue + Vite | ✓ | ✓ generic DOM inspect; authored `index.html` maps exactly |
-| Svelte + Vite | ✓ | ✓ generic DOM inspect; authored `index.html` maps exactly |
-| Next.js | ✓ | ✓ full instrumentation (Turbopack + webpack dev paths) |
-| Static web (index.html) | ✓ built-in static server | ✓ generic DOM inspect; authored HTML maps exactly |
-| SvelteKit / Astro / Nuxt / Angular / Remotion | ✓ declared dev script + browser open | ○ no runtime adapter — the capability rows explain why |
+| React + Vite | ✓ | Full: click → exact authored source + component intelligence |
+| Next.js | ✓ | Full: authored JSX sites, Fast Refresh (Turbopack + webpack dev paths) |
+| Vite (non-React), Vue + Vite, Svelte + Vite | ✓ | Generic DOM inspect; authored `index.html` maps exactly |
+| Static web (`index.html`) | ✓ built-in server | Generic DOM inspect; authored HTML maps exactly |
+| SvelteKit, Astro, Nuxt, Angular, Remotion | ✓ declared script | ○ no adapter yet — the capability rows explain why |
 | Node/Express/CLI/library | if a safe script exists | n/a |
 
-Generic-DOM tiers inspect every element the page renders — including
-framework-rendered and runtime-created DOM — with facts and styles.
-Authored `index.html` elements map to their exact file:line:column;
-elements rendered by framework code have no authored HTML to map to, so
-they are reported honestly without a source location rather than guessed.
-Component-level intelligence remains React/Next-only.
+Generic-DOM inspection covers every element the page renders — canvas
+surfaces included — with facts and styles. What it does **not** do:
+Vue/Svelte component mapping, Phaser GameObject mapping, canvas pixel
+contents (canvas contents are pixels, not DOM nodes).
 
-- **Package managers:** pnpm, npm, yarn — detected per workspace from
-  lockfiles or the `packageManager` field, and inherited by nested targets.
-- Runner commands are `pm run <script>` argv invocations — RootRay never
-  parses or executes script contents, and never runs anything during
-  discovery.
-- The selected directory is always the filesystem security root — even
-  when the active target is a nested package inside a monorepo.
+**Runtime requirements:** runnable targets need the project's own Node +
+package manager on `PATH`. RootRay itself needs neither.
 
-**Runtime requirements for runnable targets:** the project's own Node.js
-and package manager must be on `PATH` (you need them to run `pnpm dev`
-yourself anyway). RootRay itself needs no global Node/Rust to run.
+## How source mapping works
 
-## External editors
-
-RootRay detects VS Code, Cursor, and Windsurf and can open them at an
-exact file:line:column. Pick your preferred editor in **Settings**. A
-missing/uninstalled editor is reported, never a crash.
+At dev-server start, a build-time instrumentation pass stamps
+`data-rootray-file/line/column` onto authored JSX (React/Next) or
+authored HTML (Vite generic/static). The in-page runtime reads those
+attributes when you click and reports them over an authenticated
+loopback WebSocket to the desktop — which opens that file beside the
+Preview. Elements without stamps are reported as *no authored source* —
+RootRay shows what it can prove, never a guess. Details:
+[docs/architecture.md](docs/architecture.md).
 
 ## Security & privacy
 
-RootRay is **local-first**:
+- **Local-first:** no account, cloud backend, telemetry, or AI provider.
+  The only listener is a `ws://127.0.0.1` bridge on a dynamic port with
+  an ephemeral per-session token.
+- **Preview isolation:** the embedded Preview is a separate WebView2
+  with **zero IPC privileges** — every privileged command is denied to
+  it. Navigation is loopback-only; external links open unprivileged in
+  the system browser.
+- **Filesystem boundary:** reads/writes are workspace-relative only —
+  `..`, absolute paths, symlink escapes, `.env*`, keys, `.git`,
+  `node_modules`, oversized/binary files are refused.
+- **Process containment:** dev servers run in a Windows Job Object
+  (`KILL_ON_JOB_CLOSE`) — no orphaned trees if RootRay dies.
+- **Safe writes:** SHA-256 optimistic concurrency + same-directory
+  atomic rename; external edits surface as conflicts.
 
-- No account, no cloud backend, no telemetry, no AI provider. Your source
-  never leaves the machine — the only network listener RootRay opens is a
-  `ws://127.0.0.1` loopback bridge on a dynamic port with an ephemeral
-  per-session token.
-- No generic command API. The UI can only call a narrow set of audited
-  Tauri commands; browser messages are data only and cannot spawn
-  processes, write files, or open editors.
-- Filesystem access is project-relative only: absolute paths, `..`
-  traversal, symlinks escaping the root, `.env*`, keys, credentials,
-  `.git`, `node_modules`, `target`, `dist`, and non-text/oversized files
-  are all refused.
-- Saves use SHA-256 optimistic concurrency and same-directory atomic
-  rename; an external edit is never silently overwritten.
-- Your dev server runs inside a Windows Job Object
-  (`KILL_ON_JOB_CLOSE`): if RootRay dies unexpectedly, the server and its
-  descendants are terminated — no orphaned processes.
-- Copy Diagnostics produces a bounded, secret-free report (version, OS,
-  component states, error codes) — never tokens, paths, or source.
+See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
-RootRay does *not* claim zero network activity: your own dev server,
-package managers, and the app you are developing may access the network
-normally — RootRay doesn't intercept or proxy any of it.
+## Known limitations
 
-## Troubleshooting
+- Full source inspection requires React + Vite or a reconstructable
+  `next dev` script; other targets get the honest generic-DOM tier.
+- Static analysis labels unresolvable imports (aliases, deep barrels,
+  `React.lazy`) as *unresolved* — never guessed.
+- One Quick Edit session at a time; matched CSS rules link to the
+  stylesheet file, not the selector line.
+- Unsigned binaries (SmartScreen warning); Windows only.
 
-| Problem | What to try |
-|---|---|
-| SmartScreen / Smart App Control warning | Expected — the MVP is unsigned. *More info → Run anyway*. |
-| Blank window / "WebView2 missing" | Install [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (the installer normally does this automatically). |
-| "no runnable target" / missing Run | The target has no `dev`/`serve`/`start` script or the package manager is unknown. Workspace features still work — check the capability rows for the factual reason. |
-| Source mapping unavailable on a Next.js element | Only intrinsic DOM elements carry metadata; server components map to their authored JSX site. A wrapped/complex `dev` script disables instrumentation — the capability row names the reason. |
-| "dependencies appear to be missing" | Run your package manager's install (`pnpm install` / `npm install` / `yarn`) in the project, then Run again. RootRay never installs for you. |
-| Dev server exits immediately | Check the Runner panel log — the project's own output is shown verbatim. Common causes: missing deps, port in use, unsupported dev command flags. |
-| Browser didn't connect / inspector unavailable | Open the exact `localhost` URL RootRay printed (a different port or `127.0.0.1` vs `localhost` mix won't reach the bridge). Re-run with a plain `vite` dev script if yours uses unusual flags. |
-| HMR error overlay after a bad save | Fix the syntax error and save again — Vite recovers on the next write. Rarely, a full browser reload is needed. |
-| "file changed outside RootRay" | Someone (or your editor) wrote the file while you had unsaved edits. Choose Reload Disk Version, Compare, or keep editing — nothing is silently lost. |
-| "editor not available" | The selected launcher isn't on PATH anymore. Pick another in Settings, or re-install it. |
-| Source location missing on an element | Only intrinsic DOM elements carry metadata; custom components resolve through their rendered children. Deeply dynamic/portal UI may show the nearest instrumented ancestor. |
+## Contributing
 
-Copy Diagnostics (Settings → Diagnostics, or the crash screen) produces a
-bounded report you can paste into an issue.
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md),
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) and the
+[issue templates](.github/ISSUE_TEMPLATE). Bugs and feature requests:
+[GitHub Issues](https://github.com/3bud-ZC/RootRay/issues).
+Milestone/release state: [STATUS.md](STATUS.md) ·
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Development
 
-### Prerequisites
-
-- Windows 10/11, Rust stable (MSVC) + Visual Studio Build Tools (C++
-  workload), Node.js ≥ 20, pnpm ≥ 9
-- E2E: `pnpm --filter @rootray/e2e exec playwright install chromium`
-
-### Setup and run
+Prerequisites: Windows 10/11, Rust stable (MSVC) + VS Build Tools (C++
+workload), Node.js ≥ 20, pnpm ≥ 9.
 
 ```sh
 pnpm install
@@ -221,112 +212,24 @@ pnpm -r --if-present build   # inspector runtime + plugin bundles
 pnpm dev:tauri               # dev build of the desktop app
 ```
 
-### Test
+Test and release build:
 
 ```sh
-pnpm test            # Vitest suites + Playwright E2E
+pnpm test            # Vitest + Playwright E2E
 pnpm test:rust       # cargo test -p rootray-core
-pnpm typecheck
-pnpm lint
-```
-
-### Release build (unsigned)
-
-```sh
-pnpm install --frozen-lockfile
-pnpm -r --if-present build
-pnpm build:tauri
-```
-
-Outputs:
-
-- `target/release/rootray-desktop.exe`
-- `target/release/bundle/nsis/RootRay_<version>_x64-setup.exe`
-
-Then verify with the installer smoke test:
-
-```powershell
+pnpm typecheck && pnpm lint
+pnpm build:tauri     # → target/release/bundle/nsis/RootRay_*_x64-setup.exe
 pwsh -File scripts/installer-smoke.ps1
 ```
 
-It installs silently (current user), verifies files + bundled resources,
-launches the app, confirms no dev server auto-starts, terminates, and
-uninstalls — printing `INSTALLER SMOKE: PASS` at the end.
+## Roadmap / direction
 
-## Architecture
-
-```
-crates/rootray-core        Native core: bounded workspace discovery,
-                           target/technology detection, capability matrix,
-                           active-target selection, process lifecycle
-                           (Windows Job Object containment), inspector
-                           bridge/session, source preview, safe edit
-                           sessions (hash-checked atomic writes, watcher),
-                           lazy nav + bounded search + source collection,
-                           loopback static server (lol_html stamping, SSE
-                           reload) for index.html projects.
-apps/desktop               React 19 UI + thin src-tauri command layer;
-                           lazy-loaded CodeMirror + intelligence chunks.
-packages/source-protocol   Versioned wire contract (validated both ways).
-packages/inspector-runtime Browser client: WS auth/reconnect, Shadow-DOM
-                           overlay, hover/select, on-select style details.
-                           Two pick modes: jsx-meta (framework sites) and
-                           generic-dom (every element, source optional).
-packages/jsx-instrument    Shared Babel JSX/TSX source instrumentation.
-packages/html-instrument   Parser-based (parse5) HTML stamping — authored
-                           elements get exact file/line/column; authored
-                           data-rootray-* is stripped before stamping.
-packages/vite-plugin       Dev-server runner + Vite adapter (jsx-instrument
-                           + transformIndexHtml HTML stamping).
-packages/next-adapter      Next.js adapter: NODE_OPTIONS shim → turbopack
-                           rules / webpack wrapper → jsx-instrument loader.
-packages/intelligence      Bounded static React analysis (Babel).
-fixtures/                  Real test projects: Vite+React, Next.js,
-                           pnpm/Turborepo monorepos, Vite non-React,
-                           static web, Node CLI, manifest-less roots.
-tests/e2e                  Playwright: golden-path, edit, a11y.
-scripts/installer-smoke.ps1  Repeatable install/launch/uninstall test.
-```
-
-### Data flow
-
-```
-build instrumentation stamps data-rootray-* on JSX ──▶ rendered DOM
-  (Vite: plugin transform · Next.js: shim → turbopack/webpack loader)
-hover/click ─▶ runtime reads metadata ─▶ WS + token ─▶ Rust bridge
-validates ─▶ desktop resolves file:line ─▶ Quick Edit / Open Source
-
-save ─▶ SHA-256 check ─▶ temp-file + rename ─▶ watcher ─▶ HMR/Fast Refresh
-```
-
-## Known limitations
-
-- JSX/component source inspection requires React + Vite or Next.js
-  (Turbopack and webpack dev paths). Vue and Svelte projects on plain Vite
-  get generic DOM inspection with authored-HTML mapping; runtime-created
-  elements report facts and styles without a fabricated source.
-  SvelteKit, Astro, Nuxt, Angular and Remotion are detected and runnable —
-  RootRay runs their declared dev script and opens the printed URL — but
-  their servers render outside Vite's `transformIndexHtml` pipeline, so
-  no runtime adapter injects there yet; the capability rows say so.
-- Next.js instrumentation requires a dev script RootRay can safely
-  reconstruct (`next dev` with plain flags); composed or wrapped scripts
-  still run — the capability row explains why inspection is off.
-- Static analysis resolves common import shapes — aliased paths (`@/…`),
-  barrel cycles, `React.lazy`, and re-export chains deeper than one
-  unambiguous `index` hop report *unresolved*, never a guess.
-- Matched CSS rules link to the stylesheet file, not the selector's line.
-- One Quick Edit session at a time; switching files with unsaved changes
-  prompts to discard.
-- The installer and executable are unsigned (SmartScreen warning).
-- Windows is the only supported target.
-
-See [STATUS.md](STATUS.md) for the factual milestone/release state.
+- **v0.3.0 (in development):** Integrated Browser Workbench — embedded
+  Preview, Interact/Inspect, click-to-source in one window, flexible
+  panes/focus modes, brand identity.
+- **Later:** runtime adapters for SvelteKit/Astro/Nuxt/Angular/Remotion;
+  component intelligence beyond React; code signing + auto-update.
 
 ## License
 
-RootRay is open-source software released under the MIT License.
-
-Copyright (c) 2026 Abdallah — ABUD FUN.
-
-See [LICENSE](LICENSE).
+MIT — Copyright (c) 2026 Abdallah — ABUD FUN. See [LICENSE](LICENSE).

@@ -17,3 +17,7 @@ createRoot(el).render(
     </AppProvider>
   </StrictMode>,
 );
+
+// The branded splash covers bootstrap only — drop it once React has
+// painted; startup gets no artificial delay.
+requestAnimationFrame(() => document.getElementById("boot-splash")?.remove());

@@ -11,6 +11,7 @@
 
 import { errorMessage, isLoopbackUrl } from "@rootray/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BrandLoader } from "../../components/BrandLoader";
 import { Splitter } from "../../components/Splitter";
 import {
   openBrowser,
@@ -209,13 +210,13 @@ export function PreviewPanel({
           </div>
         ) : (
           <div className="preview-overlay">
-            <p className="muted">Waiting for dev server…</p>
+            <BrandLoader label="Waiting for dev server…" />
           </div>
         );
       case "loading":
         return (
           <div className="preview-overlay">
-            <p className="muted">Loading preview…</p>
+            <BrandLoader label="Loading preview…" />
           </div>
         );
       case "error":

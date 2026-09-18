@@ -2,13 +2,20 @@ import type { DetectedLauncher, RootRaySettings } from "@rootray/shared";
 import { errorMessage } from "@rootray/shared";
 import { useEffect, useState } from "react";
 import { buildDiagnostics } from "../../lib/diagnostics";
-import { detectEditors, getSettings, updateSettings } from "../../lib/ipc";
+import {
+  detectEditors,
+  getDiagnostics,
+  getSettings,
+  openBrowser,
+  updateSettings,
+} from "../../lib/ipc";
 import { useStore } from "../../state/store";
 
 export function SettingsPanel() {
   const { state, dispatch } = useStore();
   const [settings, setSettings] = useState<RootRaySettings | null>(null);
   const [launchers, setLaunchers] = useState<DetectedLauncher[]>([]);
+  const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
     getSettings()
@@ -16,6 +23,9 @@ export function SettingsPanel() {
       .catch(() => {});
     detectEditors()
       .then(setLaunchers)
+      .catch(() => {});
+    getDiagnostics()
+      .then((d) => setVersion(d.version))
       .catch(() => {});
   }, []);
 
@@ -125,6 +135,30 @@ export function SettingsPanel() {
           <button type="button" className="btn" onClick={copyDiagnostics}>
             Copy Diagnostics
           </button>
+        </section>
+
+        <section className="settings-section">
+          <h3 className="section-title">About</h3>
+          <div className="about-block">
+            <img className="about-lockup brand-img" src="/brand/lockup.png" alt="" />
+            <div>
+              <div className="about-name">RootRay {version ? `v${version}` : ""}</div>
+              <div className="about-tag">Point at the UI. Reach the source.</div>
+              <div className="about-meta">
+                MIT License · local-first, zero telemetry
+                <br />
+                <button
+                  type="button"
+                  className="about-link"
+                  onClick={() => openBrowser("https://github.com/3bud-ZC/RootRay").catch(() => {})}
+                >
+                  github.com/3bud-ZC/RootRay
+                </button>
+                <br />
+                Latest stable release: v0.2.0
+              </div>
+            </div>
+          </div>
         </section>
       </div>
     </div>

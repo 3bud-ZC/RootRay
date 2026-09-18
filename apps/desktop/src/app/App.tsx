@@ -13,7 +13,7 @@ export function App() {
     <div className="app-shell">
       <header className="app-header">
         <div className="brand">
-          <span className="brand-mark">◉</span>
+          <img className="brand-mark" src="/brand/mascot.png" alt="" width="22" height="22" />
           <span className="brand-name">RootRay</span>
           <span className="brand-tag">Point at the UI. Reach the source.</span>
         </div>

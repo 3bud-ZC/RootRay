@@ -223,6 +223,35 @@ test("home view passes axe serious/critical checks", async ({ page }) => {
   expect(bad, JSON.stringify(bad.map((v) => v.id))).toEqual([]);
 });
 
+// ---- brand layer ---------------------------------------------------------
+
+test("brand: header mark and home lockup render real images", async ({ page }) => {
+  await stubTauri(page, { canned: CANNED, runtime: RUNTIME_WITH_PROJECT });
+  await page.goto(URL);
+  await expect(page.locator("text=Open a workspace")).toBeVisible();
+  for (const sel of [".brand-mark", ".home-lockup"]) {
+    const img = page.locator(sel);
+    await expect(img).toBeVisible();
+    const w = await img.evaluate((el: HTMLImageElement) => el.naturalWidth);
+    expect(w, `${sel} failed to load`).toBeGreaterThan(0);
+  }
+});
+
+test("brand: About shows version, tagline and stable-release line", async ({ page }) => {
+  await stubTauri(page, {
+    canned: {
+      ...CANNED,
+      get_diagnostics: { version: "0.3.0", os: "windows", arch: "x86_64" },
+    },
+    runtime: RUNTIME_WITH_PROJECT,
+  });
+  await page.goto(URL);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.locator(".about-name")).toContainText("RootRay v0.3.0");
+  await expect(page.locator(".about-tag")).toHaveText("Point at the UI. Reach the source.");
+  await expect(page.locator(".about-meta")).toContainText("Latest stable release: v0.2.0");
+});
+
 test("project view passes axe serious/critical checks", async ({ page }) => {
   await stubTauri(page, { canned: CANNED, runtime: RUNTIME_WITH_PROJECT });
   await page.goto(URL);

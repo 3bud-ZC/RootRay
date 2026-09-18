@@ -375,6 +375,42 @@ opening remains an explicit fallback action, never the default.
   rebuilt (`pnpm -r build`) before bundling; `build.rs` stages dist
   outputs into `inspector-assets/` automatically.
 
+### Brand identity & open-source readiness
+
+The supplied pixel-art robot mascot and identity artwork are now the
+product brand — applied to the app shell and docs while the workbench
+itself stays a dense, professional developer tool.
+
+- **Asset pipeline** (`scripts/build_brand_assets.py`, Pillow) —
+  reproducible: alpha-threshold crop for the standalone mascot, runtime
+  lockup/mascot/wordmark under `apps/desktop/public/brand/`, masters
+  under `docs/brand/`, multi-size `icon.ico` (16/24/32/48/64/128/256)
+  with a simplified ring+dot mark for 16/24px (the full robot blurs at
+  tiny sizes — the brand board itself specifies the simplified mark),
+  plus a 1280×640 social preview.
+- **Centralized palette** — brand tokens in `index.css`: accent
+  `#ff6b0c` sampled from the artwork, ember/glow variables, cool
+  blue-gray panel borders. Semantic status tints kept; transient states
+  (analyzing/starting/stopping) use the board's info blue.
+- **App identity** — bootstrap splash in `index.html` (removed on React
+  mount, no artificial delay), mascot header mark + tagline "Point at
+  the UI. Reach the source.", branded Home lockup, `BrandLoader` for
+  busy states, mascot ErrorBoundary, empty-code-pane watermark,
+  Settings → About (version, tagline, stable-release pointer).
+- **Docs/community** — rewritten README (hero, real installed-app
+  screenshots, honest capability tiers, v0.2/v0.3 distinction),
+  `docs/brand.md` brand guide, `CONTRIBUTING.md`, `SECURITY.md`,
+  `CODE_OF_CONDUCT.md`, `CHANGELOG.md`, issue forms + PR template.
+- **Repo metadata** — description, homepage and 12 topics set via
+  GitHub API; Discussions enabled. Social-preview PNG generated at
+  `docs/brand/rootray-social-preview.png` — GitHub has no API for it;
+  upload is a manual UI step.
+- **Real screenshots** — `tests/e2e/installed-shots.mjs` +
+  `capture-window.ps1` capture the installed app via `PrintWindow`
+  (`PW_RENDERFULLCONTENT`) so the native WebView2 preview surface is
+  actually visible (DOM screenshots blank it); DPI-aware sizing fixed
+  a clipped right edge on scaled displays.
+
 ### v0.3.0 verification so far
 
 **Acceptance caveat (resolved):** the earlier rounds below ran against a
@@ -387,18 +423,19 @@ installer end-to-end — see "Final installer acceptance".
   coverage: `change_project` stop-then-analyze under one lifecycle
   hold, `starting`/`running` start notifications, direct-analyze
   rejection while running.
-- Vitest **184 green** — exact audit (`pnpm -r test`): desktop **72**,
+- Vitest **191 green** — exact audit (`pnpm -r test`): desktop **79**,
   inspector-runtime **23**, source-protocol **21**, jsx-instrument
   **20**, intelligence **17**, html-instrument **11**, vite-plugin
   **8**, shared **7**, next-adapter **5**. New coverage: layout
   persistence/clamping/reset, reducer layout actions, stale-snapshot
-  drop, preview-controller.
-- Playwright **60/60** (20 workbench specs + full regression). New
+  drop, preview-controller, brand assets/ICO dimensions/splash removal.
+- Playwright **62/62** (workbench + a11y + full regression). New
   coverage: pane collapse/restore, focus modes, output resize, split
   drag, layout persistence, reset, scroll containment, Change Project
-  single-command contract, target-switch guard.
+  single-command contract, target-switch guard, branded home lockup +
+  header mark assertions.
 - `pnpm -r typecheck` all 10 projects · `pnpm exec biome check .` clean
-  (3 pre-existing CSS warnings) · `cargo check`/`cargo build` both
+  (4 pre-existing CSS warnings) · `cargo check`/`cargo build` both
   crates green.
 - **Installed layout + transition verification: PASS**
   (`tests/e2e/installed-verify-layout.mjs` + `pick-folder.ps1`) on the
@@ -414,8 +451,10 @@ installer end-to-end — see "Final installer acceptance".
 
 - `pnpm -r build` + `pnpm build:tauri` →
   `target\release\bundle\nsis\RootRay_0.3.0_x64-setup.exe`
-  — **2,952,566 bytes** · SHA-256
-  `C4B52F56A16B8DD41EDD77163CA3E64C7D38E1F4491C3CB787E70B34D37325EF`.
+  — **3,271,995 bytes** · SHA-256
+  `31dab9fe381f99a5183c9ccb10eb9ca9d6ec528a66547bf373ee737d9922cc82`
+  (brand build; the earlier 2,952,566-byte binary predates brand
+  integration).
 - `scripts/installer-smoke.ps1`: **PASS** — silent install → assets →
   launch → no stray dev server → silent uninstall → binary removed.
 - **Installed workbench golden path: PASS** on the NSIS-installed app:
@@ -431,6 +470,12 @@ installer end-to-end — see "Final installer acceptance".
   baseline).
 - Silent **uninstall verified** — binary, install dir and registry entry
   all removed.
+- **Installed brand verification: PASS**
+  (`tests/e2e/installed-verify-brand.mjs`) on the NSIS-installed brand
+  build — exe icon contains the mascot, branded home (lockup + header
+  mark + tagline), Settings → About (version/tagline/stable line),
+  then a real ClientFlow-CRM run: embedded preview, inspect →
+  `src/app/(auth)/login/page.tsx` source, Preview Focus, clean stop.
 - Earlier rounds also passed `installed-golden-static`,
   `installed-golden-monorepo` (workspace-root scoping) on the installed
   app.

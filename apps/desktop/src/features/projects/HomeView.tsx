@@ -1,6 +1,7 @@
 import type { RootRaySettings } from "@rootray/shared";
 import { errorMessage } from "@rootray/shared";
 import { useEffect, useState } from "react";
+import { BrandLoader } from "../../components/BrandLoader";
 import { analyzeProject, getSettings, pickProjectDirectory } from "../../lib/ipc";
 import { useStore } from "../../state/store";
 
@@ -58,19 +59,19 @@ export function HomeView() {
   return (
     <div className="home">
       <div className="home-hero">
+        <img className="home-lockup brand-img" src="/brand/lockup.png" alt="" />
         <h1>Open a workspace</h1>
         <p className="muted">
           Select a local project or workspace. RootRay discovers its structure, technologies and
           targets — and where supported, lets you point at the rendered UI to reach the source.
         </p>
-        <button
-          type="button"
-          className="btn btn-primary btn-lg"
-          disabled={busy}
-          onClick={() => openProject()}
-        >
-          {busy ? "Analyzing…" : "Open Project"}
-        </button>
+        {busy ? (
+          <BrandLoader label="Analyzing workspace…" />
+        ) : (
+          <button type="button" className="btn btn-primary btn-lg" onClick={() => openProject()}>
+            Open Project
+          </button>
+        )}
       </div>
 
       <section className="recents">
