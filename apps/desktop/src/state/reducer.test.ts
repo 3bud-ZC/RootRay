@@ -98,4 +98,62 @@ describe("uiReducer", () => {
     s = uiReducer(s, { type: "workspace-tab", tab: "code" });
     expect(s.workspaceTab).toBe("code");
   });
+
+  it("replaces a still-loading editor — newest selection must win", () => {
+    const loc = (line: number) => ({
+      relativePath: "src/A.tsx",
+      line,
+      column: 1,
+    });
+    let s = uiReducer(initialUiState, {
+      type: "edit-open",
+      relativePath: "src/A.tsx",
+      source: loc(1),
+    });
+    expect(s.editor?.status).toBe("loading");
+    // A second selection lands while the first file is still loading.
+    // Nothing user-owned exists yet — the open must not park behind the
+    // unsaved-changes prompt.
+    s = uiReducer(s, {
+      type: "edit-open",
+      relativePath: "src/B.tsx",
+      source: { ...loc(3), relativePath: "src/B.tsx" },
+    });
+    expect(s.editor?.relativePath).toBe("src/B.tsx");
+    expect(s.editor?.status).toBe("loading");
+    expect(s.editorClosePrompt).toBe(false);
+    expect(s.pendingOpen).toBeNull();
+    // The stale A read is discarded; B's read applies.
+    const readB = {
+      relativePath: "src/B.tsx",
+      content: "// B\n",
+      hash: "h",
+      lineEnding: "lf" as const,
+      bom: false,
+      sizeBytes: 5,
+    };
+    s = uiReducer(s, {
+      type: "edit-opened",
+      read: { ...readB, relativePath: "src/A.tsx" },
+      source: loc(1),
+    });
+    expect(s.editor?.relativePath).toBe("src/B.tsx");
+    s = uiReducer(s, {
+      type: "edit-opened",
+      read: readB,
+      source: { ...loc(3), relativePath: "src/B.tsx" },
+    });
+    expect(s.editor?.relativePath).toBe("src/B.tsx");
+    expect(s.editor?.status).toBe("clean");
+    // A dirty session, by contrast, still parks behind the prompt.
+    s = uiReducer(s, { type: "edit-changed", content: "// B edited\n" });
+    expect(s.editor?.status).toBe("dirty");
+    s = uiReducer(s, {
+      type: "edit-open",
+      relativePath: "src/C.tsx",
+      source: { ...loc(5), relativePath: "src/C.tsx" },
+    });
+    expect(s.editorClosePrompt).toBe(true);
+    expect(s.pendingOpen?.relativePath).toBe("src/C.tsx");
+  });
 });

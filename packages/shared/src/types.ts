@@ -419,6 +419,18 @@ export type EditSessionStatus =
   | "conflict"
   | "save_failed";
 
+/**
+ * Statuses whose session holds user-owned content. A cross-file open is
+ * parked behind the unsaved-changes prompt only for these — a session
+ * that is still `loading` has no content to lose, so the newest
+ * selection must replace it directly.
+ */
+export function editSessionHasUserContent(status: EditSessionStatus): boolean {
+  return (
+    status === "dirty" || status === "saving" || status === "conflict" || status === "save_failed"
+  );
+}
+
 /** The UI-owned half of an editing session. */
 export interface EditSession {
   relativePath: string;

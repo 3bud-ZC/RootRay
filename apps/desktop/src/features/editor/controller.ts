@@ -4,6 +4,7 @@
  * place so components stay declarative.
  */
 
+import { editSessionHasUserContent } from "@rootray/shared";
 import type { CoreErrorPayload, EditorEventPayload, SourceLocation } from "@rootray/shared";
 import {
   closeSourceEditor,
@@ -44,9 +45,11 @@ export async function quickEdit(
     return;
   }
   dispatch({ type: "edit-open", relativePath, source });
-  // Dirty different file → reducer parked this behind the close prompt;
-  // the deferred open happens on "Discard Changes" (see confirmClose).
-  if (existing && existing.status !== "clean") return;
+  // Parked behind the close prompt only when the previous session held
+  // user content (same rule as the reducer) — "Discard Changes" resumes
+  // the deferred open via confirmClose. A still-loading session has no
+  // content to lose, so the fetch below must still run.
+  if (existing && editSessionHasUserContent(existing.status)) return;
   try {
     const read = await openSourceEditor(relativePath);
     dispatch({ type: "edit-opened", read, source });

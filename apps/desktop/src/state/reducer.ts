@@ -1,3 +1,4 @@
+import { editSessionHasUserContent } from "@rootray/shared";
 import type {
   CoreErrorPayload,
   EditSession,
@@ -188,8 +189,11 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
         };
       }
       // Dirty file + different target → hold the request behind the
-      // unsaved-changes prompt instead of silently replacing.
-      if (existing && existing.status !== "clean" && existing.status !== "closed") {
+      // unsaved-changes prompt instead of silently replacing. Only a
+      // session with user content counts — a still-loading file has
+      // nothing to lose, so the newest selection replaces it directly
+      // and the stale read is discarded by "edit-opened" below.
+      if (existing && editSessionHasUserContent(existing.status)) {
         return {
           ...state,
           editorClosePrompt: true,
