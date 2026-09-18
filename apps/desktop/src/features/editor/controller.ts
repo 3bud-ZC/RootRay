@@ -4,8 +4,8 @@
  * place so components stay declarative.
  */
 
-import { editSessionHasUserContent } from "@rootray/shared";
 import type { CoreErrorPayload, EditorEventPayload, SourceLocation } from "@rootray/shared";
+import { editSessionHasUserContent } from "@rootray/shared";
 import {
   closeSourceEditor,
   openSourceEditor,

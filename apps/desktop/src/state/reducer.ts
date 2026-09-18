@@ -1,4 +1,3 @@
-import { editSessionHasUserContent } from "@rootray/shared";
 import type {
   CoreErrorPayload,
   EditSession,
@@ -11,6 +10,7 @@ import type {
   SourceFileWrite,
   SourceLocation,
 } from "@rootray/shared";
+import { editSessionHasUserContent } from "@rootray/shared";
 
 export const LOG_CAP = 500;
 

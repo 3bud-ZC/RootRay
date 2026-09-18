@@ -263,6 +263,7 @@ test("workbench: run creates the internal preview — no external browser", asyn
   // preview_create fired with the detected loopback URL + a real rect.
   await expect.poll(async () => (await calls(page, "preview_create")).length).toBe(1);
   const [created] = await calls(page, "preview_create");
+  if (!created) throw new Error("preview_create call missing");
   expect(created.url).toBe(APP_URL);
   const rect = created.rect as { x: number; y: number; width: number; height: number };
   expect(rect.width).toBeGreaterThan(100);
