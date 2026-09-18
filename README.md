@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/media/rootray-hero.png" alt="RootRay — a pixel-art robot fires an inspection ray at a rendered UI button, revealing Button.tsx" width="860" />
+<img src="docs/media/rootray-hero.png" alt="RootRay — approved brand hero showing the pixel robot firing an inspection ray at a rendered UI button, revealing Button.tsx" width="860" />
 
 # RootRay
 
@@ -67,6 +67,9 @@ RootRay closes the gap between them — the rendered element and the exact
   preview navigation; the Preview webview has zero IPC privileges.
 
 ## Screenshots
+
+The hero above is RootRay brand artwork. The captures below are real
+product screenshots from the desktop app.
 
 <p align="center">
   <img src="docs/media/workbench-split.png" alt="RootRay workbench — embedded Preview beside source code, Inspector open" width="860" />

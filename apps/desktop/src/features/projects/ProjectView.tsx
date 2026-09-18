@@ -91,6 +91,7 @@ export function ProjectView() {
     query: "",
   });
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [readyDetailsOpen, setReadyDetailsOpen] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [changing, setChanging] = useState(false);
   // Widths snapshotted at drag start — deltas apply to a stable base.
@@ -612,13 +613,23 @@ export function ProjectView() {
 
   // ---- analysis mode: no running project ------------------------------
   return (
-    <div className="project">
-      <section className="project-card">
+    <div className="project project-ready">
+      <section className="project-card ready-summary">
         <div className="project-head">
-          <div>
-            <h1 className="project-name">{projectDisplayName(workspace.name, workspace.root)}</h1>
-            <div className="project-path" title={workspace.root}>
-              {workspace.root}
+          <div className="ready-title-row">
+            <img
+              className="ready-state-art brand-img"
+              src={runtime.error ? "/brand/error.png" : "/brand/success.png"}
+              alt=""
+            />
+            <div>
+              <h1 className="project-name">{projectDisplayName(workspace.name, workspace.root)}</h1>
+              <div className={runtime.error ? "bad ready-status" : "ok ready-status"}>
+                {runtime.error ? "Project needs attention" : "Project ready"}
+              </div>
+              <div className="project-path" title={workspace.root}>
+                {workspace.root}
+              </div>
             </div>
           </div>
           <div className="project-head-actions">
@@ -629,7 +640,28 @@ export function ProjectView() {
           </div>
         </div>
 
-        {projectDetails}
+        <dl className="ready-facts">
+          <div className="ready-fact">
+            <dt>Active target</dt>
+            <dd>
+              <code>{target?.id ?? "root"}</code>
+            </dd>
+          </div>
+          <div className="ready-fact">
+            <dt>Scope</dt>
+            <dd>
+              <code>
+                {workspace.targets.length > 1 ? `${workspace.targets.length} targets` : "1 target"}
+              </code>
+            </dd>
+          </div>
+          <div className="ready-fact">
+            <dt>State</dt>
+            <dd>
+              <span className="ok">Analyzed and ready</span>
+            </dd>
+          </div>
+        </dl>
 
         {workspace.warnings.length > 0 && (
           <div className="reasons">
@@ -648,27 +680,55 @@ export function ProjectView() {
             <p className="muted">{runtime.error.message}</p>
           </div>
         )}
-
-        <div className="project-actions">
-          {caps.run.state === "available" && (
-            <button type="button" className="btn btn-primary" onClick={run}>
-              Run Project
-            </button>
-          )}
-          <button type="button" className="btn" onClick={openInPreferredEditor}>
-            Open in Editor
-          </button>
-        </div>
       </section>
 
-      {(runtime.phase === "stopped" || runtime.phase === "failed") && <RunnerPanel />}
-
-      <div className="workspace">
-        <ExplorerPanel onSearch={(query) => setSearch({ open: true, query })} />
+      <div className="ready-workspace">
+        <aside className="ready-explorer">
+          <ExplorerPanel onSearch={(query) => setSearch({ open: true, query })} />
+        </aside>
         <div className="workspace-main">
+          <section className="ready-center project-card">
+            <h2>Ready to run</h2>
+            <p className="muted">
+              Explorer is available now. Start the selected target to open the embedded Preview and
+              inspect rendered UI back to source.
+            </p>
+            <div className="project-actions">
+              {caps.run.state === "available" && (
+                <button type="button" className="btn btn-primary" onClick={run}>
+                  Run Project
+                </button>
+              )}
+              <button type="button" className="btn" onClick={openInPreferredEditor}>
+                Open in Editor
+              </button>
+            </div>
+          </section>
+          {(runtime.phase === "stopped" || runtime.phase === "failed") && <RunnerPanel />}
           <EditorPanel />
           {(state.logs.length > 0 || runtime.phase === "stopped") && <LogPanel logs={state.logs} />}
         </div>
+        <aside className="ready-details project-card">
+          <div className="ready-details-head">
+            <h2 className="section-title">Project details</h2>
+            <button
+              type="button"
+              className="btn"
+              aria-expanded={readyDetailsOpen}
+              onClick={() => setReadyDetailsOpen((v) => !v)}
+            >
+              {readyDetailsOpen ? "Hide" : "Show"}
+            </button>
+          </div>
+          {readyDetailsOpen ? (
+            projectDetails
+          ) : (
+            <p className="muted">
+              Framework, runner and capability details are available without changing the workspace
+              layout.
+            </p>
+          )}
+        </aside>
       </div>
 
       {quickOpen && <QuickOpen onClose={() => setQuickOpen(false)} />}

@@ -299,6 +299,60 @@ Re-scanned this cycle with `cargo run -p rootray-core --example scan`:
 
 ## In development — v0.3.0 (unpublished, not tagged)
 
+### Visual Identity Reconstruction from Approved Artwork — 2026-09-19
+
+This pass corrects the previous brand implementation that had
+reinterpreted RootRay's identity instead of deriving it from the supplied
+approved artwork.
+
+- **Previous reinterpretation rejected:** removed the hand-authored
+  small robot maps and obsolete previous-pass masters
+  (`board.jpg`, `icon-src.png`, `lockup-src.png`, `wordmark-src.png`).
+  The orange ring/simple mark is not used as the application icon.
+- **Canonical artwork established:** committed the supplied approved
+  boards under `docs/brand/source/` and rewrote
+  `scripts/build_brand_assets.py` so generated assets are crops/resizes
+  from those images, not redraws.
+- **Production extraction:** regenerated mascot, wordmark, lockup,
+  splash, empty/success/error state art, hero/social preview, runtime
+  public brand assets, and Windows icon frames.
+- **App icon validation:** final installed verification confirms the
+  executable, Start Menu shortcut, title bar and taskbar all contain the
+  approved robot icon signature.
+- **Home validation:** installed Home uses the approved empty-state
+  mascot artwork and the extracted header wordmark/tagline.
+- **Header validation:** header uses `mascot-head.png` plus the extracted
+  `wordmark.png`; CSS-built Root/Ray wordmark text was removed from the
+  prominent header brand.
+- **Ready-state layout correction:** analyzed-but-not-running state now
+  uses the desktop width as a workspace: Explorer on the left, Ready/run
+  action panel in the center, project details/capabilities on the right.
+  It no longer collapses into a narrow centered dashboard.
+- **README hero correction:** README hero and GitHub social preview
+  derive from the supplied wide artwork. README explicitly separates
+  brand artwork from real product screenshots.
+- **Installed visual acceptance:** final installed build captured Home,
+  Ready, Waiting for dev server, Running workbench, Inspect-to-Code
+  split, Preview Focus, Settings/About, taskbar, title-bar, Start Menu
+  and executable icon verification. Screenshots live under
+  `target/installed-verify-brand/`; selected real product screenshots
+  were refreshed in `docs/media/`.
+- **Fresh installer:** `RootRay_0.3.0_x64-setup.exe` —
+  **4,033,598 bytes**, SHA-256
+  `D6EEFB50258F29FB8F173DD08C0C6DE795FBBB4EAA9FD068FF39D1C3001511A9`.
+- **Verification:** `cargo test -p rootray-core` — 213 passed, 1 ignored;
+  `cargo test -p rootray-core --test suite -- --ignored` — 1 passed;
+  `pnpm -r test` — all workspace tests passed including desktop Vitest
+  90, package Vitest suites, and Playwright 64; `pnpm -r typecheck` —
+  pass; `pnpm exec biome check .` — pass with 8 existing CSS specificity
+  warnings; `cargo check -p rootray-core`, `cargo check -p
+  rootray-desktop`, `cargo build -p rootray-desktop`, `pnpm -r build`,
+  `pnpm build:tauri` — pass; `scripts/installer-smoke.ps1` — PASS;
+  `node tests/e2e/installed-verify-brand.mjs` — PASS on the final
+  installed build.
+
+**v0.3.0 remains unpublished and untagged.**
+
 **Integrated browser workbench.** The project now runs *inside* RootRay:
 Run → the dev-server URL opens in an embedded WebView2 child surface →
 normal app interaction → Inspect → click an element → source opens
@@ -837,4 +891,4 @@ built the v0.1.0 installer from.
   installer was NOT built from it and the `v0.2.0` tag is unchanged.
 
 ## Last Updated
-2026-09-17
+2026-09-19

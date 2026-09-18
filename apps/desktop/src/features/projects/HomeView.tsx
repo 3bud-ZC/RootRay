@@ -59,7 +59,7 @@ export function HomeView() {
   return (
     <div className="home">
       <div className="home-hero">
-        <img className="home-lockup brand-img" src="/brand/lockup.png" alt="" />
+        <img className="home-lockup home-empty-art brand-img" src="/brand/empty.png" alt="" />
         <h1>Open a workspace</h1>
         <p className="muted">
           Select a local project or workspace. RootRay discovers its structure, technologies and

@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 /**
  * Functional guards for the shipped brand layer: the runtime assets the
  * UI references must exist, be real PNGs/ICO, and the application icon
- * must be the pixel ROBOT at every frame — never the orange ring mark.
+ * must be the approved robot artwork at every frame — never a redrawn
+ * small map or the orange ring mark.
  * Lives in node env — no DOM required.
  */
 
@@ -124,7 +125,7 @@ describe("brand assets", () => {
     },
   );
 
-  it("public/brand/mascot-head.png is a real PNG (compact 24px glyph)", () => {
+  it("public/brand/mascot-head.png is a real board-derived PNG", () => {
     const buf = pngOk("public/brand/mascot-head.png");
     expect(buf.length).toBeGreaterThan(100);
     expect(buf.length).toBeLessThan(64 * 1024);
@@ -165,21 +166,35 @@ describe("brand assets", () => {
 describe("app header", () => {
   const app = readFileSync("src/app/App.tsx", "utf8");
 
-  it("header mark uses the purpose-built head glyph, not the full mascot", () => {
+  it("header mark uses the board-derived small app icon", () => {
     expect(app).toContain("/brand/mascot-head.png");
   });
 
-  it("wordmark splits Root / Ray for accent coloring", () => {
-    expect(app).toContain('brand-name-accent">Ray');
+  it("header wordmark uses the approved raster asset, not CSS-built text", () => {
+    expect(app).toContain("/brand/wordmark.png");
+    expect(app).not.toContain("brand-name-accent");
+  });
+});
+
+describe("brand generator", () => {
+  const script = readFileSync("../../scripts/build_brand_assets.py", "utf8");
+
+  it("does not contain hand-authored robot pixel maps", () => {
+    expect(script).not.toMatch(/ROBOT_(16|24|32)|ROBOT_MAPS|ICON_PAL/);
+  });
+
+  it("documents the approved artwork boards as the source of truth", () => {
+    expect(script).toContain("docs/brand/source/");
+    expect(script).toContain("does not redraw");
   });
 });
 
 describe("splash", () => {
   const html = readFileSync("index.html", "utf8");
 
-  it("ships a branded bootstrap splash referencing the lockup", () => {
+  it("ships a branded bootstrap splash referencing the approved splash art", () => {
     expect(html).toContain("boot-splash");
-    expect(html).toContain("/brand/lockup.png");
+    expect(html).toContain("/brand/splash.png");
   });
 
   it("has no artificial delay — nothing schedules the splash lifetime", () => {

@@ -1,33 +1,14 @@
-"""Build RootRay brand assets from the canonical masters in docs/brand/.
+"""Build RootRay brand assets from the approved artwork boards.
 
-Masters (committed, do not edit in place):
-  docs/brand/lockup-src.png     robot + "RootRay / SEE THE SOURCE" square lockup
-  docs/brand/icon-src.png       robot on dark rounded square (app icon)
-  docs/brand/wordmark-src.png   robot + "RootRay / UI TO SOURCE" on black
-  docs/brand/board.jpg          brand-system reference board
-  docs/media/rootray-hero.png   wide storytelling art (README hero)
+The files in docs/brand/source/ are user-approved canonical artwork.
+This script crops and resizes those images; it does not redraw the
+mascot, wordmark, app icon, splash, hero, or UI-state art.
 
-Generated:
-  docs/brand/rootray-lockup.png          square logo lockup (trimmed)
-  docs/brand/rootray-mascot.png          transparent robot only (trimmed)
-  docs/brand/rootray-wordmark.png        transparent wordmark (trimmed)
-  docs/brand/rootray-social-preview.png  1280x640 GitHub social preview
-  docs/brand/icon-{16,24,32}.png         small-size robot icon masters
-  apps/desktop/public/brand/lockup.png      runtime lockup (320px)
-  apps/desktop/public/brand/mascot.png      runtime mascot (192px)
-  apps/desktop/public/brand/mascot-head.png 24px head glyph (header)
-  apps/desktop/public/brand/wordmark.png    runtime wordmark (512w)
-  apps/desktop/src-tauri/icons/*.png + icon.ico
-
-The app icon is the pixel robot at EVERY size: 16/24/32 use the
-hand-authored ROBOT_MAPS below, 48+ downscale icon-src.png (NEAREST).
-The orange ring/simple mark was rejected as a primary icon — it may only
-appear as secondary decoration (ray endpoint, loading motif), never as
-the application icon, logo, or avatar.
-
-Pixel-art assets are resampled with NEAREST so they stay crisp.
-Requires Pillow. Usage: python scripts/build_brand_assets.py
+Requires Pillow. Usage:
+  C:/Users/Abud/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe scripts/build_brand_assets.py
 """
+
+from __future__ import annotations
 
 from collections import deque
 from pathlib import Path
@@ -35,45 +16,78 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
+SOURCE = ROOT / "docs" / "brand" / "source"
 BRAND = ROOT / "docs" / "brand"
 MEDIA = ROOT / "docs" / "media"
 PUBLIC_BRAND = ROOT / "apps" / "desktop" / "public" / "brand"
 ICONS = ROOT / "apps" / "desktop" / "src-tauri" / "icons"
 
-# The lockup art is robot over ~the top 62% and text below; the robot alone
-# ends just above the "RootRay" line.
-ROBOT_BOTTOM_RATIO = 0.60
+WORDMARK_SOURCE = SOURCE / "wordmark-ui-to-source.png"
+ICON_SOURCE = SOURCE / "app-icon-master.png"
+HERO_SOURCE = SOURCE / "wide-hero-source.png"
+SPLASH_SOURCE = SOURCE / "splash-lockup-source.png"
+LOCKUP_SOURCE = SOURCE / "lockup-source.png"
+BOARD_SOURCE = SOURCE / "brand-board-source.png"
+
+# Crop boxes are in source-image pixels. They select individual approved
+# artwork elements from the brand boards, avoiding labels and frame chrome.
+CROPS = {
+    "wordmark": (700, 350, 1335, 595),
+    "mascot": (340, 180, 940, 790),
+    "splash_lockup": (390, 290, 875, 940),
+    "hero": (0, 0, 1916, 821),
+    "board_icon_256": (772, 42, 909, 178),
+    "board_icon_128": (923, 64, 1015, 156),
+    "board_icon_64": (1028, 87, 1089, 148),
+    "board_icon_32": (1100, 99, 1142, 141),
+    "board_icon_16": (1152, 110, 1173, 131),
+    "empty": (505, 418, 657, 522),
+    "success": (948, 431, 1078, 544),
+    "error": (1282, 440, 1423, 557),
+    "loading_strip": (1210, 246, 1520, 368),
+    "small_banner": (1085, 804, 1519, 900),
+}
 
 
-def strip_background(img: Image.Image, is_bg) -> Image.Image:
-    """Alpha-out the background connected to the image border via flood fill.
+def crop(src: Image.Image, box: tuple[int, int, int, int]) -> Image.Image:
+    return src.crop(box).convert("RGBA")
 
-    Only background-colored pixels reachable from an edge are cleared, so
-    interior pixels that merely share the background color (robot visor,
-    letter counters) are preserved.
+
+def flood_alpha(img: Image.Image, tolerance: int = 20) -> Image.Image:
+    """Alpha-out near-black background connected to the image border.
+
+    Connected flood fill preserves dark interior features such as the visor
+    and icon rounded-square panel, while removing only the surrounding board
+    background.
     """
+
     im = img.convert("RGBA")
     w, h = im.size
     px = im.load()
     seen = bytearray(w * h)
-    q = deque()
+    q: deque[tuple[int, int]] = deque()
 
-    def try_seed(x: int, y: int) -> None:
+    def is_bg(p: tuple[int, int, int, int]) -> bool:
+        r, g, b, a = p
+        return a > 0 and r <= tolerance and g <= tolerance and b <= tolerance
+
+    def seed(x: int, y: int) -> None:
         i = y * w + x
         if not seen[i] and is_bg(px[x, y]):
             seen[i] = 1
             q.append((x, y))
 
     for x in range(w):
-        try_seed(x, 0)
-        try_seed(x, h - 1)
+        seed(x, 0)
+        seed(x, h - 1)
     for y in range(h):
-        try_seed(0, y)
-        try_seed(w - 1, y)
+        seed(0, y)
+        seed(w - 1, y)
 
     while q:
         x, y = q.popleft()
-        px[x, y] = (px[x, y][0], px[x, y][1], px[x, y][2], 0)
+        r, g, b, _ = px[x, y]
+        px[x, y] = (r, g, b, 0)
         for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
             if 0 <= nx < w and 0 <= ny < h:
                 i = ny * w + nx
@@ -83,222 +97,108 @@ def strip_background(img: Image.Image, is_bg) -> Image.Image:
     return im
 
 
-def alpha_bbox(im: Image.Image, threshold: int = 60) -> tuple[int, int, int, int] | None:
-    """Content bbox using only clearly-opaque pixels (ignores faint halos)."""
-    alpha = im.getchannel("A")
+def alpha_bbox(img: Image.Image, threshold: int = 18) -> tuple[int, int, int, int] | None:
+    alpha = img.getchannel("A")
     mask = alpha.point(lambda a: 255 if a > threshold else 0)
     return mask.getbbox()
 
 
-def trim(im: Image.Image, pad_ratio: float = 0.04, threshold: int = 60) -> Image.Image:
-    bbox = alpha_bbox(im, threshold)
-    if not bbox:
-        return im
-    pad = int(max(im.size) * pad_ratio)
-    l, t, r, b = bbox
-    l = max(0, l - pad)
-    t = max(0, t - pad)
-    r = min(im.width, r + pad)
-    b = min(im.height, b + pad)
-    return im.crop((l, t, r, b))
+def trim(img: Image.Image, pad: int = 10, threshold: int = 18) -> Image.Image:
+    box = alpha_bbox(img, threshold)
+    if box is None:
+        return img
+    l, t, r, b = box
+    return img.crop((max(0, l - pad), max(0, t - pad), min(img.width, r + pad), min(img.height, b + pad)))
 
 
-def fit_width(im: Image.Image, width: int, resample=Image.NEAREST) -> Image.Image:
-    if im.width == width:
-        return im
-    h = round(im.height * width / im.width)
-    return im.resize((width, h), resample)
+def resize_width(img: Image.Image, width: int, resample: int) -> Image.Image:
+    if img.width == width:
+        return img
+    height = round(img.height * width / img.width)
+    return img.resize((width, height), resample)
 
 
-# --- Hand-authored small robot icons ----------------------------------------
-# The pixel robot IS the app identity at every size — the ring/simple mark
-# was rejected as a primary icon. Downscaling the 1024px mascot below 48px
-# dissolves the face, so 16/24/32 are purpose-built pixel maps that keep the
-# recognizable features: white rounded head, black face panel, two orange
-# vertical eyes, orange ear ring (left), small orange antenna.
-#
-# Palette keys: '.' transparent · 'k' dark rounded-square bg · 'W' white
-# head · 'w' head shade · 'B' black face · 'O' orange · 'o' orange shade.
-ICON_PAL = {
-    ".": (0, 0, 0, 0),
-    "k": (13, 18, 24, 255),
-    "W": (233, 238, 244, 255),
-    "w": (168, 178, 190, 255),
-    "B": (5, 8, 13, 255),
-    "O": (255, 115, 0, 255),
-    "o": (200, 88, 0, 255),
-}
-
-# 16px — silhouette + black face + two orange eyes + antenna only.
-ROBOT_16 = [
-    "................",
-    "..kkkkkkkkkkkk..",
-    ".kkkkkkkkkkkkkk.",
-    ".kkkkkkOO.kkkkk.",
-    ".kkkkkWWWWkkkkk.",
-    ".kkkWWWWWWWWkkk.",
-    ".kkWWBBBBBBBWWk.",
-    ".kkWBBBBBBBBBWk.",
-    ".kkWBBOBBBOBBWk.",
-    ".kkWBBOBBBOBBWk.",
-    ".kkWBBBBBBBBBWk.",
-    ".kkWWBBBBBBBWWk.",
-    ".kkkWWWWWWWWkkk.",
-    ".kkkkkkkkkkkkkk.",
-    "..kkkkkkkkkkkk..",
-    "................",
-]
-
-# 24px — adds the hollow orange ear ring on the left of the head.
-ROBOT_24 = [
-    "........................",
-    "...kkkkkkkkkkkkkkkkkk...",
-    "..kkkkkkkkkkkkkkkkkkkk..",
-    ".kkkkkkkkkkkkkkkkkkkkkk.",
-    ".kkkkkkkkkkkOO.kkkkkkkk.",
-    ".kkkkkkkkkkkOO.kkkkkkkk.",
-    ".kkkkkkkkWWWWWWWkkkkkkk.",
-    ".kkkkkkWWWWWWWWWWkkkkkk.",
-    ".kkkkWWBBBBBBBBBBBWWkkk.",
-    ".k.OOWBBOOBBBBBOOBBWkkk.",
-    ".kO.OWBBOOBBBBBOOBBWkkk.",
-    ".kO.OWBBOOBBBBBOOBBWkkk.",
-    ".k.OOWBBBBBBBBBBBBWkkkk.",
-    ".kkkkWWBBBBBBBBBWWkkkkk.",
-    ".kkkkkWWWWWWWWWWkkkkkk.",
-    ".kkkkkkWWWWWWWWkkkkkkk.",
-    ".kkkkkkkkkkkkkkkkkkkkkk.",
-    ".kkkkkkkkkkkkkkkkkkkkkk.",
-    ".kkkkkkkkkkkkkkkkkkkkkk.",
-    "..kkkkkkkkkkkkkkkkkkkk..",
-    "...kkkkkkkkkkkkkkkkkk...",
-    "........................",
-    "........................",
-    "........................",
-]
-
-# 32px — ear ring + a small shoulders hint below the head.
-ROBOT_32 = [
-    "................................",
-    "....kkkkkkkkkkkkkkkkkkkkkkkk....",
-    "...kkkkkkkkkkkkkkkkkkkkkkkkkk...",
-    "..kkkkkkkkkkkkkkkkkkkkkkkkkkkk..",
-    "..kkkkkkkkkkkkkkOOOkkkkkkkkkkk..",
-    "..kkkkkkkkkkkkkkOOOkkkkkkkkkkk..",
-    "..kkkkkkkkkkWWWWWWWWkkkkkkkkkk..",
-    "..kkkkkkkkWWWWWWWWWWWkkkkkkkkk..",
-    "..kkkkkkWWBBBBBBBBBBBBWkkkkkkk..",
-    "..kkkkkWWBBBBBBBBBBBBBWkkkkkkk..",
-    "..kkkkkWBOOOBBBBBBBOOOBWkkkkkk..",
-    "..kkkkkWBOOOBBBBBBBOOOBWkkkkkk..",
-    ".kOOO.kWBOOOBBBBBBBOOOBWkkkkkk..",
-    ".kO.OkWWBBBBBBBBBBBBBWWkkkkkkk..",
-    ".kO.OkWWBBBBBBBBBBBBBWWkkkkkkk..",
-    ".kOOO.kkWWBBBBBBBBBWWkkkkkkkkk..",
-    "..kkkkkkkWWBBBBBBBWWkkkkkkkkkk..",
-    "..kkkkkkkkWWWWWWWWWkkkkkkkkkkk..",
-    "..kkkkkkkkkWWWWWWWkkkkkkkkkkkk..",
-    "..kkkkkkkkkWWkWWWWWkkkkkkkkkkk..",
-    "..kkkkkkkkWWWWWWWWWkkkkkkkkkkk..",
-    "..kkkkkkkkkkkkkkkkkkkkkkkkkkkk..",
-    "..kkkkkkkkkkkkkkkkkkkkkkkkkkkk..",
-    "..kkkkkkkkkkkkkkkkkkkkkkkkkkkk..",
-    "..kkkkkkkkkkkkkkkkkkkkkkkkkkkk..",
-    "...kkkkkkkkkkkkkkkkkkkkkkkkkk...",
-    "....kkkkkkkkkkkkkkkkkkkkkkkk....",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-    "................................",
-]
-
-ROBOT_MAPS = {16: ROBOT_16, 24: ROBOT_24, 32: ROBOT_32}
+def square_fit(img: Image.Image, size: int, resample: int) -> Image.Image:
+    fitted = img.resize((size, size), resample)
+    return fitted.convert("RGBA")
 
 
-def render_map(rows: list[str]) -> Image.Image:
-    """Render a pixel map to an RGBA image (1 map char = 1 px)."""
-    w = max(len(r) for r in rows)
-    im = Image.new("RGBA", (w, len(rows)), (0, 0, 0, 0))
-    px = im.load()
-    for y, row in enumerate(rows):
-        for x, ch in enumerate(row):
-            px[x, y] = ICON_PAL[ch]
-    return im
-
-
-def head_glyph(rows: list[str]) -> Image.Image:
-    """Same map with the dark bg removed — head-only mark for in-app use.
-
-    Keeps the full map canvas so the glyph renders at an exact 1:1 pixel
-    grid in the app header (no aspect surprise from a tight crop).
-    """
-    im = render_map(rows)
-    px = im.load()
-    for y in range(im.height):
-        for x in range(im.width):
-            if px[x, y] == ICON_PAL["k"]:
-                px[x, y] = (0, 0, 0, 0)
-    return im
+def save_png(img: Image.Image, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(path, optimize=True)
+    print(f"{path.relative_to(ROOT)} {img.size}")
 
 
 def main() -> None:
     BRAND.mkdir(parents=True, exist_ok=True)
+    MEDIA.mkdir(parents=True, exist_ok=True)
     PUBLIC_BRAND.mkdir(parents=True, exist_ok=True)
     ICONS.mkdir(parents=True, exist_ok=True)
 
-    # --- Square lockup + robot-only mascot ---------------------------------
-    lockup_src = Image.open(BRAND / "lockup-src.png").convert("RGBA")
-    lockup = trim(lockup_src)
-    lockup.save(BRAND / "rootray-lockup.png", optimize=True)
-    fit_width(lockup, 320, Image.LANCZOS).save(PUBLIC_BRAND / "lockup.png", optimize=True)
-    print("lockup:", lockup.size)
+    wordmark_src = Image.open(WORDMARK_SOURCE).convert("RGBA")
+    icon_src = Image.open(ICON_SOURCE).convert("RGBA")
+    hero_src = Image.open(HERO_SOURCE).convert("RGBA")
+    splash_src = Image.open(SPLASH_SOURCE).convert("RGBA")
+    lockup_src = Image.open(LOCKUP_SOURCE).convert("RGBA")
+    board_src = Image.open(BOARD_SOURCE).convert("RGBA")
 
-    robot_h = int(lockup_src.height * ROBOT_BOTTOM_RATIO)
-    robot = trim(lockup_src.crop((0, 0, lockup_src.width, robot_h)))
-    robot.save(BRAND / "rootray-mascot.png", optimize=True)
-    fit_width(robot, 192).save(PUBLIC_BRAND / "mascot.png", optimize=True)
-    print("mascot:", robot.size)
+    # Prominent identity assets.
+    lockup = trim(flood_alpha(splash_src, tolerance=12), pad=24)
+    mascot = trim(flood_alpha(crop(lockup_src, CROPS["mascot"]), tolerance=10), pad=18)
+    wordmark = trim(flood_alpha(crop(wordmark_src, CROPS["wordmark"]), tolerance=14), pad=12)
+    hero = crop(hero_src, CROPS["hero"])
 
-    # --- Wordmark: black -> transparent -------------------------------------
-    wm_src = Image.open(BRAND / "wordmark-src.png")
-    wm = strip_background(wm_src, lambda p: max(p[:3]) < 22 and p[3] > 0)
-    wm = trim(wm, pad_ratio=0.02)
-    wm.save(BRAND / "rootray-wordmark.png", optimize=True)
-    fit_width(wm, 512).save(PUBLIC_BRAND / "wordmark.png", optimize=True)
-    print("wordmark:", wm.size)
+    save_png(lockup, BRAND / "rootray-lockup.png")
+    save_png(mascot, BRAND / "rootray-mascot.png")
+    save_png(wordmark, BRAND / "rootray-wordmark.png")
+    save_png(hero, MEDIA / "rootray-hero.png")
 
-    # --- App icons: the robot at EVERY size ---------------------------------
-    # 16/24/32 = hand-authored pixel maps (ROBOT_MAPS); 48+ = NEAREST
-    # downscale of the full icon master. No ring/simple mark anywhere.
-    icon_src = Image.open(BRAND / "icon-src.png").convert("RGBA")
-    sizes = [16, 24, 32, 48, 64, 128, 256]
-    frames = {s: icon_src.resize((s, s), Image.NEAREST) for s in sizes}
-    for s, rows in ROBOT_MAPS.items():
-        frames[s] = render_map(rows)
-        frames[s].save(BRAND / f"icon-{s}.png", optimize=True)  # inspectable master
-    frames[256].save(
-        ICONS / "icon.ico",
-        format="ICO",
-        append_images=[frames[s] for s in sizes[:-1]],
-    )
-    for s, name in ((32, "32x32.png"), (128, "128x128.png"), (256, "128x128@2x.png")):
-        frames[s].save(ICONS / name, optimize=True)
-    icon_src.resize((512, 512), Image.NEAREST).save(ICONS / "icon.png", optimize=True)
-    print("icons: ico", sizes, "+ png 32/128/256/512")
+    save_png(resize_width(lockup, 320, Image.Resampling.LANCZOS), PUBLIC_BRAND / "lockup.png")
+    save_png(resize_width(mascot, 192, Image.Resampling.NEAREST), PUBLIC_BRAND / "mascot.png")
+    save_png(resize_width(wordmark, 260, Image.Resampling.NEAREST), PUBLIC_BRAND / "wordmark.png")
+    save_png(resize_width(hero, 1280, Image.Resampling.LANCZOS), PUBLIC_BRAND / "hero.png")
 
-    # Head-only glyph (no dark square) for the compact app header — the head
-    # is the recognizable part at 24px; the full body dissolves.
-    head_glyph(ROBOT_24).save(PUBLIC_BRAND / "mascot-head.png", optimize=True)
-    print("mascot-head: 24px head glyph")
+    # UI state artwork from the approved brand board.
+    for name, width in (("empty", 176), ("success", 132), ("error", 142)):
+        asset = trim(flood_alpha(crop(board_src, CROPS[name]), tolerance=13), pad=8)
+        save_png(asset, BRAND / f"rootray-{name}.png")
+        save_png(resize_width(asset, width, Image.Resampling.NEAREST), PUBLIC_BRAND / f"{name}.png")
 
-    # --- GitHub social preview 1280x640 -------------------------------------
-    hero = Image.open(MEDIA / "rootray-hero.png").convert("RGBA")
-    canvas = Image.new("RGBA", (1280, 640), (5, 8, 12, 255))
-    art = fit_width(hero, 1180, Image.LANCZOS)
-    canvas.paste(art, ((1280 - art.width) // 2, (640 - art.height) // 2), art)
-    canvas.save(BRAND / "rootray-social-preview.png", optimize=True)
-    print("social preview: 1280x640")
+    splash = trim(flood_alpha(crop(splash_src, CROPS["splash_lockup"]), tolerance=10), pad=18)
+    save_png(splash, BRAND / "rootray-splash.png")
+    save_png(resize_width(splash, 260, Image.Resampling.NEAREST), PUBLIC_BRAND / "splash.png")
+
+    loading = trim(flood_alpha(crop(board_src, CROPS["loading_strip"]), tolerance=13), pad=8)
+    banner = crop(board_src, CROPS["small_banner"])
+    save_png(loading, BRAND / "rootray-loading-strip.png")
+    save_png(banner, BRAND / "rootray-small-banner.png")
+
+    # App icons: use the explicit app-icon row in the brand board at small
+    # sizes and the supplied high-resolution app icon for large Windows
+    # surfaces. No hand-authored pixel maps and no orange-ring substitute.
+    frames: dict[int, Image.Image] = {}
+    for size, key in ((16, "board_icon_16"), (24, "board_icon_32"), (32, "board_icon_32"), (64, "board_icon_64"), (128, "board_icon_128")):
+        frames[size] = square_fit(crop(board_src, CROPS[key]), size, Image.Resampling.NEAREST)
+    frames[48] = square_fit(icon_src, 48, Image.Resampling.NEAREST)
+    frames[256] = square_fit(icon_src, 256, Image.Resampling.NEAREST)
+
+    for size in (16, 24, 32, 64, 128, 256):
+        save_png(frames[size], BRAND / f"icon-{size}.png")
+
+    frames[256].save(ICONS / "icon.ico", format="ICO", append_images=[frames[s] for s in (16, 24, 32, 48, 64, 128)])
+    save_png(frames[32], ICONS / "32x32.png")
+    save_png(frames[128], ICONS / "128x128.png")
+    save_png(frames[256], ICONS / "128x128@2x.png")
+    save_png(square_fit(icon_src, 512, Image.Resampling.NEAREST), ICONS / "icon.png")
+
+    # Header mark is a board-derived small app icon, not a synthetic glyph.
+    save_png(frames[32], PUBLIC_BRAND / "mascot-head.png")
+
+    # GitHub social preview uses the supplied wide artwork directly.
+    social = hero.resize((1280, 548), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGBA", (1280, 640), (3, 6, 9, 255))
+    canvas.alpha_composite(social, (0, 46))
+    save_png(canvas, BRAND / "rootray-social-preview.png")
 
 
 if __name__ == "__main__":

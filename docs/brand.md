@@ -1,101 +1,112 @@
 # RootRay Brand
 
-Canonical identity reference for contributors. The masters live in this
-directory; `scripts/build_brand_assets.py` regenerates every derived
-asset from them.
+The supplied user-approved RootRay artwork is canonical. Future brand
+work must derive from the committed source artwork in
+`docs/brand/source/`; do not redraw, reinterpret, simplify, or replace
+the mascot, app icon, wordmark, lockup, hero, or UI-state illustrations.
 
 ## Identity
 
-- **Name:** RootRay (one word, capital R's)
+- **Name:** RootRay
 - **Primary tagline:** Point at the UI. Reach the source.
-- **Supporting line:** SEE THE SOURCE
-- **Mascot:** the pixel-art robot (white/cool-gray body, orange ray
-  device, orange visor LEDs)
-- **Core metaphor:** rendered UI → inspection ray → source code
+- **Short brand line:** SEE THE SOURCE
+- **Mascot:** the approved pixel robot with white/cool-gray body, black
+  face plate, orange vertical eyes, orange side ring/headphone detail,
+  antenna light, orange ray device, and soft orange glow.
+- **Core metaphor:** point at a rendered UI element and follow the ray
+  back to source code.
 
-## Assets
+## Source Artwork
+
+| File | Canonical role |
+|---|---|
+| `source/app-icon-master.png` | High-resolution app icon master |
+| `source/brand-board-source.png` | App icon sizes, loading frames, home/empty/success/error/header/toast references |
+| `source/wide-hero-source.png` | README hero and GitHub social preview source |
+| `source/splash-lockup-source.png` | Splash / loading lockup source |
+| `source/lockup-source.png` | Primary mascot + RootRay / SEE THE SOURCE lockup |
+| `source/wordmark-ui-to-source.png` | Horizontal RootRay wordmark source |
+
+`scripts/build_brand_assets.py` is the only supported generator. It
+crops and resizes these files; it must not contain custom robot pixel
+maps or geometric substitutes.
+
+## Production Assets
 
 | File | Use |
 |---|---|
-| `icon-src.png` | App icon master — robot on dark rounded square (48px+) |
-| `icon-16.png` `icon-24.png` `icon-32.png` | Hand-authored small robot icon masters |
-| `rootray-lockup.png` | Square lockup: robot + wordmark + SEE THE SOURCE |
-| `rootray-mascot.png` | Robot only, transparent — headers, states, toasts |
-| `rootray-wordmark.png` | Horizontal robot + RootRay + UI TO SOURCE |
-| `rootray-social-preview.png` | 1280×640 GitHub social preview |
-| `board.jpg` | The approved brand-system reference board |
-| `../media/rootray-hero.png` | Wide storytelling art (README hero) |
+| `rootray-mascot.png` | Mascot-only brand/state art |
+| `rootray-wordmark.png` | Approved RootRay wordmark asset |
+| `rootray-lockup.png` | Mascot + RootRay + SEE THE SOURCE lockup |
+| `rootray-splash.png` | Splash composition source |
+| `rootray-empty.png` | Home/empty-state illustration |
+| `rootray-success.png` | Ready/success-state illustration |
+| `rootray-error.png` | Error-state illustration |
+| `rootray-social-preview.png` | GitHub social preview |
+| `icon-16.png` through `icon-256.png` | App icon frames derived from approved artwork |
 
-Runtime copies used by the app live in `apps/desktop/public/brand/`
-(lockup, mascot, mascot-head, wordmark — small, optimized). Regenerate
-with `python scripts/build_brand_assets.py` — never edit derived files.
+Runtime copies live in `apps/desktop/public/brand/`. Windows icon
+outputs live in `apps/desktop/src-tauri/icons/`.
 
-## Palette
+## Color Tokens
 
-Sampled from the artwork — use the CSS tokens in
-`apps/desktop/src/index.css`, not hardcoded values.
+Use the centralized CSS tokens in `apps/desktop/src/index.css`:
 
-| Token | Value | Use |
-|---|---|---|
-| `--bg` | `#0d1117` | App background (near-black blue) |
-| `--bg-raised` | `#151b23` | Panels, cards |
-| `--bg-inset` | `#0a0e13` | Inset surfaces, tracks |
-| `--border` | `#29313e` | Blue-gray panel borders |
-| `--text` | `#e6edf3` | Primary text |
-| `--text-dim` | `#8b98a9` | Muted text |
-| `--accent` | `#ff6b0c` | RootRay orange — accent only |
-| `--accent-bright` | `#ff8a2a` | Glow, hover |
-| `--accent-dim` | `#b3502a` | Borders on accent surfaces |
-| `--ok` `--warn` `--bad` `--info` | semantic | Status colors |
+| Token | Use |
+|---|---|
+| `--rr-bg` | app background |
+| `--rr-surface` | primary panes and panels |
+| `--rr-surface-elevated` | raised surfaces |
+| `--rr-border` | pane borders |
+| `--rr-text` | primary text |
+| `--rr-muted` | secondary text |
+| `--rr-orange` | RootRay orange accent |
+| `--rr-orange-bright` | hover and glow highlight |
+| `--rr-orange-glow` | brand glow |
+| `--rr-success`, `--rr-error`, `--rr-info` | semantic states |
 
-Orange is an **accent**, never body text. Status colors stay semantic:
-running = green, failed = red, analyzing/starting = info blue,
-idle/ready accent or muted — always with a text label.
+Orange is an accent and brand signal, not a blanket UI theme.
 
-## Usage rules
+## Usage Rules
 
-- **Brand surfaces:** splash/bootstrap, home, empty states, major
-  status states, header mark, About, README/GitHub media.
-- **Workbench surfaces stay professional:** Explorer, editor,
-  Inspector, Output and browser controls use the plain token palette —
-  no mascot art, no pixel styling, no decorative borders.
-- **Pixel art scales with nearest-neighbor** (`image-rendering:
-  pixelated`). Never let it blur.
-- **App icon: the robot at EVERY size.** 48px+ downscale `icon-src.png`;
-  16/24/32 use the hand-authored `icon-{16,24,32}.png` masters (white
-  head, black face, two orange eyes, ear ring, antenna). The orange
-  ring/simple mark is **secondary decoration only** (ray endpoint,
-  loading motif) — it must never stand alone as the app icon, logo, or
-  avatar. Never shrink the wordmark into an icon.
-- **Dark backgrounds only** — the identity is designed for the dark
-  shell. Don't put the art on light panels.
-- **Clear space:** keep at least ~¼ of the lockup height clear around
-  the artwork; the masters already carry padding.
-- **Reduced motion:** loading animation collapses to a static frame.
-- **Don't:** recolor the mascot, place it inside dense panes, use a
-  pixel font for UI/code text, or replace the identity with generic
-  developer-tool branding.
+- Use the approved raster wordmark on prominent brand surfaces.
+- Use text only where a raster wordmark would harm constrained OS or UI
+  usability.
+- Use pixel art on brand surfaces: splash, home, major states, header,
+  About, README and repository media.
+- Keep the workbench professional: Explorer, editor, Inspector, Output,
+  toolbars, buttons, splitters, forms and logs should use the restrained
+  desktop-tool palette and system typography.
+- Scale pixel-art UI assets with nearest-neighbor when they are intended
+  to stay crisp. Hero artwork may scale smoothly.
+- Preserve clear space around the lockup and wordmark. Do not crop into
+  the mascot glow, ray pixels, feet shadow, or wordmark glow.
+- Keep dark backgrounds; the approved identity is designed for the dark
+  RootRay shell.
 
-## Scale system
+## App Icon Rule
 
-Purpose-built assets at purpose-built sizes — never reuse one raster at
-arbitrary CSS sizes:
+The app icon must be the approved robot icon from the supplied board.
+Small Windows icon frames must derive from the board's App Icons row or
+the high-resolution approved icon master. Do not hand-author 16/24/32px
+robot maps. Do not use the orange ring/simple mark as the application
+icon, logo, title-bar icon, taskbar icon, Start Menu icon, installer
+icon, uninstaller icon, or avatar.
+
+## Scale System
 
 | Context | Asset | Visible size |
 |---|---|---|
-| App icon (title bar, taskbar, Start Menu, installer) | ICO frames / `icon-{16,24,32}.png` + `icon-src.png` | 16–256px |
-| Splash / bootstrap | `lockup.png` | 120–180px |
-| Home hero | `lockup.png` | ~150px |
-| Major empty / error state | `mascot.png` | 72–120px |
-| Preview waiting / loading | `mascot.png` in `BrandLoader` | 56–80px |
-| Card-level loading | `mascot.png` in `BrandLoader` | 48–72px |
-| App header | `mascot-head.png` (head glyph) | 22–26px |
-| Toast / inline mark | optional small mark only | 16–20px |
-| Inline activity | plain spinner — never the mascot | — |
+| Windows app icon | ICO frames and Tauri icon PNGs | 16-256px |
+| Splash | `splash.png` or `lockup.png` | 150-260px |
+| Home | `empty.png` + real UI text/actions | 150-190px |
+| Ready / success | `success.png` | 56-120px |
+| Error | `error.png` | 72-140px |
+| Preview waiting/loading | `mascot.png` in `BrandLoader` | 56-80px |
+| Header | `mascot-head.png` + `wordmark.png` | compact |
+| README hero / social preview | approved wide artwork | full width |
 
 ## Typography
 
-- UI text: system stack (`Segoe UI`, system-ui)
-- Code/paths/logs: `--mono` (Cascadia Code / JetBrains Mono / Consolas)
-- Pixel lettering exists **only inside the artwork** (wordmark,
-  lockup). No pixel font in the UI itself.
+Pixel lettering exists inside the approved artwork only. Application UI
+uses the system stack; code, paths and logs use the monospace token.
