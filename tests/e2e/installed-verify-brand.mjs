@@ -73,6 +73,38 @@ async function main() {
   assert.ok(orange > 5, `exe icon missing orange accents (${orange})`);
   console.log(`  ok  exe icon is the mascot (white=${white} orange=${orange})`);
 
+  // ---- Start Menu shortcut icon resolves to the robot ------------------------
+  // The .lnk has no embedded icon — Windows paints the target exe's icon.
+  // ExtractAssociatedIcon on the .lnk resolves exactly what Start Menu shows.
+  const lnk = join(
+    process.env.APPDATA ?? "",
+    "Microsoft",
+    "Windows",
+    "Start Menu",
+    "Programs",
+    "RootRay.lnk",
+  );
+  if (existsSync(lnk)) {
+    const lnkPng = join(SHOTS, "startmenu-icon.png");
+    execSync(
+      `powershell -NoProfile -Command "Add-Type -AssemblyName System.Drawing; ` +
+        `[System.Drawing.Icon]::ExtractAssociatedIcon('${lnk}').ToBitmap().Save('${lnkPng}')"`,
+    );
+    const lpx = execSync(
+      `python -c "from PIL import Image; im=Image.open(r'${lnkPng}').convert('RGB'); ` +
+        `d=list(im.getdata()); ` +
+        `print(sum(1 for r,g,b in d if r>200 and g>200 and b>200), ` +
+        `sum(1 for r,g,b in d if r>200 and 60<g<160 and b<80))"`,
+      { encoding: "utf8" },
+    ).trim();
+    const [lw, lo] = lpx.split(" ").map(Number);
+    assert.ok(lw > 15, `Start Menu icon not the robot (white=${lw}) — stale icon cache?`);
+    assert.ok(lo > 5, `Start Menu icon missing orange (${lo})`);
+    console.log(`  ok  Start Menu shortcut icon is the robot (white=${lw} orange=${lo})`);
+  } else {
+    console.log(`  warn  Start Menu shortcut not found at ${lnk} — skipping lnk check`);
+  }
+
   // ---- cold launch → branded home -------------------------------------------
   // Clear lastProject so the app boots to the home view, not an auto-restore.
   mkdirSync(CFG_DIR, { recursive: true });
@@ -90,6 +122,16 @@ async function main() {
     await appPage.locator(".home-lockup").waitFor({ timeout: 15_000 });
     assert.ok(await imgLoaded(appPage, ".brand-mark"), "header mascot failed to load");
     assert.ok(await imgLoaded(appPage, ".home-lockup"), "home lockup failed to load");
+    const markSrc = await appPage.locator(".brand-mark").getAttribute("src");
+    assert.match(
+      markSrc ?? "",
+      /mascot-head\.png$/,
+      `header should use head glyph, got ${markSrc}`,
+    );
+    const markW = await appPage
+      .locator(".brand-mark")
+      .evaluate((el) => el.getBoundingClientRect().width);
+    assert.ok(markW >= 22 && markW <= 26, `header mark ${markW}px outside 22-26px band`);
     const tag = await appPage.locator(".brand-tag").innerText();
     assert.equal(tag, "Point at the UI. Reach the source.");
     await shot(appPage, SHOTS, "01-home");
@@ -125,6 +167,14 @@ async function main() {
     const runBtn = page2.locator("button", { hasText: "Run Project" });
     await runBtn.waitFor({ timeout: 90_000 });
     await runBtn.click();
+    // The real waiting state: server is starting, no URL yet → the overlay
+    // must show the mascot at readable size (56-80px), not a tiny icon.
+    const waitImg = page2.locator(".preview-overlay .brand-loader-img");
+    await waitImg.waitFor({ timeout: 30_000 });
+    const waitW = await waitImg.evaluate((el) => el.getBoundingClientRect().width);
+    assert.ok(waitW >= 56 && waitW <= 80, `waiting mascot ${waitW}px outside 56-80px band`);
+    await shot(page2, SHOTS, "02b-preview-waiting");
+    console.log(`  ok  preview waiting — mascot ${Math.round(waitW)}px`);
     const urlChip = page2.locator(".url-chip");
     await urlChip.waitFor({ timeout: 120_000 });
     const appUrl = (await urlChip.innerText()).trim();
@@ -149,6 +199,72 @@ async function main() {
     await shot(page2, SHOTS, "03-workbench-split");
     copyFileSync(join(SHOTS, "03-workbench-split.png"), join(MEDIA, "workbench-split.png"));
     console.log(`  ok  workbench running with embedded preview: ${appUrl}`);
+
+    // ---- Title-bar icon: crop the native title bar from a real window capture.
+    // PrintWindow renders the composited window incl. the OS-drawn icon —
+    // DOM screenshots can't see it. Robot head = white pixels present; the
+    // rejected ring mark has none.
+    const winPng = join(SHOTS, "window.png");
+    execSync(
+      `powershell -NoProfile -ExecutionPolicy Bypass -File "${join(REPO_ROOT, "tests", "e2e", "capture-window.ps1")}" ` +
+        `-ProcId ${appProc2.pid} -Out "${winPng}"`,
+    );
+    const tb = execSync(
+      `python -c "from PIL import Image; im=Image.open(r'${winPng}').convert('RGB'); ` +
+        `crop=im.crop((8,6,42,36)); d=list(crop.getdata()); ` +
+        `print(sum(1 for r,g,b in d if r>170 and g>170 and b>170), ` +
+        `sum(1 for r,g,b in d if r>150 and 40<g<170 and b<90))"`,
+      { encoding: "utf8" },
+    ).trim();
+    const [twhite, torange] = tb.split(" ").map(Number);
+    assert.ok(twhite > 10, `title-bar icon lacks robot-white pixels (${twhite}) — ring mark?`);
+    assert.ok(torange > 3, `title-bar icon lacks orange accents (${torange})`);
+    console.log(`  ok  title-bar icon is the robot (white=${twhite} orange=${torange})`);
+
+    // ---- Taskbar: PrintWindow on Shell_TrayWnd renders the taskbar even when
+    // occluded. Locate RootRay's own button via UI Automation and assert the
+    // robot signature on THAT tile — the old ring mark has zero white pixels.
+    const taskPng = join(SHOTS, "taskbar.png");
+    const tbRect = execSync(
+      `powershell -NoProfile -ExecutionPolicy Bypass -Command "` +
+        `Add-Type -AssemblyName System.Drawing,UIAutomationClient; ` +
+        `Add-Type -MemberDefinition '[System.Runtime.InteropServices.DllImport(\\"user32.dll\\")] public static extern System.IntPtr FindWindow(string c, string w); [System.Runtime.InteropServices.DllImport(\\"user32.dll\\")] public static extern bool GetWindowRect(System.IntPtr h, out RECT r); [System.Runtime.InteropServices.DllImport(\\"user32.dll\\")] public static extern bool PrintWindow(System.IntPtr h, System.IntPtr dc, uint f); [System.Runtime.InteropServices.DllImport(\\"user32.dll\\")] public static extern bool SetProcessDPIAware(); public struct RECT { public int Left, Top, Right, Bottom; }' -Name TB -Namespace U; ` +
+        `[U.TB]::SetProcessDPIAware() | Out-Null; ` +
+        `$h=[U.TB]::FindWindow('Shell_TrayWnd',$null); ` +
+        `if ($h -eq [System.IntPtr]::Zero) { exit 1 }; ` +
+        `$r=New-Object U.TB+RECT; [U.TB]::GetWindowRect($h,[ref]$r) | Out-Null; ` +
+        `$b=New-Object System.Drawing.Bitmap ($r.Right-$r.Left),($r.Bottom-$r.Top); ` +
+        `$g=[System.Drawing.Graphics]::FromImage($b); $dc=$g.GetHdc(); ` +
+        `[U.TB]::PrintWindow($h,$dc,2) | Out-Null; $g.ReleaseHdc($dc); $g.Dispose(); ` +
+        `$b.Save('${taskPng}'); $b.Dispose(); ` +
+        `$tb=[System.Windows.Automation.AutomationElement]::FromHandle($h); ` +
+        `$all=$tb.FindAll([System.Windows.Automation.TreeScope]::Descendants, ` +
+        `[System.Windows.Automation.Condition]::TrueCondition); ` +
+        `$btn=$null; foreach ($el in $all) { ` +
+        `if ($el.Current.Name -like '*RootRay*' -and ` +
+        `$el.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button) { $btn=$el; break } }; ` +
+        `if ($btn -eq $null) { Write-Output 'NOTFOUND' } else { ` +
+        `$br=$btn.Current.BoundingRectangle; ` +
+        `Write-Output (\\"$($br.X-$r.Left),$($br.Y-$r.Top),$($br.Width),$($br.Height)\\") }"`,
+      { encoding: "utf8" },
+    ).trim();
+    assert.notEqual(tbRect, "NOTFOUND", "RootRay taskbar button not found via UI Automation");
+    const [bx, by, bw, bh] = tbRect.split(",").map(Number);
+    const tbSig = execSync(
+      `python -c "from PIL import Image; im=Image.open(r'${taskPng}').convert('RGB'); ` +
+        `w,h=im.size; x=max(0,${bx}-8); y=max(0,${by}-4); ` +
+        `d=list(im.crop((x,y,min(w,x+${bw}+16),min(h,y+${bh}+8))).getdata()); ` +
+        `print(sum(1 for r,g,b in d if r>170 and g>170 and b>170), ` +
+        `sum(1 for r,g,b in d if r>150 and 40<g<170 and b<90))"`,
+      { encoding: "utf8" },
+    ).trim();
+    const [kwhite, korange] = tbSig.split(" ").map(Number);
+    assert.ok(
+      kwhite > 5,
+      `RootRay taskbar icon lacks robot-white (${kwhite}) — stale ring in icon cache?`,
+    );
+    assert.ok(korange > 5, `RootRay taskbar icon lacks orange accents (${korange})`);
+    console.log(`  ok  taskbar icon is the robot (white=${kwhite} orange=${korange})`);
 
     // ---- Inspect → source beside preview --------------------------------------
     await page2

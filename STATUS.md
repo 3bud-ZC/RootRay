@@ -385,9 +385,10 @@ itself stays a dense, professional developer tool.
   reproducible: alpha-threshold crop for the standalone mascot, runtime
   lockup/mascot/wordmark under `apps/desktop/public/brand/`, masters
   under `docs/brand/`, multi-size `icon.ico` (16/24/32/48/64/128/256)
-  with a simplified ring+dot mark for 16/24px (the full robot blurs at
-  tiny sizes — the brand board itself specifies the simplified mark),
-  plus a 1280×640 social preview.
+  rendered entirely from the robot — purpose-built pixel variants for
+  16/24/32px, full mascot from 48px up — plus a 1280×640 social
+  preview. (The earlier ring-mark small-icon fallback was rejected and
+  removed — see "Manual brand correction pass".)
 - **Centralized palette** — brand tokens in `index.css`: accent
   `#ff6b0c` sampled from the artwork, ember/glow variables, cool
   blue-gray panel borders. Semantic status tints kept; transient states
@@ -410,6 +411,60 @@ itself stays a dense, professional developer tool.
   (`PW_RENDERFULLCONTENT`) so the native WebView2 preview surface is
   actually visible (DOM screenshots blank it); DPI-aware sizing fixed
   a clipped right edge on scaled displays.
+
+### Manual brand correction pass
+
+Manual feedback on the installed build rejected the previous icon
+decision: the Windows title bar and taskbar showed the orange ring
+mark, the header mascot was tiny, and the Preview-waiting mascot was
+illegible. Correction pass — **the pixel robot mascot is the canonical
+RootRay application icon at every size**; the ring mark is decorative
+artwork only and no longer appears in any application-icon context.
+
+- **Ring mark rejected** as the primary application icon — removed
+  from `icon.ico`, the asset pipeline, and all app-icon surfaces.
+- **Dedicated small-size robot variants** — hand-authored pixel maps
+  for 16/24/32px (white head, dark face panel, two orange eyes,
+  antenna light, ear-ring detail) built with nearest-neighbor output;
+  no downscale-blur, no ring fallback. Masters committed under
+  `docs/brand/icon-{16,24,32}.png`; `icon.ico` frames verified
+  16/24/32/48/64/128/256 — robot at every frame (extracted and
+  pixel-inspected).
+- **Reproducible pipeline** — `scripts/build_brand_assets.py`
+  generates the small variants, `mascot-head.png` (24px canvas), and
+  the full icon set; `brand.test.ts` decodes the ICO and asserts robot
+  pixel signatures at every frame.
+- **Title bar — verified robot** on the real installed build
+  (PrintWindow capture: white head + orange eye pixels; no ring).
+- **Taskbar — verified robot** on the real installed build. Root
+  cause of the lingering ring: the window exposed only `ICON_SMALL`
+  (tao sets `ICON_BIG` separately), so Explorer painted its stale
+  icon-cache bitmap for the exe path. Fix: the app now sets
+  `ICON_SMALL` + `ICON_BIG` from the exe's own icon resource at
+  startup (`set_windows_icons` in `lib.rs`); verified via
+  `WM_GETICON` — both handles return the robot — plus a targeted
+  `SHCNE_UPDATEIMAGE` invalidation and icon-cache rebuild. The
+  installed verify locates RootRay's taskbar button via UI Automation
+  and asserts robot pixels on that exact tile.
+- **Start Menu — verified robot** (shortcut icon extracted:
+  white-head + orange pixel signature).
+- **Installer / uninstaller / Programs & Features — robot**
+  (setup.exe and uninstall.exe icons extracted and pixel-checked;
+  `DisplayIcon` resolves to the installed exe).
+- **Header sizing** — dedicated robot-head glyph at readable size
+  with `Root` (white) / `Ray` (orange) wordmark hierarchy.
+- **Loading/waiting sizing** — `BrandLoader` renders the mascot at
+  64px (56–80px band); Preview waiting state verified at exactly 64px
+  on the installed build; splash keeps the robot lockup at 150px,
+  `image-rendering: pixelated`, no artificial delay.
+- **DPI** — verified at the machine's 125% scaling (physical-pixel
+  captures: crisp title-bar and taskbar icons); the authored per-size
+  frames render 1:1 at 100%.
+- **Installer (this pass)** —
+  `RootRay_0.3.0_x64-setup.exe` · **3,266,142 bytes** · SHA-256
+  `40c2a887f7ca8f24ec753d99bf269562e4ebc6e1ed6b4c5b8101f2cffe02ae7e`
+  · `scripts/installer-smoke.ps1` PASS · `installed-verify-brand.mjs`
+  PASS end-to-end on the installed build.
 
 ### v0.3.0 verification so far
 

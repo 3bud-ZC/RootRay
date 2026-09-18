@@ -12,10 +12,18 @@ Generated:
   docs/brand/rootray-mascot.png          transparent robot only (trimmed)
   docs/brand/rootray-wordmark.png        transparent wordmark (trimmed)
   docs/brand/rootray-social-preview.png  1280x640 GitHub social preview
+  docs/brand/icon-{16,24,32}.png         small-size robot icon masters
   apps/desktop/public/brand/lockup.png      runtime lockup (320px)
   apps/desktop/public/brand/mascot.png      runtime mascot (192px)
+  apps/desktop/public/brand/mascot-head.png 24px head glyph (header)
   apps/desktop/public/brand/wordmark.png    runtime wordmark (512w)
   apps/desktop/src-tauri/icons/*.png + icon.ico
+
+The app icon is the pixel robot at EVERY size: 16/24/32 use the
+hand-authored ROBOT_MAPS below, 48+ downscale icon-src.png (NEAREST).
+The orange ring/simple mark was rejected as a primary icon — it may only
+appear as secondary decoration (ray endpoint, loading motif), never as
+the application icon, logo, or avatar.
 
 Pixel-art assets are resampled with NEAREST so they stay crisp.
 Requires Pillow. Usage: python scripts/build_brand_assets.py
@@ -102,28 +110,136 @@ def fit_width(im: Image.Image, width: int, resample=Image.NEAREST) -> Image.Imag
     return im.resize((width, h), resample)
 
 
-def draw_simple_mark(size: int) -> Image.Image:
-    """The board's "Logo Mark (Simple)": orange ring + center dot + top spark.
+# --- Hand-authored small robot icons ----------------------------------------
+# The pixel robot IS the app identity at every size — the ring/simple mark
+# was rejected as a primary icon. Downscaling the 1024px mascot below 48px
+# dissolves the face, so 16/24/32 are purpose-built pixel maps that keep the
+# recognizable features: white rounded head, black face panel, two orange
+# vertical eyes, orange ear ring (left), small orange antenna.
+#
+# Palette keys: '.' transparent · 'k' dark rounded-square bg · 'W' white
+# head · 'w' head shade · 'B' black face · 'O' orange · 'o' orange shade.
+ICON_PAL = {
+    ".": (0, 0, 0, 0),
+    "k": (13, 18, 24, 255),
+    "W": (233, 238, 244, 255),
+    "w": (168, 178, 190, 255),
+    "B": (5, 8, 13, 255),
+    "O": (255, 115, 0, 255),
+    "o": (200, 88, 0, 255),
+}
 
-    Used at icon sizes where the mascot stops resolving (16/24px). Drawn at
-    8x then downsampled NEAREST for crisp pixel edges.
+# 16px — silhouette + black face + two orange eyes + antenna only.
+ROBOT_16 = [
+    "................",
+    "..kkkkkkkkkkkk..",
+    ".kkkkkkkkkkkkkk.",
+    ".kkkkkkOO.kkkkk.",
+    ".kkkkkWWWWkkkkk.",
+    ".kkkWWWWWWWWkkk.",
+    ".kkWWBBBBBBBWWk.",
+    ".kkWBBBBBBBBBWk.",
+    ".kkWBBOBBBOBBWk.",
+    ".kkWBBOBBBOBBWk.",
+    ".kkWBBBBBBBBBWk.",
+    ".kkWWBBBBBBBWWk.",
+    ".kkkWWWWWWWWkkk.",
+    ".kkkkkkkkkkkkkk.",
+    "..kkkkkkkkkkkk..",
+    "................",
+]
+
+# 24px — adds the hollow orange ear ring on the left of the head.
+ROBOT_24 = [
+    "........................",
+    "...kkkkkkkkkkkkkkkkkk...",
+    "..kkkkkkkkkkkkkkkkkkkk..",
+    ".kkkkkkkkkkkkkkkkkkkkkk.",
+    ".kkkkkkkkkkkOO.kkkkkkkk.",
+    ".kkkkkkkkkkkOO.kkkkkkkk.",
+    ".kkkkkkkkWWWWWWWkkkkkkk.",
+    ".kkkkkkWWWWWWWWWWkkkkkk.",
+    ".kkkkWWBBBBBBBBBBBWWkkk.",
+    ".k.OOWBBOOBBBBBOOBBWkkk.",
+    ".kO.OWBBOOBBBBBOOBBWkkk.",
+    ".kO.OWBBOOBBBBBOOBBWkkk.",
+    ".k.OOWBBBBBBBBBBBBWkkkk.",
+    ".kkkkWWBBBBBBBBBWWkkkkk.",
+    ".kkkkkWWWWWWWWWWkkkkkk.",
+    ".kkkkkkWWWWWWWWkkkkkkk.",
+    ".kkkkkkkkkkkkkkkkkkkkkk.",
+    ".kkkkkkkkkkkkkkkkkkkkkk.",
+    ".kkkkkkkkkkkkkkkkkkkkkk.",
+    "..kkkkkkkkkkkkkkkkkkkk..",
+    "...kkkkkkkkkkkkkkkkkk...",
+    "........................",
+    "........................",
+    "........................",
+]
+
+# 32px — ear ring + a small shoulders hint below the head.
+ROBOT_32 = [
+    "................................",
+    "....kkkkkkkkkkkkkkkkkkkkkkkk....",
+    "...kkkkkkkkkkkkkkkkkkkkkkkkkk...",
+    "..kkkkkkkkkkkkkkkkkkkkkkkkkkkk..",
+    "..kkkkkkkkkkkkkkOOOkkkkkkkkkkk..",
+    "..kkkkkkkkkkkkkkOOOkkkkkkkkkkk..",
+    "..kkkkkkkkkkWWWWWWWWkkkkkkkkkk..",
+    "..kkkkkkkkWWWWWWWWWWWkkkkkkkkk..",
+    "..kkkkkkWWBBBBBBBBBBBBWkkkkkkk..",
+    "..kkkkkWWBBBBBBBBBBBBBWkkkkkkk..",
+    "..kkkkkWBOOOBBBBBBBOOOBWkkkkkk..",
+    "..kkkkkWBOOOBBBBBBBOOOBWkkkkkk..",
+    ".kOOO.kWBOOOBBBBBBBOOOBWkkkkkk..",
+    ".kO.OkWWBBBBBBBBBBBBBWWkkkkkkk..",
+    ".kO.OkWWBBBBBBBBBBBBBWWkkkkkkk..",
+    ".kOOO.kkWWBBBBBBBBBWWkkkkkkkkk..",
+    "..kkkkkkkWWBBBBBBBWWkkkkkkkkkk..",
+    "..kkkkkkkkWWWWWWWWWkkkkkkkkkkk..",
+    "..kkkkkkkkkWWWWWWWkkkkkkkkkkkk..",
+    "..kkkkkkkkkWWkWWWWWkkkkkkkkkkk..",
+    "..kkkkkkkkWWWWWWWWWkkkkkkkkkkk..",
+    "..kkkkkkkkkkkkkkkkkkkkkkkkkkkk..",
+    "..kkkkkkkkkkkkkkkkkkkkkkkkkkkk..",
+    "..kkkkkkkkkkkkkkkkkkkkkkkkkkkk..",
+    "..kkkkkkkkkkkkkkkkkkkkkkkkkkkk..",
+    "...kkkkkkkkkkkkkkkkkkkkkkkkkk...",
+    "....kkkkkkkkkkkkkkkkkkkkkkkk....",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+]
+
+ROBOT_MAPS = {16: ROBOT_16, 24: ROBOT_24, 32: ROBOT_32}
+
+
+def render_map(rows: list[str]) -> Image.Image:
+    """Render a pixel map to an RGBA image (1 map char = 1 px)."""
+    w = max(len(r) for r in rows)
+    im = Image.new("RGBA", (w, len(rows)), (0, 0, 0, 0))
+    px = im.load()
+    for y, row in enumerate(rows):
+        for x, ch in enumerate(row):
+            px[x, y] = ICON_PAL[ch]
+    return im
+
+
+def head_glyph(rows: list[str]) -> Image.Image:
+    """Same map with the dark bg removed — head-only mark for in-app use.
+
+    Keeps the full map canvas so the glyph renders at an exact 1:1 pixel
+    grid in the app header (no aspect surprise from a tight crop).
     """
-    from PIL import ImageDraw
-
-    s = size * 8
-    im = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    orange = (255, 107, 12, 255)
-    cx, cy = s // 2, int(s * 0.58)  # ring center sits low to leave room for the spark
-    r_out = int(s * 0.34)
-    r_in = int(s * 0.18)
-    d.ellipse((cx - r_out, cy - r_out, cx + r_out, cy + r_out), fill=orange)
-    d.ellipse((cx - r_in, cy - r_in, cx + r_in, cy + r_in), fill=(0, 0, 0, 0))
-    r_dot = int(s * 0.08)
-    d.ellipse((cx - r_dot, cy - r_dot, cx + r_dot, cy + r_dot), fill=orange)
-    spark = int(s * 0.10)
-    d.rectangle((cx - spark, int(s * 0.03), cx + spark, int(s * 0.03) + 2 * spark), fill=orange)
-    return im.resize((size, size), Image.NEAREST)
+    im = render_map(rows)
+    px = im.load()
+    for y in range(im.height):
+        for x in range(im.width):
+            if px[x, y] == ICON_PAL["k"]:
+                px[x, y] = (0, 0, 0, 0)
+    return im
 
 
 def main() -> None:
@@ -152,14 +268,15 @@ def main() -> None:
     fit_width(wm, 512).save(PUBLIC_BRAND / "wordmark.png", optimize=True)
     print("wordmark:", wm.size)
 
-    # --- App icons (NEAREST keeps the pixel art crisp) -----------------------
+    # --- App icons: the robot at EVERY size ---------------------------------
+    # 16/24/32 = hand-authored pixel maps (ROBOT_MAPS); 48+ = NEAREST
+    # downscale of the full icon master. No ring/simple mark anywhere.
     icon_src = Image.open(BRAND / "icon-src.png").convert("RGBA")
     sizes = [16, 24, 32, 48, 64, 128, 256]
     frames = {s: icon_src.resize((s, s), Image.NEAREST) for s in sizes}
-    # The mascot stops resolving below 32px; the brand's simple mark stays
-    # legible (see board.jpg "Logo Mark (Simple)").
-    frames[16] = draw_simple_mark(16)
-    frames[24] = draw_simple_mark(24)
+    for s, rows in ROBOT_MAPS.items():
+        frames[s] = render_map(rows)
+        frames[s].save(BRAND / f"icon-{s}.png", optimize=True)  # inspectable master
     frames[256].save(
         ICONS / "icon.ico",
         format="ICO",
@@ -169,6 +286,11 @@ def main() -> None:
         frames[s].save(ICONS / name, optimize=True)
     icon_src.resize((512, 512), Image.NEAREST).save(ICONS / "icon.png", optimize=True)
     print("icons: ico", sizes, "+ png 32/128/256/512")
+
+    # Head-only glyph (no dark square) for the compact app header — the head
+    # is the recognizable part at 24px; the full body dissolves.
+    head_glyph(ROBOT_24).save(PUBLIC_BRAND / "mascot-head.png", optimize=True)
+    print("mascot-head: 24px head glyph")
 
     # --- GitHub social preview 1280x640 -------------------------------------
     hero = Image.open(MEDIA / "rootray-hero.png").convert("RGBA")

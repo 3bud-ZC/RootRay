@@ -237,6 +237,42 @@ test("brand: header mark and home lockup render real images", async ({ page }) =
   }
 });
 
+test("brand: header uses the robot head glyph at readable size", async ({ page }) => {
+  await stubTauri(page, { canned: CANNED, runtime: RUNTIME_WITH_PROJECT });
+  await page.goto(URL);
+  const mark = page.locator(".brand-mark");
+  await expect(mark).toHaveAttribute("src", "/brand/mascot-head.png");
+  const w = await mark.evaluate((el: HTMLImageElement) => el.getBoundingClientRect().width);
+  expect(w).toBeGreaterThanOrEqual(22);
+  expect(w).toBeLessThanOrEqual(26);
+});
+
+test("brand: preview waiting state shows the mascot at readable size", async ({ page }) => {
+  await stubTauri(page, {
+    canned: CANNED,
+    runtime: {
+      ...RUNTIME_WITH_PROJECT,
+      phase: "running",
+      url: null,
+    },
+  });
+  await page.goto(URL);
+  await page.getByRole("button", { name: "Open Project" }).click();
+  await expect(page.locator(".preview-toolbar")).toBeVisible();
+  // Server is running but hasn't printed a URL yet → the overlay waits.
+  await page.evaluate(() =>
+    (window as unknown as { __RR_EMIT__: (e: string, p: unknown) => void }).__RR_EMIT__(
+      "rootray://preview-state",
+      { phase: "waiting", url: null, error: null, generation: 99 },
+    ),
+  );
+  const loaderImg = page.locator(".preview-overlay .brand-loader-img");
+  await expect(loaderImg).toBeVisible();
+  const w = await loaderImg.evaluate((el: HTMLImageElement) => el.getBoundingClientRect().width);
+  expect(w).toBeGreaterThanOrEqual(56);
+  expect(w).toBeLessThanOrEqual(80);
+});
+
 test("brand: About shows version, tagline and stable-release line", async ({ page }) => {
   await stubTauri(page, {
     canned: {

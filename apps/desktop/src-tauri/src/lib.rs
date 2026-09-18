@@ -336,6 +336,14 @@ pub fn run() {
                 let _ = handle3.emit(EVENT_STATE, core_for_state.state());
             }));
 
+            // tao only sets ICON_SMALL; without ICON_BIG the taskbar/Alt-Tab
+            // fall back to Explorer's icon cache for this exe path, which can
+            // serve a stale bitmap. Set both from the exe's own icon resource.
+            #[cfg(target_os = "windows")]
+            if let Some(window) = app.get_webview_window("main") {
+                set_windows_icons(&window);
+            }
+
             // If the window closes, make sure no dev server is orphaned.
             Ok(())
         })
@@ -395,4 +403,52 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running RootRay");
+}
+
+/// Set ICON_SMALL + ICON_BIG on the window straight from the exe's icon
+/// resource, so the taskbar shows the real app icon even when Explorer's
+/// icon cache holds a stale bitmap for this exe path.
+#[cfg(target_os = "windows")]
+fn set_windows_icons(window: &tauri::WebviewWindow) {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, PrivateExtractIconsW, SendMessageW, HICON, ICON_BIG, ICON_SMALL,
+        SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, WM_SETICON,
+    };
+
+    let Ok(hwnd) = window.hwnd() else { return };
+    let exe = std::env::current_exe().unwrap_or_default();
+    let mut path = [0u16; 260];
+    for (dst, ch) in path
+        .iter_mut()
+        .zip(exe.to_string_lossy().encode_utf16().take(259))
+    {
+        *dst = ch;
+    }
+
+    unsafe {
+        for (icon_type, cx, cy) in [
+            (ICON_BIG, SM_CXICON, SM_CYICON),
+            (ICON_SMALL, SM_CXSMICON, SM_CYSMICON),
+        ] {
+            let mut hicon = HICON::default();
+            let extracted = PrivateExtractIconsW(
+                &path,
+                0,
+                GetSystemMetrics(cx),
+                GetSystemMetrics(cy),
+                Some(std::slice::from_mut(&mut hicon)),
+                None,
+                0,
+            );
+            if extracted > 0 && !hicon.is_invalid() {
+                SendMessageW(
+                    hwnd,
+                    WM_SETICON,
+                    Some(WPARAM(icon_type as usize)),
+                    Some(LPARAM(hicon.0 as isize)),
+                );
+            }
+        }
+    }
 }
