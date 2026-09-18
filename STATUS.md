@@ -353,17 +353,52 @@ opening remains an explicit fallback action, never the default.
 
 ### v0.3.0 verification so far
 
-- Rust **210 green** (197 suite + 13 units, 1 ignored) · Vitest **57
-  desktop + 23 runtime + 79 package** · Playwright **48/48** (8 new
-  workbench specs + full regression).
-- `pnpm -r build` + `pnpm build:tauri` green →
-  `RootRay_0.3.0_x64-setup.exe` NSIS bundle.
-- **Installed golden paths — ALL PASS** against the installer output:
-  `installed-golden` (Vite), `-static`, `-monorepo`, `-next`,
-  `installed-verify-clientflow` (real Next project), `-shadow-runner`
-  (real Vite game) — embedded preview renders, IPC isolation proven,
-  inspect→source→edit→HMR round-trips, shortcuts, popup policy, and
-  process+surface teardown all verified.
+**Acceptance caveat (resolved):** the earlier rounds below ran against a
+*manually deployed* binary (the exe copied over the install dir) after
+two silent NSIS installs stalled. The final acceptance pass ran the real
+installer end-to-end — see "Final installer acceptance".
+
+- Rust **210 green** (197 suite + 13 units, 1 ignored —
+  `golden_path_real_vite_server`, passes when run explicitly).
+- Vitest **170 green** — exact audit (`pnpm -r test`): desktop **58**,
+  inspector-runtime **23**, source-protocol **21**, jsx-instrument
+  **20**, intelligence **17**, html-instrument **11**, vite-plugin
+  **8**, shared **7**, next-adapter **5**. v0.2.0 baseline was 162 →
+  **+8** (new preview-controller + reducer race-regression coverage; no
+  test removed).
+- Playwright **48/48** (8 workbench specs + full regression). One real
+  race was caught and fixed during acceptance: a selection landing while
+  the previous file was still `loading` was parked behind the
+  unsaved-changes prompt — `editSessionHasUserContent` now gates the
+  park (only dirty/saving/conflict/save_failed); the stale-read
+  `edit-opened` guard already handled the replace path.
+- `pnpm -r typecheck` all 10 projects · `pnpm exec biome check .` clean
+  · `cargo check`/`cargo build` both crates green.
+
+#### Final installer acceptance (real NSIS, no manual copy)
+
+- `pnpm -r build` + `pnpm build:tauri` →
+  `target\release\bundle\nsis\RootRay_0.3.0_x64-setup.exe`
+  — **2,952,566 bytes** · SHA-256
+  `C4B52F56A16B8DD41EDD77163CA3E64C7D38E1F4491C3CB787E70B34D37325EF`.
+- `scripts/installer-smoke.ps1`: **PASS** — silent install → assets →
+  launch → no stray dev server → silent uninstall → binary removed.
+- **Installed workbench golden path: PASS** on the NSIS-installed app:
+  embedded WebView2 preview inside RootRay, every privileged IPC denied
+  from the preview, Interact/Inspect, click→exact source, Quick
+  Edit→Vite HMR, re-inspect, Escape + Ctrl+Shift+C, toolbar nav, local
+  popup policy, preview+server teardown.
+- **Installed Next golden path: PASS** — Next 16.2.12, source attrs,
+  Fast Refresh round-trip, App Router nav.
+- **Installed real projects: PASS** — Shadow Runner (Vite 6.2.0 +
+  Phaser; canvas facts/styles, no fabricated source) and ClientFlow-CRM
+  (4 elements → 4 exact authored files; git status identical to
+  baseline).
+- Silent **uninstall verified** — binary, install dir and registry entry
+  all removed.
+- Earlier rounds also passed `installed-golden-static`,
+  `installed-golden-monorepo` (workspace-root scoping) on the installed
+  app.
 
 **Not tagged, not published.**
 
