@@ -333,7 +333,8 @@ test("Change Project re-analysis updates the visible project", async ({ page }) 
   await expect(page.locator("text=demo-app")).toBeVisible();
 
   // "Change project" re-picks a directory and re-analyzes — the stub emits
-  // the new project snapshot before resolving.
+  // the new project snapshot before resolving. The frontend calls the
+  // serialized change_project command (stop+analyze under one hold).
   const change = page.getByRole("button", { name: "Change…" });
   await expect(change).toBeVisible();
   await change.click();
@@ -343,7 +344,7 @@ test("Change Project re-analysis updates the visible project", async ({ page }) 
       page.evaluate(
         () =>
           (window as unknown as { __RR_CALLS__: { cmd: string }[] }).__RR_CALLS__.filter(
-            (c) => c.cmd === "analyze_project",
+            (c) => c.cmd === "change_project",
           ).length,
       ),
     )

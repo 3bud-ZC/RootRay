@@ -11,6 +11,7 @@ import type {
   SourceLocation,
 } from "@rootray/shared";
 import { editSessionHasUserContent } from "@rootray/shared";
+import { clampLayoutPatch, type FocusMode, LAYOUT_DEFAULTS, type WorkbenchLayout } from "./layout";
 
 export const LOG_CAP = 500;
 
@@ -33,6 +34,13 @@ export interface UiState {
   autoPreview: boolean;
   /** Center workbench mode: preview only, code only, or side-by-side. */
   workspaceTab: "preview" | "code" | "split";
+  /** Workbench pane layout — visibility, widths, split ratio, focus. */
+  layout: WorkbenchLayout;
+  /**
+   * A source reveal deferred while Preview Focus is active — the user
+   * picks "Show Source" to leave focus and open the file.
+   */
+  revealOffer: { relativePath: string; source: SourceLocation } | null;
   settingsOpen: boolean;
   /** Transient user-facing error from the last failed action. */
   notice: string | null;
@@ -41,6 +49,7 @@ export interface UiState {
 }
 
 export const emptyRuntime: RuntimeState = {
+  seq: 0,
   phase: "idle",
   workspace: null,
   pid: null,
@@ -81,6 +90,8 @@ export const initialUiState: UiState = {
   preview: emptyPreview,
   autoPreview: true,
   workspaceTab: "preview",
+  layout: LAYOUT_DEFAULTS,
+  revealOffer: null,
   settingsOpen: false,
   notice: null,
   recentErrors: [],
@@ -95,6 +106,15 @@ export type UiAction =
   | { type: "preview-state"; state: PreviewState }
   | { type: "auto-preview"; enabled: boolean }
   | { type: "workspace-tab"; tab: "preview" | "code" | "split" }
+  // --- workbench layout ---------------------------------------------------------
+  | { type: "layout-update"; patch: Partial<WorkbenchLayout> }
+  | { type: "layout-focus"; mode: FocusMode }
+  | { type: "layout-auto"; explorer: boolean; inspector: boolean }
+  | { type: "layout-restore"; layout: Partial<WorkbenchLayout> }
+  | { type: "layout-reset" }
+  | { type: "reveal-offer"; relativePath: string; source: SourceLocation }
+  | { type: "reveal-offer-clear" }
+  | { type: "logs-cleared" }
   // --- quick editor -----------------------------------------------------------
   | { type: "edit-open"; relativePath: string; source: SourceLocation }
   | { type: "edit-opened"; read: SourceFileRead; source: SourceLocation }
@@ -136,6 +156,10 @@ function sessionFromRead(
 export function uiReducer(state: UiState, action: UiAction): UiState {
   switch (action.type) {
     case "runtime": {
+      // Stale-snapshot guard — events emitted on concurrent paths (IPC
+      // thread vs. process watcher) can arrive out of order; seq only
+      // ever increases, so an older snapshot must never win.
+      if (action.state.seq < state.runtime.seq) return state;
       // A new run resets the live log tail — backend clears its buffer too.
       const logs = action.state.phase === "starting" ? [] : state.logs;
       return { ...state, runtime: action.state, logs };
@@ -164,10 +188,46 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
       return { ...state, autoPreview: action.enabled };
     case "workspace-tab":
       return { ...state, workspaceTab: action.tab };
+
+    // --- workbench layout -----------------------------------------------------
+
+    case "layout-update":
+      return { ...state, layout: { ...state.layout, ...clampLayoutPatch(action.patch) } };
+    case "layout-focus": {
+      // Leaving Preview Focus drops any deferred reveal offer.
+      const revealOffer = action.mode === "preview" ? state.revealOffer : null;
+      return { ...state, layout: { ...state.layout, focusMode: action.mode }, revealOffer };
+    }
+    case "layout-auto":
+      return {
+        ...state,
+        layout: {
+          ...state.layout,
+          autoExplorer: action.explorer,
+          autoInspector: action.inspector,
+        },
+      };
+    case "layout-restore":
+      return {
+        ...state,
+        layout: { ...state.layout, ...clampLayoutPatch(action.layout) },
+      };
+    case "layout-reset":
+      return { ...state, layout: { ...LAYOUT_DEFAULTS }, revealOffer: null };
+    case "reveal-offer":
+      return {
+        ...state,
+        revealOffer: { relativePath: action.relativePath, source: action.source },
+      };
+    case "reveal-offer-clear":
+      return { ...state, revealOffer: null };
+    case "logs-cleared":
+      return { ...state, logs: [] };
     case "notice": {
+      const msg = action.message?.slice(0, 160) ?? null;
       const recentErrors =
-        action.message && action.isError !== false
-          ? [action.message.slice(0, 160), ...state.recentErrors].slice(0, 5)
+        msg && action.isError !== false && state.recentErrors[0] !== msg
+          ? [msg, ...state.recentErrors].slice(0, 5)
           : state.recentErrors;
       return { ...state, notice: action.message, recentErrors };
     }

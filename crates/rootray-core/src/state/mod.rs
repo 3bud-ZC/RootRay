@@ -89,6 +89,9 @@ pub enum LogStream {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeState {
+    /// Monotonic snapshot sequence — the UI drops stale events that
+    /// arrive out of order from concurrent emit paths.
+    pub seq: u64,
     pub phase: RuntimePhase,
     /// The authoritative workspace snapshot — `None` before analysis.
     pub workspace: Option<WorkspaceAnalysis>,
@@ -108,6 +111,7 @@ const LOG_CAPACITY: usize = 500;
 impl Default for RuntimeState {
     fn default() -> Self {
         Self {
+            seq: 0,
             phase: RuntimePhase::Idle,
             workspace: None,
             pid: None,

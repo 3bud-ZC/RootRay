@@ -26,7 +26,17 @@ export function useSelectionAutoReveal() {
     if (sel === prev.current) return;
     prev.current = sel;
     const src = sel?.source;
-    if (!src) return;
+    if (!src) {
+      if (state.layout.focusMode === "preview") dispatch({ type: "reveal-offer-clear" });
+      return;
+    }
+    if (state.layout.focusMode === "preview") {
+      // Preview Focus stays intact — surface a "Show Source" offer the
+      // user can accept deliberately instead of tearing the layout down.
+      dispatch({ type: "reveal-offer", relativePath: src.relativePath, source: src });
+      return;
+    }
+    dispatch({ type: "reveal-offer-clear" });
     if (state.editor?.relativePath === src.relativePath) return;
     void quickEdit(state, dispatch, src.relativePath, src);
     // Keep the preview visible — reveal beside it, never instead of it.

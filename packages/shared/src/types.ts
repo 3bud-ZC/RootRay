@@ -151,6 +151,9 @@ export function activeTarget(w: WorkspaceAnalysis): ProjectTarget | null {
 }
 
 export interface RuntimeState {
+  /** Monotonic snapshot sequence — the reducer drops stale out-of-order
+   *  events from concurrent emit paths. */
+  seq: number;
   phase: RuntimePhase;
   workspace: WorkspaceAnalysis | null;
   pid: number | null;

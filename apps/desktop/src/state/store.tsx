@@ -22,6 +22,7 @@ import {
   markPreviewWaiting,
 } from "../features/preview/controller";
 import { getInspectorState, getRuntimeState, getSettings, previewState } from "../lib/ipc";
+import { loadLayout, persistLayout } from "./layout";
 import { initialUiState, type UiAction, type UiState, uiReducer } from "./reducer";
 
 const StoreContext = createContext<{
@@ -55,6 +56,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getSettings()
       .then((s) => dispatch({ type: "auto-preview", enabled: s.openPreviewAutomatically }))
       .catch(() => {});
+    // Persisted workbench layout — values are clamped on load so stale
+    // or corrupt entries can never strand a pane off-screen.
+    dispatch({ type: "layout-restore", layout: loadLayout() });
 
     const unlistenState = listen<RuntimeState>("rootray://state", (e) =>
       dispatch({ type: "runtime", state: e.payload }),
@@ -96,6 +100,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       disposePreview();
     }
   }, [state.runtime.phase]);
+
+  // Persist the durable layout subset whenever it changes. Focus mode
+  // and responsive auto-hides are deliberately session-only.
+  useEffect(() => {
+    persistLayout(state.layout);
+  }, [state.layout]);
 
   const value = useMemo(() => ({ state, dispatch }), [state]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

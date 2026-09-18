@@ -47,6 +47,14 @@ fn analyze_project(path: String, core: State<'_, Arc<AppCore>>) -> CmdResult<Wor
     core.analyze(std::path::Path::new(&path)).map_err(Into::into)
 }
 
+/// Change Project while live — stops the running server (if any) then
+/// analyzes, as one serialized operation. A separate stop + analyze pair
+/// let the phase slip between commands (running -> analyzing).
+#[tauri::command]
+fn change_project(path: String, core: State<'_, Arc<AppCore>>) -> CmdResult<WorkspaceAnalysis> {
+    core.change_project(std::path::Path::new(&path)).map_err(Into::into)
+}
+
 /// Switches the active target inside the current workspace. Only
 /// runtime-facing data changes — the workspace/security root is fixed.
 #[tauri::command]
@@ -334,6 +342,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             analyze_project,
             set_active_target,
+            change_project,
             start_dev_server,
             stop_dev_server,
             restart_dev_server,

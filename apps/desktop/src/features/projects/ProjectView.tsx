@@ -1,9 +1,9 @@
 import { activeTarget, type Capability, errorMessage } from "@rootray/shared";
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { Splitter } from "../../components/Splitter";
 import { projectDisplayName } from "../../lib/format";
 import {
-  analyzeProject,
+  changeProject as changeProjectIpc,
   getSettings,
   openInEditor,
   pickProjectDirectory,
@@ -11,6 +11,13 @@ import {
   setInspection,
   startDevServer,
 } from "../../lib/ipc";
+import {
+  EXPLORER_MAX,
+  EXPLORER_MIN,
+  INSPECTOR_MAX,
+  INSPECTOR_MIN,
+  LAYOUT_DEFAULTS,
+} from "../../state/layout";
 import { useStore } from "../../state/store";
 import { EditorPanel } from "../editor/EditorPanel";
 import { ExplorerPanel } from "../explorer/ExplorerPanel";
@@ -47,6 +54,9 @@ const KIND_LABELS: Record<string, string> = {
   "no-manifest": "no manifest",
 };
 
+const runningPhases = ["running", "starting", "stopping"] as const;
+type LivePhase = (typeof runningPhases)[number];
+
 function frameworkLabel(fw: string, version: string | null): string {
   const base = FRAMEWORK_LABELS[fw] ?? fw;
   return version ? `${base} ${version}` : base;
@@ -74,6 +84,7 @@ export function ProjectView() {
   const { state, dispatch } = useStore();
   const { runtime } = state;
   const workspace = runtime.workspace;
+  const layout = state.layout;
   const [quickOpen, setQuickOpen] = useState(false);
   const [search, setSearch] = useState<{ open: boolean; query: string }>({
     open: false,
@@ -81,19 +92,67 @@ export function ProjectView() {
   });
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
-  // Pane widths in px — the center takes whatever space remains.
-  const [leftW, setLeftW] = useState(220);
-  const [rightW, setRightW] = useState(340);
+  const [changing, setChanging] = useState(false);
   // Widths snapshotted at drag start — deltas apply to a stable base.
   const leftBase = useRef(220);
-  const rightBase = useRef(340);
+  const rightBase = useRef(320);
+  const explorerBtnRef = useRef<HTMLButtonElement>(null);
+  const inspectorBtnRef = useRef<HTMLButtonElement>(null);
+  const outputBtnRef = useRef<HTMLButtonElement>(null);
+  const leftPaneRef = useRef<HTMLElement>(null);
+  const rightPaneRef = useRef<HTMLElement>(null);
+
+  const focused = layout.focusMode !== "none";
+  const explorerVis = layout.explorerVisible && !layout.autoExplorer && !focused;
+  const inspectorVis = layout.inspectorVisible && !layout.autoInspector && !focused;
+
+  const setExplorer = (w: number) =>
+    dispatch({ type: "layout-update", patch: { explorerWidth: w } });
+  const setInspector = (w: number) =>
+    dispatch({ type: "layout-update", patch: { inspectorWidth: w } });
 
   const dragStart = (side: "left" | "right") => (d: boolean) => {
     if (d) {
-      if (side === "left") leftBase.current = leftW;
-      else rightBase.current = rightW;
+      if (side === "left") leftBase.current = layout.explorerWidth;
+      else rightBase.current = layout.inspectorWidth;
     }
     setDragging(d);
+  };
+
+  // After a pane hides, keyboard focus must not stay trapped inside a
+  // display:none subtree — hand it to the pane's toolbar toggle. A collapsed
+  // pane unmounts its content (focus → body); a display:none pane keeps it.
+  const focusFallback = (
+    pane: RefObject<HTMLElement | null> | null,
+    btn: RefObject<HTMLButtonElement | null>,
+  ) => {
+    requestAnimationFrame(() => {
+      const el = document.activeElement;
+      if (el === document.body || (pane?.current && el && pane.current.contains(el)))
+        btn.current?.focus();
+    });
+  };
+
+  const toggleExplorer = () => {
+    if (explorerVis) focusFallback(leftPaneRef, explorerBtnRef);
+    dispatch({
+      type: "layout-update",
+      patch: { explorerVisible: !layout.explorerVisible },
+    });
+  };
+  const toggleInspector = () => {
+    if (inspectorVis) focusFallback(rightPaneRef, inspectorBtnRef);
+    dispatch({
+      type: "layout-update",
+      patch: { inspectorVisible: !layout.inspectorVisible },
+    });
+  };
+  const toggleOutput = () => {
+    if (layout.outputVisible) focusFallback(null, outputBtnRef);
+    dispatch({
+      type: "layout-update",
+      patch: { outputVisible: !layout.outputVisible },
+    });
   };
 
   // Inspect click → source opens beside the preview automatically.
@@ -103,20 +162,27 @@ export function ProjectView() {
 
   // Global workspace shortcuts — active only while a workspace is loaded.
   // Ctrl+P: quick open · Ctrl+Shift+F: workspace search · Ctrl+Shift+C:
-  // inspect toggle · Esc: back to Interact (when no modal owns it).
-  // CodeMirror's own Ctrl+S / Ctrl+F keep working inside the editor.
+  // inspect toggle · Ctrl+B: explorer · Ctrl+J: output · Ctrl+Shift+P:
+  // preview focus · Esc: inspect → focus → nothing. CodeMirror's own
+  // Ctrl+S / Ctrl+F keep working inside the editor.
   const inspectorEnabled = state.inspector.inspectionEnabled;
   const inspectorConnected =
     state.inspector.phase === "connected" || state.inspector.phase === "inspecting";
+  const focusMode = layout.focusMode;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         // The in-page runtime handles Escape inside the preview; this
         // covers Escape pressed while the RootRay UI has focus. Modals
-        // keep their own Escape.
+        // keep their own Escape. Inspect mode wins over focus exit.
         if (inspectorEnabled && !modalOpen) {
           e.preventDefault();
           setInspection(false).catch(() => {});
+          return;
+        }
+        if (focusMode !== "none" && !modalOpen) {
+          e.preventDefault();
+          dispatch({ type: "layout-focus", mode: "none" });
         }
         return;
       }
@@ -126,6 +192,12 @@ export function ProjectView() {
         if (inspectorConnected) {
           setInspection(!inspectorEnabled).catch(() => {});
         }
+      } else if (e.code === "KeyP" && e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        dispatch({
+          type: "layout-focus",
+          mode: focusMode === "preview" ? "none" : "preview",
+        });
       } else if (e.key === "p" && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         setSearch({ open: false, query: "" });
@@ -134,18 +206,43 @@ export function ProjectView() {
         e.preventDefault();
         setQuickOpen(false);
         setSearch((s) => ({ open: !s.open, query: s.query }));
+      } else if (e.code === "KeyB" && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        toggleExplorer();
+      } else if (e.code === "KeyJ" && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        toggleOutput();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [inspectorEnabled, inspectorConnected, modalOpen]);
+  });
+
+  // Narrow windows prefer Preview+Code over squeezing every pane —
+  // auto-hides layer over (never overwrite) the stored user preference.
+  useEffect(() => {
+    const mqExplorer = window.matchMedia("(max-width: 980px)");
+    const mqInspector = window.matchMedia("(max-width: 760px)");
+    const apply = () =>
+      dispatch({
+        type: "layout-auto",
+        explorer: mqExplorer.matches,
+        inspector: mqInspector.matches,
+      });
+    apply();
+    mqExplorer.addEventListener("change", apply);
+    mqInspector.addEventListener("change", apply);
+    return () => {
+      mqExplorer.removeEventListener("change", apply);
+      mqInspector.removeEventListener("change", apply);
+    };
+  }, [dispatch]);
 
   if (!workspace) return null;
   const target = activeTarget(workspace);
   const caps = target?.capabilities ?? workspace.capabilities;
 
-  const runningPhases = ["running", "starting", "stopping"] as const;
-  const isLive = runningPhases.includes(runtime.phase as (typeof runningPhases)[number]);
+  const isLive = runningPhases.includes(runtime.phase as LivePhase);
 
   const run = async () => {
     dispatch({ type: "notice", message: null });
@@ -156,13 +253,24 @@ export function ProjectView() {
     }
   };
 
+  // A live runtime can never go straight to analyzing — the backend's
+  // change_project command stops the server and analyzes as one
+  // serialized operation. Checking a render-time phase here would be
+  // stale by the time the native dialog closes.
   const changeProject = async () => {
     const dir = await pickProjectDirectory();
     if (!dir) return;
+    setChanging(true);
     try {
-      await analyzeProject(dir);
+      await changeProjectIpc(dir);
+      // The analyzed workspace replaced the old one — drop the stale
+      // editor session and any pending reveal only on success.
+      dispatch({ type: "edit-closed" });
+      dispatch({ type: "reveal-offer-clear" });
     } catch (e) {
       dispatch({ type: "notice", message: errorMessage(e) });
+    } finally {
+      setChanging(false);
     }
   };
 
@@ -204,6 +312,8 @@ export function ProjectView() {
       aria-label="Active target"
       className="target-select"
       value={workspace.activeTargetId ?? ""}
+      disabled={isLive}
+      title={isLive ? "Stop the project to switch targets" : "Choose the run target"}
       onChange={(e) => switchTarget(e.target.value)}
     >
       {workspace.targets.map((t) => (
@@ -294,6 +404,15 @@ export function ProjectView() {
   // ---- workbench mode: the project is (or is becoming) live -----------
   if (isLive) {
     const covered = modalOpen || dragging;
+    const outputMounted = state.logs.length > 0 || isLive;
+    // PreviewPanel derives the same effective tab — the parent needs it
+    // to decide whether the code pane is even rendered.
+    const effTab =
+      layout.focusMode === "preview"
+        ? "preview"
+        : layout.focusMode === "code"
+          ? "code"
+          : state.workspaceTab;
     return (
       <div className="project workbench">
         <div className="wb-head">
@@ -304,6 +423,50 @@ export function ProjectView() {
             {targetSelect}
           </div>
           <div className="wb-head-actions">
+            <fieldset className="wb-toggles" aria-label="Workbench panes">
+              <button
+                type="button"
+                ref={explorerBtnRef}
+                className={`icon-btn${explorerVis ? " on" : ""}`}
+                aria-label="Toggle explorer (Ctrl+B)"
+                aria-pressed={layout.explorerVisible}
+                title="Explorer (Ctrl+B)"
+                onClick={toggleExplorer}
+              >
+                ◧
+              </button>
+              <button
+                type="button"
+                ref={inspectorBtnRef}
+                className={`icon-btn${inspectorVis ? " on" : ""}`}
+                aria-label="Toggle inspector"
+                aria-pressed={layout.inspectorVisible}
+                title="Inspector"
+                onClick={toggleInspector}
+              >
+                ◨
+              </button>
+              <button
+                type="button"
+                ref={outputBtnRef}
+                className={`icon-btn${layout.outputVisible ? " on" : ""}`}
+                aria-label="Toggle output (Ctrl+J)"
+                aria-pressed={layout.outputVisible}
+                title="Output (Ctrl+J)"
+                onClick={toggleOutput}
+              >
+                ▤
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Reset layout"
+                title="Reset layout"
+                onClick={() => dispatch({ type: "layout-reset" })}
+              >
+                ⟲
+              </button>
+            </fieldset>
             <button
               type="button"
               className="btn"
@@ -312,8 +475,18 @@ export function ProjectView() {
             >
               Details
             </button>
-            <button type="button" className="btn" onClick={changeProject}>
-              Change…
+            <button
+              type="button"
+              className="btn"
+              disabled={changing}
+              title={
+                isLive
+                  ? "Stop the running project and analyze a new directory"
+                  : "Analyze a different project directory"
+              }
+              onClick={changeProject}
+            >
+              {changing && isLive ? "Stopping…" : "Change…"}
             </button>
           </div>
         </div>
@@ -323,26 +496,62 @@ export function ProjectView() {
         <RunnerPanel />
 
         <div className="wb-body">
-          <aside className="wb-left" style={{ width: leftW }}>
+          {/* Hidden panes stay mounted — Explorer's expanded dirs and
+              scroll position are component state, so display:none beats
+              unmounting for preserving them. */}
+          <aside
+            ref={leftPaneRef}
+            className={`wb-left${explorerVis ? "" : " wb-hidden"}`}
+            style={{ width: layout.explorerWidth }}
+          >
             <ExplorerPanel onSearch={(query) => setSearch({ open: true, query })} />
           </aside>
-          <Splitter
-            label="Explorer width"
-            valueNow={leftW}
-            valueMin={140}
-            valueMax={480}
-            onDelta={(dx) => setLeftW(clamp(leftBase.current + dx, 140, 480))}
-            onDragState={dragStart("left")}
-            onNudge={(d) => setLeftW((w) => clamp(w + d, 140, 480))}
-          />
+          {explorerVis && (
+            <Splitter
+              label="Explorer width"
+              valueNow={layout.explorerWidth}
+              valueMin={EXPLORER_MIN}
+              valueMax={EXPLORER_MAX}
+              onDelta={(dx) =>
+                setExplorer(Math.min(EXPLORER_MAX, Math.max(EXPLORER_MIN, leftBase.current + dx)))
+              }
+              onDragState={dragStart("left")}
+              onNudge={(d) =>
+                setExplorer(
+                  Math.min(EXPLORER_MAX, Math.max(EXPLORER_MIN, layout.explorerWidth + d)),
+                )
+              }
+              onReset={() => setExplorer(LAYOUT_DEFAULTS.explorerWidth)}
+            />
+          )}
           <div className="wb-center">
             <PreviewPanel
               covered={covered}
+              onCover={setDragging}
               tab={state.workspaceTab}
               onTab={(tab) => dispatch({ type: "workspace-tab", tab })}
             >
-              {state.workspaceTab !== "preview" && (
-                <div className="wb-code">
+              {effTab !== "preview" && (
+                <div
+                  className="wb-code"
+                  style={effTab === "split" ? { flex: 1 - layout.splitRatio } : undefined}
+                >
+                  <div className="wb-code-head">
+                    <span className="wb-code-path" title={state.editor?.relativePath ?? undefined}>
+                      {state.editor?.relativePath ?? "No file open"}
+                    </span>
+                    {layout.focusMode !== "code" && (
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label="Code Focus"
+                        title="Code Focus — give the editor the workbench"
+                        onClick={() => dispatch({ type: "layout-focus", mode: "code" })}
+                      >
+                        ⤢
+                      </button>
+                    )}
+                  </div>
                   {state.editor ? (
                     <EditorPanel />
                   ) : (
@@ -354,21 +563,36 @@ export function ProjectView() {
               )}
             </PreviewPanel>
           </div>
-          <Splitter
-            label="Inspector width"
-            valueNow={rightW}
-            valueMin={240}
-            valueMax={560}
-            onDelta={(dx) => setRightW(clamp(rightBase.current - dx, 240, 560))}
-            onDragState={dragStart("right")}
-            onNudge={(d) => setRightW((w) => clamp(w + d, 240, 560))}
-          />
-          <aside className="wb-right" style={{ width: rightW }}>
+          {inspectorVis && (
+            <Splitter
+              label="Inspector width"
+              valueNow={layout.inspectorWidth}
+              valueMin={INSPECTOR_MIN}
+              valueMax={INSPECTOR_MAX}
+              onDelta={(dx) =>
+                setInspector(
+                  Math.min(INSPECTOR_MAX, Math.max(INSPECTOR_MIN, rightBase.current - dx)),
+                )
+              }
+              onDragState={dragStart("right")}
+              onNudge={(d) =>
+                setInspector(
+                  Math.min(INSPECTOR_MAX, Math.max(INSPECTOR_MIN, layout.inspectorWidth + d)),
+                )
+              }
+              onReset={() => setInspector(LAYOUT_DEFAULTS.inspectorWidth)}
+            />
+          )}
+          <aside
+            ref={rightPaneRef}
+            className={`wb-right${inspectorVis ? "" : " wb-hidden"}`}
+            style={{ width: layout.inspectorWidth }}
+          >
             <InspectorPanel onSearch={(query) => setSearch({ open: true, query })} />
           </aside>
         </div>
 
-        {(state.logs.length > 0 || isLive) && <LogPanel logs={state.logs} />}
+        {outputMounted && !focused && <LogPanel logs={state.logs} onCover={setDragging} />}
 
         {quickOpen && <QuickOpen onClose={() => setQuickOpen(false)} />}
         {search.open && (
@@ -451,8 +675,4 @@ export function ProjectView() {
       )}
     </div>
   );
-}
-
-function clamp(v: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, v));
 }

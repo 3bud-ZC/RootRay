@@ -25,9 +25,26 @@ export async function stubTauri(page: Page, stub: StubbedWorkspace) {
     // Latest inspector snapshot the page has seen — set_inspection echoes
     // build on this (like the real bridge), not on the stale canned value.
     let inspectorCurrent: Record<string, unknown> | null = null;
+    // Latest runtime snapshot — get_runtime_state serves this (like the
+    // real RuntimeState), so post-stop polls see the truth.
+    let runtimeCurrent: Record<string, unknown> | null = null;
+    // Mirrors the backend seq: every emitted snapshot is newer than the
+    // last, so the reducer's stale-snapshot guard accepts them.
+    let runtimeSeq = 0;
+    const emitRuntime = (payload: Record<string, unknown>) => {
+      const stamped = { ...payload, seq: ++runtimeSeq };
+      runtimeCurrent = stamped;
+      const id = listeners.get("rootray://state");
+      const cb = id !== undefined ? callbacks.get(id) : undefined;
+      cb?.({ event: "rootray://state", payload: stamped });
+    };
     w.__RR_EMIT__ = (event: string, payload: unknown) => {
       if (event === "rootray://inspector-state") {
         inspectorCurrent = payload as Record<string, unknown>;
+      }
+      if (event === "rootray://state") {
+        payload = { ...(payload as object), seq: ++runtimeSeq };
+        runtimeCurrent = payload as Record<string, unknown>;
       }
       const id = listeners.get(event);
       const cb = id !== undefined ? callbacks.get(id) : undefined;
@@ -99,14 +116,28 @@ export async function stubTauri(page: Page, stub: StubbedWorkspace) {
         if (cmd === "plugin:dialog|open") {
           return Promise.resolve("C:/fixture/project");
         }
-        if (cmd === "analyze_project") {
+        // The real backend emits stopping → stopped and serves the fresh
+        // snapshot from get_runtime_state; mirror that so UI code that
+        // waits for the teardown sees the real ordering.
+        if (cmd === "stop_dev_server") {
+          const next = {
+            ...(runtimeCurrent ?? runtime),
+            phase: "stopped",
+            pid: null,
+            url: null,
+          };
+          emitRuntime(next);
+          return Promise.resolve(undefined);
+        }
+        if (cmd === "get_runtime_state") {
+          return Promise.resolve(runtimeCurrent ?? canned.get_runtime_state);
+        }
+        if (cmd === "analyze_project" || cmd === "change_project") {
           // Mirrors the FIXED Tauri contract: the command emits a fresh
           // rootray://state snapshot after mutating RuntimeState, then
           // resolves the analysis. v0.1.0 skipped the emit — the UI
-          // stayed on HomeView.
-          const id = listeners.get("rootray://state");
-          const cb = id !== undefined ? callbacks.get(id) : undefined;
-          cb?.({ event: "rootray://state", payload: runtime });
+          // stayed on HomeView. change_project is the same post-stop.
+          emitRuntime(runtime);
           return Promise.resolve(canned.analyze_project);
         }
         if (cmd === "set_active_target") {
@@ -115,9 +146,7 @@ export async function stubTauri(page: Page, stub: StubbedWorkspace) {
           const targetId = args.targetId as string;
           const ws = (runtime as { workspace: Record<string, unknown> }).workspace;
           ws.activeTargetId = targetId;
-          const id = listeners.get("rootray://state");
-          const cb = id !== undefined ? callbacks.get(id) : undefined;
-          cb?.({ event: "rootray://state", payload: runtime });
+          emitRuntime(runtime);
           return Promise.resolve(ws);
         }
         // Path-aware editor responses — a fixed canned read can't model

@@ -33,6 +33,14 @@ export const analyzeProject = (path: string) =>
   invoke<WorkspaceAnalysis>("analyze_project", { path });
 
 /**
+ * Change Project while live — the backend stops the running server (if
+ * any) and analyzes the new directory as one serialized operation, so
+ * the runtime phase can never slip between separate IPC calls.
+ */
+export const changeProject = (path: string) =>
+  invoke<WorkspaceAnalysis>("change_project", { path });
+
+/**
  * Switches the active target inside the open workspace. Affects runtime
  * actions only — Explorer/Search/Edit stay rooted at the workspace root.
  */

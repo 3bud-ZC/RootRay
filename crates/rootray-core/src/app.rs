@@ -6,6 +6,7 @@
 //! UI can always re-pull a consistent snapshot.
 
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::editor::{EditorEvent, EditorManager, EditorSessionInfo};
@@ -32,6 +33,14 @@ pub struct AppCore {
     /// Monotonic run id — guards against events from a previous process
     /// generation landing on a newer run.
     generation: Arc<Mutex<u64>>,
+    /// Monotonic snapshot sequence — every emitted snapshot carries a
+    /// higher seq than any earlier one, so the UI can drop stale events
+    /// arriving out of order across concurrent emit paths.
+    seq: Arc<AtomicU64>,
+    /// Serializes lifecycle commands. Commands run on the host's thread
+    /// pool — without this, a stop could interleave with a half-finished
+    /// start, or an analyze could read a mid-transition phase.
+    lifecycle: Mutex<()>,
     /// Host hook fired after synchronous RuntimeState mutations that have
     /// no process-event path (e.g. project analysis) — the Tauri layer
     /// re-emits the state snapshot so the frontend never goes stale.
@@ -48,6 +57,8 @@ impl AppCore {
             editor: EditorManager::new(),
             static_server: Mutex::new(None),
             generation: Arc::new(Mutex::new(0)),
+            seq: Arc::new(AtomicU64::new(0)),
+            lifecycle: Mutex::new(()),
             state_notify: Mutex::new(None),
         }
     }
@@ -65,9 +76,22 @@ impl AppCore {
             .map_err(|_| CoreError::Internal("state lock poisoned".into()))
     }
 
+    /// Serializes lifecycle commands (analyze/start/stop/restart). The
+    /// guard is always acquired before any state lock — never the other
+    /// way around — so there is no lock-ordering deadlock.
+    fn lock_lifecycle(&self) -> CoreResult<std::sync::MutexGuard<'_, ()>> {
+        self.lifecycle
+            .lock()
+            .map_err(|_| CoreError::Internal("lifecycle lock poisoned".into()))
+    }
+
     pub fn state(&self) -> RuntimeState {
         self.lock_state()
-            .map(|s| s.clone())
+            .map(|s| {
+                let mut snap = s.clone();
+                snap.seq = self.seq.fetch_add(1, Ordering::Relaxed) + 1;
+                snap
+            })
             .unwrap_or_default()
     }
 
@@ -76,6 +100,42 @@ impl AppCore {
     /// Analyzes `path` as a universal workspace, updates the state
     /// machine and records the workspace in recents.
     pub fn analyze(&self, path: &Path) -> CoreResult<WorkspaceAnalysis> {
+        // Hold the lifecycle lock for the whole analysis — the phase
+        // verdict at entry must still be true when the workspace swaps.
+        let _lifecycle = self.lock_lifecycle()?;
+        self.analyze_locked(path)
+    }
+
+    /// Change Project while live: stop (if needed) then analyze — one
+    /// serialized operation so the phase can never slip between the stop
+    /// check and the analysis the way it could across separate commands.
+    pub fn change_project(&self, path: &Path) -> CoreResult<WorkspaceAnalysis> {
+        let _lifecycle = self.lock_lifecycle()?;
+        let live = {
+            let s = self.lock_state()?;
+            matches!(s.phase, RuntimePhase::Running | RuntimePhase::Starting)
+        };
+        if live {
+            match self.stop_dev_server_locked() {
+                Ok(()) => {}
+                Err(e) => {
+                    // The process may have died between the check and
+                    // the stop — proceed only if the phase truly left
+                    // the live set.
+                    let s = self.lock_state()?;
+                    if matches!(
+                        s.phase,
+                        RuntimePhase::Running | RuntimePhase::Starting | RuntimePhase::Stopping
+                    ) {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+        self.analyze_locked(path)
+    }
+
+    fn analyze_locked(&self, path: &Path) -> CoreResult<WorkspaceAnalysis> {
         {
             let mut s = self.lock_state()?;
             if s.phase != RuntimePhase::Idle {
@@ -169,6 +229,11 @@ impl AppCore {
     /// through the inspector runner; on any incompatibility it falls back
     /// to the plain dev command and reports `INSPECTOR_UNAVAILABLE`.
     pub fn start_dev_server(&self, hook: EventSink, inspector_enabled: bool) -> CoreResult<u32> {
+        let _lifecycle = self.lock_lifecycle()?;
+        self.start_dev_server_locked(hook, inspector_enabled)
+    }
+
+    fn start_dev_server_locked(&self, hook: EventSink, inspector_enabled: bool) -> CoreResult<u32> {
         let (cmd, gen, target, workspace_root) = {
             let mut s = self.lock_state()?;
             let workspace = s
@@ -199,6 +264,10 @@ impl AppCore {
             *g += 1;
             (cmd, *g, target, workspace.root.clone())
         };
+        // The spawn below can take seconds — tell the UI the run has
+        // begun immediately instead of waiting for the first process
+        // event, or it keeps rendering the stopped view meanwhile.
+        self.notify_state_changed();
 
         if target.framework == Framework::StaticWeb {
             return self.start_static_server(&target, &workspace_root, hook, inspector_enabled);
@@ -221,23 +290,31 @@ impl AppCore {
         let sink = self.make_sink(hook, gen);
         match self.processes.start(&cmd, sink) {
             Ok(pid) => {
-                let mut s = self.lock_state()?;
-                if s.phase == RuntimePhase::Starting {
-                    s.set_running(pid, cmd.display.clone());
-                    s.transition_unchecked(RuntimePhase::Running);
+                {
+                    let mut s = self.lock_state()?;
+                    if s.phase == RuntimePhase::Starting {
+                        s.set_running(pid, cmd.display.clone());
+                        s.transition_unchecked(RuntimePhase::Running);
+                    }
                 }
+                self.notify_state_changed();
                 Ok(pid)
             }
             Err(e) => {
                 self.inspector.on_process_exit();
-                let mut s = self.lock_state()?;
-                s.set_error(CommandError::from(match &e {
-                    CoreError::ProcessStartFailed(m) => {
-                        CoreError::ProcessStartFailed(m.clone())
-                    }
-                    other => CoreError::Internal(other.to_string()),
-                }));
-                let _ = s.transition(RuntimePhase::Failed);
+                {
+                    let mut s = self.lock_state()?;
+                    s.set_error(CommandError::from(match &e {
+                        CoreError::ProcessStartFailed(m) => {
+                            CoreError::ProcessStartFailed(m.clone())
+                        }
+                        other => CoreError::Internal(other.to_string()),
+                    }));
+                    let _ = s.transition(RuntimePhase::Failed);
+                }
+                // A failed spawn produces no process events — without
+                // this the UI would sit on `starting` forever.
+                self.notify_state_changed();
                 Err(e)
             }
         }
@@ -339,6 +416,7 @@ impl AppCore {
                 s.transition_unchecked(RuntimePhase::Running);
             }
         }
+        self.notify_state_changed();
         // Same event stream a spawned server would produce, so the UI
         // flow (URL detected → open browser) is identical.
         hook(ProcessEvent::Stdout {
@@ -403,6 +481,11 @@ impl AppCore {
 
     /// Stops the running dev server (no-op-safe error if none).
     pub fn stop_dev_server(&self) -> CoreResult<()> {
+        let _lifecycle = self.lock_lifecycle()?;
+        self.stop_dev_server_locked()
+    }
+
+    fn stop_dev_server_locked(&self) -> CoreResult<()> {
         let has_static = self.static_server_running();
         {
             let mut s = self.lock_state()?;
@@ -434,10 +517,16 @@ impl AppCore {
         match self.processes.stop() {
             Ok(()) => {
                 self.inspector.on_process_exit();
-                let mut s = self.lock_state()?;
-                if s.phase == RuntimePhase::Stopping {
-                    s.transition(RuntimePhase::Stopped)?;
+                {
+                    let mut s = self.lock_state()?;
+                    if s.phase == RuntimePhase::Stopping {
+                        s.transition(RuntimePhase::Stopped)?;
+                    }
                 }
+                // The Exited event normally carries this — notify anyway
+                // so a generation-dropped event can never leave the UI
+                // parked on "stopping".
+                self.notify_state_changed();
                 Ok(())
             }
             Err(e) => {
@@ -457,12 +546,15 @@ impl AppCore {
     /// Restarts the dev server — works from `running`, `stopped` and
     /// `failed` states.
     pub fn restart_dev_server(&self, hook: EventSink, inspector_enabled: bool) -> CoreResult<u32> {
+        // One hold for the whole restart — a queued lifecycle command
+        // must never observe the half-restarted state.
+        let _lifecycle = self.lock_lifecycle()?;
         // stop() leaves phase = Stopped; start() handles the rest. From
         // Failed the process handle may be dead already — start anyway.
         if self.processes.is_running() || self.static_server_running() {
-            self.stop_dev_server()?;
+            self.stop_dev_server_locked()?;
         }
-        self.start_dev_server(hook, inspector_enabled)
+        self.start_dev_server_locked(hook, inspector_enabled)
     }
 
     /// Why the active target cannot be run — a typed error, never a

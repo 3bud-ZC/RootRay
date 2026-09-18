@@ -16,6 +16,26 @@ describe("uiReducer", () => {
     expect(s.runtime.pid).toBe(1234);
   });
 
+  it("drops stale runtime snapshots arriving out of order", () => {
+    // Concurrent emit paths (IPC thread + process watcher) can deliver
+    // an older snapshot after a newer one — seq must never go backwards.
+    let s = uiReducer(initialUiState, {
+      type: "runtime",
+      state: runtime({ seq: 5, phase: "ready" }),
+    });
+    s = uiReducer(s, {
+      type: "runtime",
+      state: runtime({ seq: 3, phase: "stopping" }),
+    });
+    expect(s.runtime.phase).toBe("ready");
+    // Equal-seq snapshots still apply (idempotent re-delivery).
+    s = uiReducer(s, {
+      type: "runtime",
+      state: runtime({ seq: 5, phase: "running" }),
+    });
+    expect(s.runtime.phase).toBe("running");
+  });
+
   it("appends log events and caps the buffer", () => {
     let s: UiState = initialUiState;
     for (let i = 0; i < LOG_CAP + 50; i++) {
@@ -155,5 +175,110 @@ describe("uiReducer", () => {
     });
     expect(s.editorClosePrompt).toBe(true);
     expect(s.pendingOpen?.relativePath).toBe("src/C.tsx");
+  });
+});
+
+describe("workbench layout", () => {
+  const src = { relativePath: "src/App.tsx", line: 4, column: 2 };
+
+  it("applies and clamps layout patches", () => {
+    let s = uiReducer(initialUiState, {
+      type: "layout-update",
+      patch: { explorerWidth: 40, inspectorWidth: 9000, splitRatio: 1.4 },
+    });
+    expect(s.layout.explorerWidth).toBe(160);
+    expect(s.layout.inspectorWidth).toBe(560);
+    expect(s.layout.splitRatio).toBe(0.9);
+
+    s = uiReducer(s, {
+      type: "layout-update",
+      patch: { explorerVisible: false, outputHeight: 10 },
+    });
+    expect(s.layout.explorerVisible).toBe(false);
+    expect(s.layout.outputHeight).toBe(80);
+    // Untouched fields keep their values.
+    expect(s.layout.inspectorVisible).toBe(true);
+  });
+
+  it("restores persisted layout safely with clamping", () => {
+    const s = uiReducer(initialUiState, {
+      type: "layout-restore",
+      layout: {
+        explorerWidth: 5,
+        inspectorVisible: false,
+        splitRatio: 0.33,
+        focusMode: "preview",
+      },
+    });
+    expect(s.layout.explorerWidth).toBe(160);
+    expect(s.layout.inspectorVisible).toBe(false);
+    expect(s.layout.splitRatio).toBe(0.33);
+    // Focus mode is session-only — never touched by a restore merge.
+    expect(s.layout.focusMode).toBe("preview");
+  });
+
+  it("auto-hide flags layer over user visibility", () => {
+    const s = uiReducer(initialUiState, {
+      type: "layout-auto",
+      explorer: true,
+      inspector: true,
+    });
+    expect(s.layout.autoExplorer).toBe(true);
+    expect(s.layout.autoInspector).toBe(true);
+    // The stored preference is untouched — widening restores it.
+    expect(s.layout.explorerVisible).toBe(true);
+    expect(s.layout.inspectorVisible).toBe(true);
+  });
+
+  it("leaving preview focus clears a deferred reveal offer", () => {
+    let s = uiReducer(initialUiState, { type: "layout-focus", mode: "preview" });
+    s = uiReducer(s, { type: "reveal-offer", relativePath: src.relativePath, source: src });
+    expect(s.revealOffer?.relativePath).toBe("src/App.tsx");
+    s = uiReducer(s, { type: "layout-focus", mode: "none" });
+    expect(s.layout.focusMode).toBe("none");
+    expect(s.revealOffer).toBeNull();
+  });
+
+  it("reveal offers replace each other and clear explicitly", () => {
+    let s = uiReducer(initialUiState, { type: "layout-focus", mode: "preview" });
+    s = uiReducer(s, { type: "reveal-offer", relativePath: "src/A.tsx", source: src });
+    s = uiReducer(s, { type: "reveal-offer", relativePath: "src/B.tsx", source: src });
+    expect(s.revealOffer?.relativePath).toBe("src/B.tsx");
+    s = uiReducer(s, { type: "reveal-offer-clear" });
+    expect(s.revealOffer).toBeNull();
+  });
+
+  it("reset returns defaults including clearing focus and offers", () => {
+    let s = uiReducer(initialUiState, {
+      type: "layout-update",
+      patch: { explorerVisible: false, explorerWidth: 400, splitRatio: 0.8 },
+    });
+    s = uiReducer(s, { type: "layout-focus", mode: "code" });
+    s = uiReducer(s, { type: "reveal-offer", relativePath: "src/A.tsx", source: src });
+    s = uiReducer(s, { type: "layout-reset" });
+    expect(s.layout.explorerVisible).toBe(true);
+    expect(s.layout.explorerWidth).toBe(220);
+    expect(s.layout.splitRatio).toBe(0.55);
+    expect(s.layout.focusMode).toBe("none");
+    expect(s.revealOffer).toBeNull();
+  });
+
+  it("clears logs without touching other state", () => {
+    let s = uiReducer(initialUiState, {
+      type: "process-event",
+      event: { kind: "stdout", line: "x" },
+    });
+    expect(s.logs).toHaveLength(1);
+    s = uiReducer(s, { type: "logs-cleared" });
+    expect(s.logs).toHaveLength(0);
+    expect(s.runtime).toBe(initialUiState.runtime);
+  });
+
+  it("does not stack duplicate error notices in recentErrors", () => {
+    let s = uiReducer(initialUiState, { type: "notice", message: "boom" });
+    s = uiReducer(s, { type: "notice", message: "boom" });
+    expect(s.recentErrors).toEqual(["boom"]);
+    s = uiReducer(s, { type: "notice", message: "other" });
+    expect(s.recentErrors[0]).toBe("other");
   });
 });

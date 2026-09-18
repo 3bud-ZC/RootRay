@@ -95,6 +95,17 @@ export function SettingsPanel() {
         </section>
 
         <section className="settings-section">
+          <h3 className="section-title">Workbench layout</h3>
+          <p className="muted">
+            Pane visibility, widths and the preview/code split are saved locally. Reset restores the
+            default arrangement.
+          </p>
+          <button type="button" className="btn" onClick={() => dispatch({ type: "layout-reset" })}>
+            Reset Layout
+          </button>
+        </section>
+
+        <section className="settings-section">
           <h3 className="section-title">Recent projects</h3>
           <p className="muted">{settings?.recentProjects.length ?? 0} saved</p>
           <button

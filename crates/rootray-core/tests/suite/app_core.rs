@@ -106,6 +106,82 @@ fn stop_while_idle_is_rejected() {
     assert!(matches!(err, CoreError::ProcessNotRunning));
 }
 
+/// Regression for the manual-testing bug: the UI's Change Project path
+/// sent `analyze` while a runtime was live, surfacing
+/// "illegal runtime state transition: running -> analyzing".
+/// The core must keep refusing it — the frontend now stops first — and
+/// the live runtime must be completely untouched by the rejection.
+#[test]
+fn analyze_while_running_is_rejected() {
+    let (core, _tmp) = core();
+    core.analyze(&fixtures().join("static-web")).unwrap();
+    core.start_dev_server(noop_sink(), false).unwrap();
+    assert_eq!(core.state().phase, RuntimePhase::Running);
+
+    let e = core.analyze(&fixtures().join("vite-react-basic")).unwrap_err();
+    assert!(matches!(e, CoreError::IllegalTransition { .. }));
+    // The rejection is a no-op — same workspace, still running.
+    assert_eq!(core.state().phase, RuntimePhase::Running);
+    assert!(core.state().workspace.is_some());
+
+    // The sanctioned sequence — stop, then analyze — works.
+    core.stop_dev_server().unwrap();
+    assert_eq!(core.state().phase, RuntimePhase::Stopped);
+    core.analyze(&fixtures().join("vite-react-basic")).unwrap();
+    assert_eq!(core.state().phase, RuntimePhase::Ready);
+}
+
+/// Regression for the installed-app Change-Project bug: a run that was
+/// still `starting` left the frontend on the stopped view (start used to
+/// publish state only via process events, which lag by seconds). The UI
+/// then skipped the stop and `analyze` hit `running -> analyzing`.
+/// `starting` and `running` must both be pushed the moment they happen.
+#[test]
+fn start_notifies_starting_and_running() {
+    let (core, _tmp) = core();
+    let core = Arc::new(core);
+    core.analyze(&fixtures().join("static-web")).unwrap();
+
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (s, c) = (seen.clone(), core.clone());
+    core.set_state_notify(Arc::new(move || {
+        s.lock().unwrap().push(c.state().phase);
+    }));
+
+    core.start_dev_server(noop_sink(), false).unwrap();
+    let seq = seen.lock().unwrap().clone();
+    assert!(
+        seq.first() == Some(&RuntimePhase::Starting),
+        "starting must publish before the run settles: {seq:?}"
+    );
+    assert_eq!(seq.last(), Some(&RuntimePhase::Running));
+
+    // And a stop publishes `stopped` even if the exit event is missed.
+    seen.lock().unwrap().clear();
+    core.stop_dev_server().unwrap();
+    let seq = seen.lock().unwrap().clone();
+    assert_eq!(seq.last(), Some(&RuntimePhase::Stopped), "{seq:?}");
+}
+
+/// The Change Project command stops a live server and analyzes the new
+/// directory as one serialized operation — the phase can never slip
+/// between the stop and the analysis.
+#[test]
+fn change_project_stops_then_analyzes() {
+    let (core, _tmp) = core();
+    core.analyze(&fixtures().join("static-web")).unwrap();
+    core.start_dev_server(noop_sink(), false).unwrap();
+    assert_eq!(core.state().phase, RuntimePhase::Running);
+
+    let a = core.change_project(&fixtures().join("vite-react-basic")).unwrap();
+    assert_eq!(core.state().phase, RuntimePhase::Ready);
+    assert!(a.root.ends_with("vite-react-basic"));
+    // The old static server is gone — a subsequent change works too.
+    let b = core.change_project(&fixtures().join("static-web")).unwrap();
+    assert!(b.root.ends_with("static-web"));
+    assert_eq!(core.state().phase, RuntimePhase::Ready);
+}
+
 #[test]
 fn recent_projects_are_recorded() {
     let (core, _tmp) = core();

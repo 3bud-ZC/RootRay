@@ -328,6 +328,30 @@ opening remains an explicit fallback action, never the default.
   auto-reveal the mapped source beside the preview; Ctrl+Shift+C and
   Escape toggle Inspect from *inside* the preview (runtime keydown);
   canvas/runtime-created DOM stays honestly source-unresolved.
+- **Resizable, collapsible workbench** — Explorer and Inspector panes
+  collapse to the rail (Ctrl+B) and drag-resize; the Output console
+  collapses to a bar and drags vertically (Ctrl+J); the preview/code
+  split drags over a wide range and double-click resets. Layout state
+  (visibility, widths, split ratio, focus mode) persists under
+  `rootray.layout.v1` with clamping, and **Reset Layout** in Settings
+  restores defaults. Preview Focus and Code Focus maximize a single
+  area; an inspect click inside Preview Focus offers Show Source
+  instead of breaking focus. Hidden panes stay mounted so their state
+  survives, and native preview bounds track every layout change.
+- **Change Project while running** — the new `change_project` command
+  stops any live server and analyzes the selected directory as *one*
+  operation under a lifecycle mutex that serializes
+  analyze/start/stop/restart. The earlier flow (frontend check → stop
+  → analyze across three IPCs) could slip a `starting → running`
+  transition between the check and the analysis, producing
+  `illegal runtime state transition: running -> analyzing`.
+- **Snapshot ordering** — `RuntimeState` now carries a monotonic `seq`
+  stamped per snapshot; concurrent emit paths (IPC thread vs. process
+  watcher) can deliver `rootray://state` out of order, and the reducer
+  drops any snapshot older than the last applied — the same guard the
+  preview channel already had. Found by installed verification: a late
+  `stopped` event was overwriting the `ready` snapshot and leaving the
+  UI showing the previous project.
 - **Settings** — `openPreviewAutomatically` (default on) migrates the
   legacy `openBrowserAutomatically` value when unset.
 
@@ -358,22 +382,33 @@ opening remains an explicit fallback action, never the default.
 two silent NSIS installs stalled. The final acceptance pass ran the real
 installer end-to-end — see "Final installer acceptance".
 
-- Rust **210 green** (197 suite + 13 units, 1 ignored —
-  `golden_path_real_vite_server`, passes when run explicitly).
-- Vitest **170 green** — exact audit (`pnpm -r test`): desktop **58**,
+- Rust **213 green** (200 suite + 13 units, 1 ignored —
+  `golden_path_real_vite_server`, passes when run explicitly). New core
+  coverage: `change_project` stop-then-analyze under one lifecycle
+  hold, `starting`/`running` start notifications, direct-analyze
+  rejection while running.
+- Vitest **184 green** — exact audit (`pnpm -r test`): desktop **72**,
   inspector-runtime **23**, source-protocol **21**, jsx-instrument
   **20**, intelligence **17**, html-instrument **11**, vite-plugin
-  **8**, shared **7**, next-adapter **5**. v0.2.0 baseline was 162 →
-  **+8** (new preview-controller + reducer race-regression coverage; no
-  test removed).
-- Playwright **48/48** (8 workbench specs + full regression). One real
-  race was caught and fixed during acceptance: a selection landing while
-  the previous file was still `loading` was parked behind the
-  unsaved-changes prompt — `editSessionHasUserContent` now gates the
-  park (only dirty/saving/conflict/save_failed); the stale-read
-  `edit-opened` guard already handled the replace path.
+  **8**, shared **7**, next-adapter **5**. New coverage: layout
+  persistence/clamping/reset, reducer layout actions, stale-snapshot
+  drop, preview-controller.
+- Playwright **60/60** (20 workbench specs + full regression). New
+  coverage: pane collapse/restore, focus modes, output resize, split
+  drag, layout persistence, reset, scroll containment, Change Project
+  single-command contract, target-switch guard.
 - `pnpm -r typecheck` all 10 projects · `pnpm exec biome check .` clean
-  · `cargo check`/`cargo build` both crates green.
+  (3 pre-existing CSS warnings) · `cargo check`/`cargo build` both
+  crates green.
+- **Installed layout + transition verification: PASS**
+  (`tests/e2e/installed-verify-layout.mjs` + `pick-folder.ps1`) on the
+  NSIS-installed app — real ClientFlow-CRM run with embedded preview:
+  Reset Layout, pane hide/restore, output collapse/resize, Preview
+  Focus + exit, split drag, inspect→source with hidden inspector,
+  restart/stop with no illegal transition, native folder picker driven
+  to `fixtures/static-web`, Change Project while running
+  (stopped→analyzed→`static-web`, old process tree dead, zero
+  notices).
 
 #### Final installer acceptance (real NSIS, no manual copy)
 

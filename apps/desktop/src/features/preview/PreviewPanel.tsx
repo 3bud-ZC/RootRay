@@ -11,6 +11,7 @@
 
 import { errorMessage, isLoopbackUrl } from "@rootray/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Splitter } from "../../components/Splitter";
 import {
   openBrowser,
   type PreviewRect,
@@ -20,7 +21,9 @@ import {
   previewReload,
   setInspection,
 } from "../../lib/ipc";
+import { CODE_MIN_PX, LAYOUT_DEFAULTS, PREVIEW_MIN_PX } from "../../state/layout";
 import { useStore } from "../../state/store";
+import { quickEdit } from "../editor/controller";
 import {
   createPreview,
   hidePreview,
@@ -40,24 +43,35 @@ const PHASE_LABEL: Record<string, string> = {
 
 export function PreviewPanel({
   covered,
+  onCover,
   tab,
   onTab,
   children,
 }: {
   /** A modal/palette/drag owns the preview's pixels right now. */
   covered: boolean;
+  /** Split-divider drags also need the surface covered. */
+  onCover?: (covered: boolean) => void;
   tab: "preview" | "code" | "split";
   onTab: (t: "preview" | "code" | "split") => void;
   /** The code pane — rendered beside the host in Split, alone in Code. */
   children?: React.ReactNode;
 }) {
   const { state, dispatch } = useStore();
-  const { runtime, inspector, preview, autoPreview } = state;
+  const { runtime, inspector, preview, autoPreview, layout } = state;
   const hostRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const lastSent = useRef<PreviewRect | null>(null);
   const createInFlight = useRef(false);
   const [urlDraft, setUrlDraft] = useState<string | null>(null);
   const [inspectBusy, setInspectBusy] = useState(false);
+  const ratioBase = useRef(LAYOUT_DEFAULTS.splitRatio);
+
+  const focusMode = layout.focusMode;
+  const focused = focusMode !== "none";
+  // Focus modes force the rendered tab without touching workspaceTab —
+  // leaving focus restores exactly what the user had before.
+  const effTab = focusMode === "preview" ? "preview" : focusMode === "code" ? "code" : tab;
 
   const running = runtime.phase === "running";
   const url = preview.url ?? runtime.url;
@@ -66,7 +80,7 @@ export function PreviewPanel({
   // stopped/error/hidden mean there is nothing to position or show.
   const surfaceAlive =
     preview.phase === "waiting" || preview.phase === "loading" || preview.phase === "ready";
-  const hostVisible = tab !== "code" && !covered;
+  const hostVisible = effTab !== "code" && !covered;
   const inspectable = inspector.phase === "connected" || inspector.phase === "inspecting";
   const inspecting = inspector.inspectionEnabled;
 
@@ -101,14 +115,14 @@ export function PreviewPanel({
   );
 
   useEffect(() => {
-    if (wantsSurface && autoPreview && tab !== "code") tryCreate();
-  }, [wantsSurface, autoPreview, tab, tryCreate]);
+    if (wantsSurface && autoPreview && effTab !== "code") tryCreate();
+  }, [wantsSurface, autoPreview, effTab, tryCreate]);
 
   // --- bounds sync --------------------------------------------------------
   // ResizeObserver → rAF → set_bounds, only when the rect actually moved.
   useEffect(() => {
     const host = hostRef.current;
-    if (!host || tab === "code") return;
+    if (!host || effTab === "code") return;
     let raf = 0;
     const measure = () => {
       const r = host.getBoundingClientRect();
@@ -130,7 +144,7 @@ export function PreviewPanel({
       cancelAnimationFrame(raf);
       reportPreviewRect(null);
     };
-  }, [tab]);
+  }, [effTab]);
 
   // --- visibility ---------------------------------------------------------
   // The native surface must not float over React overlays or linger when
@@ -294,20 +308,22 @@ export function PreviewPanel({
         <span className={`preview-phase preview-phase-${preview.phase}`}>
           {PHASE_LABEL[preview.phase] ?? preview.phase}
         </span>
-        <div className="seg" role="tablist" aria-label="Workbench view">
-          {(["preview", "code", "split"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              role="tab"
-              aria-selected={tab === t}
-              className={`seg-btn ${tab === t ? "active" : ""}`}
-              onClick={() => onTab(t)}
-            >
-              {t === "preview" ? "Preview" : t === "code" ? "Code" : "Split"}
-            </button>
-          ))}
-        </div>
+        {!focused && (
+          <div className="seg" role="tablist" aria-label="Workbench view">
+            {(["preview", "code", "split"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="tab"
+                aria-selected={tab === t}
+                className={`seg-btn ${tab === t ? "active" : ""}`}
+                onClick={() => onTab(t)}
+              >
+                {t === "preview" ? "Preview" : t === "code" ? "Code" : "Split"}
+              </button>
+            ))}
+          </div>
+        )}
         <fieldset className="seg" aria-label="Interaction mode">
           <button
             type="button"
@@ -332,6 +348,55 @@ export function PreviewPanel({
             Inspect
           </button>
         </fieldset>
+        {focusMode === "preview" && state.revealOffer && (
+          <output className="focus-reveal">
+            <span className="focus-reveal-path" title={state.revealOffer.relativePath}>
+              {state.revealOffer.relativePath}
+              {state.revealOffer.source.line ? `:${state.revealOffer.source.line}` : ""}
+            </span>
+            <button
+              type="button"
+              className="btn btn-primary focus-reveal-btn"
+              onClick={() => {
+                const offer = state.revealOffer;
+                if (!offer) return;
+                dispatch({ type: "layout-focus", mode: "none" });
+                dispatch({ type: "workspace-tab", tab: "split" });
+                void quickEdit(state, dispatch, offer.relativePath, offer.source);
+              }}
+            >
+              Show Source
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Dismiss source offer"
+              onClick={() => dispatch({ type: "reveal-offer-clear" })}
+            >
+              ✕
+            </button>
+          </output>
+        )}
+        {focused ? (
+          <button
+            type="button"
+            className="btn pv-focus-exit"
+            onClick={() => dispatch({ type: "layout-focus", mode: "none" })}
+            title="Exit focus mode (Esc)"
+          >
+            ✕ Exit Focus
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Preview Focus"
+            title="Preview Focus (Ctrl+Shift+P)"
+            onClick={() => dispatch({ type: "layout-focus", mode: "preview" })}
+          >
+            ⤢
+          </button>
+        )}
         <button
           type="button"
           className="btn"
@@ -343,11 +408,50 @@ export function PreviewPanel({
         </button>
       </div>
 
-      <div className="preview-body">
-        {tab !== "code" && (
-          <div ref={hostRef} className="preview-host">
+      <div className="preview-body" ref={bodyRef}>
+        {effTab !== "code" && (
+          <div
+            ref={hostRef}
+            className="preview-host"
+            style={effTab === "split" ? { flex: layout.splitRatio } : undefined}
+          >
             {overlay}
           </div>
+        )}
+        {effTab === "split" && (
+          <Splitter
+            label="Preview/Code split"
+            valueNow={Math.round(layout.splitRatio * 100)}
+            valueMin={10}
+            valueMax={90}
+            valueText={`Preview ${Math.round(layout.splitRatio * 100)}%, Code ${Math.round((1 - layout.splitRatio) * 100)}%`}
+            onDelta={(d) => {
+              const w = bodyRef.current?.getBoundingClientRect().width ?? 0;
+              if (w < 4) return;
+              const min = Math.max(0.1, PREVIEW_MIN_PX / w);
+              const max = Math.min(0.9, 1 - CODE_MIN_PX / w);
+              const next = Math.min(max, Math.max(min, ratioBase.current + d / w));
+              dispatch({ type: "layout-update", patch: { splitRatio: next } });
+            }}
+            onDragState={(d) => {
+              if (d) ratioBase.current = layout.splitRatio;
+              onCover?.(d);
+            }}
+            onNudge={(d) => {
+              const w = bodyRef.current?.getBoundingClientRect().width ?? 0;
+              if (w < 4) return;
+              const min = Math.max(0.1, PREVIEW_MIN_PX / w);
+              const max = Math.min(0.9, 1 - CODE_MIN_PX / w);
+              const next = Math.min(max, Math.max(min, layout.splitRatio + d / w));
+              dispatch({ type: "layout-update", patch: { splitRatio: next } });
+            }}
+            onReset={() =>
+              dispatch({
+                type: "layout-update",
+                patch: { splitRatio: LAYOUT_DEFAULTS.splitRatio },
+              })
+            }
+          />
         )}
         {children}
       </div>
