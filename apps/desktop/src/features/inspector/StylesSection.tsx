@@ -1,4 +1,5 @@
 import type { BoxModel, StyleDetails } from "@rootray/shared";
+import { CopyIcon, ExternalLinkIcon, SearchIcon } from "../../components/icons";
 import { useStore } from "../../state/store";
 import { quickEdit } from "../editor/controller";
 import { usePreferredLauncher } from "./useLauncher";
@@ -80,7 +81,7 @@ export function StylesSection({
                   aria-label={`Copy class ${c}`}
                   onClick={() => copy(c)}
                 >
-                  ⧉
+                  <CopyIcon size={11} />
                 </button>
                 <button
                   type="button"
@@ -89,7 +90,7 @@ export function StylesSection({
                   aria-label={`Search project for class ${c}`}
                   onClick={() => onSearch(c)}
                 >
-                  ⌕
+                  <SearchIcon size={11} />
                 </button>
               </span>
             ))}
@@ -153,7 +154,7 @@ export function StylesSection({
                         aria-label={`Open ${r.sourcePath} externally`}
                         onClick={() => launcher?.openAt(r.sourcePath as string, 1, 1)}
                       >
-                        ↗
+                        <ExternalLinkIcon size={12} />
                       </button>
                     </>
                   ) : (

@@ -12,8 +12,9 @@ export const OVERLAY_HOST_ATTR = "data-rootray-overlay";
 const STYLES = `
   .rr-box {
     position: fixed;
-    border: 2px solid #4f8cff;
-    background: rgba(79, 140, 255, 0.12);
+    border: 1.5px solid #ff6b0c;
+    background: rgba(255, 107, 12, 0.08);
+    box-shadow: 0 0 12px rgba(255, 107, 12, 0.25), inset 0 0 8px rgba(255, 107, 12, 0.12);
     border-radius: 2px;
     pointer-events: none;
     z-index: 2147483647;
@@ -24,19 +25,31 @@ const STYLES = `
     pointer-events: none;
     z-index: 2147483647;
     display: none;
-    font: 11px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font: 11px/1.4 ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
     color: #e8ecf4;
-    background: #11151d;
-    border: 1px solid #2a3244;
+    background: rgba(13, 15, 18, 0.94);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 107, 12, 0.38);
     border-radius: 4px;
-    padding: 3px 7px;
-    max-width: 420px;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+    padding: 3px 8px;
+    max-width: 460px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 8px rgba(255, 107, 12, 0.2);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .rr-label .rr-name { color: #8fb8ff; font-weight: 600; }
+  .rr-label .rr-dot {
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #ff6b0c;
+    box-shadow: 0 0 6px #ff6b0c;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .rr-label .rr-name { color: #ff9d5c; font-weight: 600; }
   .rr-label .rr-loc { color: #9aa4b8; }
 `;
 
@@ -65,11 +78,14 @@ export class InspectorOverlay {
     this.box.className = "rr-box";
     this.label = this.doc.createElement("div");
     this.label.className = "rr-label";
+    const dot = this.doc.createElement("span");
+    dot.className = "rr-dot";
+    dot.setAttribute("aria-hidden", "true");
     this.labelName = this.doc.createElement("span");
     this.labelName.className = "rr-name";
     this.labelLoc = this.doc.createElement("span");
     this.labelLoc.className = "rr-loc";
-    this.label.append(this.labelName, this.labelLoc);
+    this.label.append(dot, this.labelName, this.labelLoc);
     shadow.append(style, this.box, this.label);
     this.doc.documentElement.appendChild(host);
     this.host = host;

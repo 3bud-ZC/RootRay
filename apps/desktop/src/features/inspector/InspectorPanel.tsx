@@ -1,6 +1,7 @@
 import type { DetectedLauncher, InspectorPhase, SourcePreview } from "@rootray/shared";
 import { errorMessage } from "@rootray/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CloseIcon } from "../../components/icons";
 import {
   clearInspectorSelection,
   detectEditors,
@@ -197,7 +198,7 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
               aria-label="Clear selection"
               onClick={() => clearInspectorSelection().catch(() => {})}
             >
-              ×
+              <CloseIcon />
             </button>
           </div>
           <div className="selection-facts">
@@ -211,13 +212,27 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
           </div>
           {sel.source ? (
             <div className="selection-loc">
-              <span className="sel-file">{sel.source.relativePath}</span>
+              <div className="sel-loc-row">
+                <span className="sel-file">{sel.source.relativePath}</span>
+                <span className={`badge-confidence badge-${sel.source.confidence ?? "exact"}`}>
+                  {sel.source.confidence === "exact"
+                    ? "EXACT SOURCE"
+                    : sel.source.confidence === "approximate"
+                      ? "APPROXIMATE"
+                      : sel.source.confidence === "component"
+                        ? "COMPONENT"
+                        : "SOURCE"}
+                </span>
+              </div>
               <span className="sel-pos">
                 Line {sel.source.line} · Column {sel.source.column}
               </span>
             </div>
           ) : (
             <div className="selection-loc">
+              <div className="sel-loc-row">
+                <span className="badge-confidence badge-unresolved">UNRESOLVED</span>
+              </div>
               <span className="muted sel-unmapped">
                 No authored source — this element was created at runtime
               </span>

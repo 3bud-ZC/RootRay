@@ -51,7 +51,7 @@ export class ErrorBoundary extends Component<Props, BoundaryState> {
     return (
       <div className="crash-view" role="alert">
         <div className="crash-card">
-          <img className="pane-mascot brand-img" src="/brand/mascot.png" alt="" />
+          <img className="pane-mascot brand-img" src="/brand/error.png" alt="" />
           <h1>RootRay encountered an interface error.</h1>
           <p className="muted">
             Your project files were not touched. You can reload the interface or copy diagnostics

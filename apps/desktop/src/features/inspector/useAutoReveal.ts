@@ -37,7 +37,6 @@ export function useSelectionAutoReveal() {
       return;
     }
     dispatch({ type: "reveal-offer-clear" });
-    if (state.editor?.relativePath === src.relativePath) return;
     void quickEdit(state, dispatch, src.relativePath, src);
     // Keep the preview visible — reveal beside it, never instead of it.
     if (state.workspaceTab === "preview") {

@@ -35,6 +35,23 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: #29313e transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #29313e;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3e485e;
 }
 
 /* Keyboard users get a visible focus ring; pointer-only users don't. */
@@ -2022,8 +2039,16 @@ fieldset.seg {
 }
 
 .seg-btn.active {
-  background: var(--accent);
-  color: #fff;
+  background: var(--rr-surface-elevated, #18212b);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.seg-mode .seg-btn-inspect.active {
+  background: rgba(255, 107, 12, 0.18);
+  color: #ff9d5c;
+  box-shadow: 0 0 10px rgba(255, 107, 12, 0.25);
+  font-weight: 600;
 }
 
 .seg-btn:disabled {
@@ -2111,8 +2136,58 @@ fieldset.seg {
 /* ---- explorer active file ---- */
 
 .ex-file.ex-active {
-  color: var(--accent);
+  color: var(--accent-bright);
   font-weight: 600;
+}
+
+.ex-file-row:has(.ex-active) {
+  background: rgba(255, 107, 12, 0.09);
+  box-shadow: inset 2px 0 var(--accent);
+}
+
+/* ---- inspector confidence badges ---- */
+
+.sel-loc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.badge-confidence {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  line-height: 1.4;
+}
+
+.badge-exact {
+  background: rgba(63, 185, 80, 0.16);
+  color: #3fb950;
+  border: 1px solid rgba(63, 185, 80, 0.35);
+}
+
+.badge-approximate {
+  background: rgba(210, 153, 34, 0.16);
+  color: #d29922;
+  border: 1px solid rgba(210, 153, 34, 0.35);
+}
+
+.badge-component {
+  background: rgba(163, 113, 247, 0.16);
+  color: #a371f7;
+  border: 1px solid rgba(163, 113, 247, 0.35);
+}
+
+.badge-unresolved {
+  background: rgba(110, 118, 129, 0.16);
+  color: #8b949e;
+  border: 1px solid rgba(110, 118, 129, 0.35);
 }
 
 /* ---- canvas context ---- */

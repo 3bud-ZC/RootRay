@@ -31,6 +31,12 @@ function asCoreError(err: unknown): CoreErrorPayload {
   return { code: "INTERNAL", message: String(err) };
 }
 
+let quickEditSeq = 0;
+
+export function resetQuickEditSeqForTest() {
+  quickEditSeq = 0;
+}
+
 /** `Quick Edit` — opens (or refocuses) the inspected file in-app. */
 export async function quickEdit(
   state: UiState,
@@ -38,13 +44,14 @@ export async function quickEdit(
   relativePath: string,
   source: SourceLocation,
 ) {
+  const seq = ++quickEditSeq;
   const existing = state.editor;
   // Same file: just move the focus marker — never reload dirty content.
   if (existing && existing.relativePath === relativePath) {
-    dispatch({ type: "edit-open", relativePath, source });
+    dispatch({ type: "edit-open", relativePath, source, seq });
     return;
   }
-  dispatch({ type: "edit-open", relativePath, source });
+  dispatch({ type: "edit-open", relativePath, source, seq });
   // Parked behind the close prompt only when the previous session held
   // user content (same rule as the reducer) — "Discard Changes" resumes
   // the deferred open via confirmClose. A still-loading session has no
@@ -52,9 +59,11 @@ export async function quickEdit(
   if (existing && editSessionHasUserContent(existing.status)) return;
   try {
     const read = await openSourceEditor(relativePath);
-    dispatch({ type: "edit-opened", read, source });
+    if (seq !== quickEditSeq) return;
+    dispatch({ type: "edit-opened", read, source, seq });
     if (state.runtime.workspace) pushRecentFile(state.runtime.workspace.root, relativePath);
   } catch (err) {
+    if (seq !== quickEditSeq) return;
     dispatch({ type: "edit-closed" });
     const e = asCoreError(err);
     dispatch({
@@ -107,12 +116,20 @@ export async function confirmCloseEditor(state: UiState, dispatch: Dispatch) {
   }
   dispatch({ type: "edit-closed" });
   if (pending) {
+    const seq = ++quickEditSeq;
     // Re-dispatch as a fresh open — the session is now closed so it loads.
-    dispatch({ type: "edit-open", relativePath: pending.relativePath, source: pending.source });
+    dispatch({
+      type: "edit-open",
+      relativePath: pending.relativePath,
+      source: pending.source,
+      seq,
+    });
     try {
       const read = await openSourceEditor(pending.relativePath);
-      dispatch({ type: "edit-opened", read, source: pending.source });
+      if (seq !== quickEditSeq) return;
+      dispatch({ type: "edit-opened", read, source: pending.source, seq });
     } catch (err) {
+      if (seq !== quickEditSeq) return;
       dispatch({ type: "notice", message: `Quick Edit failed: ${asCoreError(err).message}` });
     }
   }

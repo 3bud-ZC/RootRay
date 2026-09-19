@@ -1,3 +1,4 @@
+import { CloseIcon, SettingsIcon } from "../components/icons";
 import { StatusPill } from "../components/StatusPill";
 import { HomeView } from "../features/projects/HomeView";
 import { ProjectView } from "../features/projects/ProjectView";
@@ -26,7 +27,7 @@ export function App() {
             aria-label="Settings"
             onClick={() => dispatch({ type: "toggle-settings" })}
           >
-            ⚙
+            <SettingsIcon />
           </button>
         </div>
       </header>
@@ -39,7 +40,7 @@ export function App() {
             className="notice-dismiss"
             onClick={() => dispatch({ type: "notice", message: null })}
           >
-            ×
+            <CloseIcon size={12} />
           </button>
         </div>
       )}

@@ -72,14 +72,14 @@ const rootRayTheme = EditorView.theme(
       border: "none",
       borderRight: "1px solid var(--border)",
     },
-    ".cm-activeLine": { backgroundColor: "rgba(255,122,69,0.06)" },
-    ".cm-activeLineGutter": { backgroundColor: "rgba(255,122,69,0.10)" },
+    ".cm-activeLine": { backgroundColor: "rgba(255,107,12,0.06)" },
+    ".cm-activeLineGutter": { backgroundColor: "rgba(255,107,12,0.10)" },
     ".cm-rootray-marked-line": {
-      backgroundColor: "rgba(255,122,69,0.14)",
-      boxShadow: "inset 2px 0 var(--accent)",
+      backgroundColor: "rgba(255,107,12,0.16)",
+      boxShadow: "inset 3px 0 #ff6b0c, 0 0 12px rgba(255,107,12,0.18)",
     },
     ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-      backgroundColor: "rgba(255,122,69,0.22) !important",
+      backgroundColor: "rgba(255,107,12,0.22) !important",
     },
     ".cm-matchingBracket": { backgroundColor: "rgba(63,185,80,0.25)" },
     ".cm-searchMatch": { backgroundColor: "rgba(210,153,34,0.35)" },
@@ -146,6 +146,10 @@ export function CodeEditor({
   const cbRef = useRef({ onChange, onSave });
   cbRef.current = { onChange, onSave };
   const markRef = useRef<number | null>(null);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const focusRef = useRef({ line: focusLine, column: focusColumn });
+  focusRef.current = { line: focusLine, column: focusColumn };
 
   // Create / recreate the view when the file changes.
   // `value`/`focusLine` are read once per file — external changes are
@@ -173,7 +177,7 @@ export function CodeEditor({
         },
       ]);
       const state = EditorState.create({
-        doc: value,
+        doc: valueRef.current,
         extensions: [
           lineNumbers(),
           highlightActiveLineGutter(),
@@ -196,7 +200,7 @@ export function CodeEditor({
       });
       view = new EditorView({ state, parent: host });
       viewRef.current = view;
-      applyFocus(view, markRef.current, null);
+      applyFocus(view, focusRef.current.line, focusRef.current.column);
     };
 
     markRef.current = focusLine;
@@ -223,6 +227,9 @@ export function CodeEditor({
     view.dispatch({
       changes: { from: 0, to: current.length, insert: value },
     });
+    if (focusRef.current.line !== null) {
+      applyFocus(view, focusRef.current.line, focusRef.current.column);
+    }
   }, [value]);
 
   // Focus + mark the inspected line when it changes.

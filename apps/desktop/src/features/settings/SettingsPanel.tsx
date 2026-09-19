@@ -1,6 +1,7 @@
 import type { DetectedLauncher, RootRaySettings } from "@rootray/shared";
 import { errorMessage } from "@rootray/shared";
 import { useEffect, useState } from "react";
+import { CloseIcon } from "../../components/icons";
 import { buildDiagnostics } from "../../lib/diagnostics";
 import {
   detectEditors,
@@ -54,7 +55,7 @@ export function SettingsPanel() {
         <div className="settings-head">
           <h2>Settings</h2>
           <button type="button" className="icon-btn" onClick={close} aria-label="Close">
-            ×
+            <CloseIcon />
           </button>
         </div>
 

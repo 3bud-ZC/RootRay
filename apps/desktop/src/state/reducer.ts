@@ -116,8 +116,8 @@ export type UiAction =
   | { type: "reveal-offer-clear" }
   | { type: "logs-cleared" }
   // --- quick editor -----------------------------------------------------------
-  | { type: "edit-open"; relativePath: string; source: SourceLocation }
-  | { type: "edit-opened"; read: SourceFileRead; source: SourceLocation }
+  | { type: "edit-open"; relativePath: string; source: SourceLocation; seq?: number | undefined }
+  | { type: "edit-opened"; read: SourceFileRead; source: SourceLocation; seq?: number | undefined }
   | { type: "edit-changed"; content: string }
   | { type: "edit-save-start" }
   | { type: "edit-saved"; write: SourceFileWrite }
@@ -137,6 +137,7 @@ function sessionFromRead(
   read: SourceFileRead,
   source: SourceLocation | null,
   prev: EditSession | null,
+  seq?: number,
 ): EditSession {
   return {
     relativePath: read.relativePath,
@@ -150,6 +151,7 @@ function sessionFromRead(
     selectedColumn: source?.column ?? null,
     canRevert: prev?.relativePath === read.relativePath ? prev.canRevert : false,
     error: null,
+    seq: seq ?? prev?.seq,
   };
 }
 
@@ -245,6 +247,7 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
             ...existing,
             selectedLine: action.source.line,
             selectedColumn: action.source.column,
+            seq: action.seq ?? existing.seq,
           },
         };
       }
@@ -275,16 +278,24 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
           selectedColumn: action.source.column,
           canRevert: false,
           error: null,
+          seq: action.seq,
         },
       };
     }
     case "edit-opened": {
-      if (state.editor?.relativePath !== action.read.relativePath) {
+      if (!state.editor || state.editor.relativePath !== action.read.relativePath) {
+        return state;
+      }
+      if (
+        action.seq !== undefined &&
+        state.editor.seq !== undefined &&
+        action.seq < state.editor.seq
+      ) {
         return state;
       }
       return {
         ...state,
-        editor: sessionFromRead(action.read, action.source, state.editor),
+        editor: sessionFromRead(action.read, action.source, state.editor, action.seq),
       };
     }
     case "edit-changed": {

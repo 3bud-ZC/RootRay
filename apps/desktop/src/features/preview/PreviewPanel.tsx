@@ -12,6 +12,7 @@
 import { errorMessage, isLoopbackUrl } from "@rootray/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BrandLoader } from "../../components/BrandLoader";
+import { BackIcon, CloseIcon, FocusIcon, ForwardIcon, ReloadIcon } from "../../components/icons";
 import { Splitter } from "../../components/Splitter";
 import {
   openBrowser,
@@ -269,7 +270,7 @@ export function PreviewPanel({
           disabled={!surfaceAlive}
           onClick={() => nav(previewBack)}
         >
-          ←
+          <BackIcon />
         </button>
         <button
           type="button"
@@ -279,7 +280,7 @@ export function PreviewPanel({
           disabled={!surfaceAlive}
           onClick={() => nav(previewForward)}
         >
-          →
+          <ForwardIcon />
         </button>
         <button
           type="button"
@@ -289,7 +290,7 @@ export function PreviewPanel({
           disabled={!surfaceAlive}
           onClick={() => nav(previewReload)}
         >
-          ⟳
+          <ReloadIcon />
         </button>
         <input
           className="preview-url"
@@ -310,7 +311,7 @@ export function PreviewPanel({
           {PHASE_LABEL[preview.phase] ?? preview.phase}
         </span>
         {!focused && (
-          <div className="seg" role="tablist" aria-label="Workbench view">
+          <div className="seg seg-views" role="tablist" aria-label="Workbench view">
             {(["preview", "code", "split"] as const).map((t) => (
               <button
                 key={t}
@@ -325,7 +326,7 @@ export function PreviewPanel({
             ))}
           </div>
         )}
-        <fieldset className="seg" aria-label="Interaction mode">
+        <fieldset className="seg seg-mode" aria-label="Interaction mode">
           <button
             type="button"
             className={`seg-btn ${!inspecting ? "active" : ""}`}
@@ -337,7 +338,7 @@ export function PreviewPanel({
           </button>
           <button
             type="button"
-            className={`seg-btn ${inspecting ? "active" : ""}`}
+            className={`seg-btn seg-btn-inspect ${inspecting ? "active" : ""}`}
             disabled={inspectBusy || !inspectable || inspecting}
             onClick={toggleInspect}
             title={
@@ -374,7 +375,7 @@ export function PreviewPanel({
               aria-label="Dismiss source offer"
               onClick={() => dispatch({ type: "reveal-offer-clear" })}
             >
-              ✕
+              <CloseIcon size={12} />
             </button>
           </output>
         )}
@@ -385,7 +386,7 @@ export function PreviewPanel({
             onClick={() => dispatch({ type: "layout-focus", mode: "none" })}
             title="Exit focus mode (Esc)"
           >
-            ✕ Exit Focus
+            <CloseIcon size={12} style={{ marginRight: 4 }} /> Exit Focus
           </button>
         ) : (
           <button
@@ -395,7 +396,7 @@ export function PreviewPanel({
             title="Preview Focus (Ctrl+Shift+P)"
             onClick={() => dispatch({ type: "layout-focus", mode: "preview" })}
           >
-            ⤢
+            <FocusIcon />
           </button>
         )}
         <button

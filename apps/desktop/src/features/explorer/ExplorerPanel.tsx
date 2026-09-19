@@ -1,5 +1,6 @@
 import type { DirListing, ProjectEntry } from "@rootray/shared";
 import { useCallback, useEffect, useState } from "react";
+import { CaretRightIcon, CopyIcon, ExternalLinkIcon, SearchIcon } from "../../components/icons";
 import { listProjectDir } from "../../lib/ipc";
 import { getRecentFiles } from "../../lib/recents";
 import { useStore } from "../../state/store";
@@ -181,7 +182,9 @@ function ExplorerRow({
           onClick={() => onToggle(entry.relativePath)}
           aria-expanded={open}
         >
-          <span className={`ex-caret ${open ? "open" : ""}`}>▸</span>
+          <span className={`ex-caret ${open ? "open" : ""}`}>
+            <CaretRightIcon />
+          </span>
           {entry.name}
         </button>
         {open && renderRows(entry.relativePath, depth + 1)}
@@ -211,7 +214,7 @@ function ExplorerRow({
           aria-label={`Search for ${entry.name} in project`}
           onClick={() => onSearch(entry.name.replace(/\.[^.]+$/, ""))}
         >
-          ⌕
+          <SearchIcon />
         </button>
         <button
           type="button"
@@ -220,7 +223,7 @@ function ExplorerRow({
           aria-label={`Open ${entry.name} in external editor`}
           onClick={() => onExternal(entry.relativePath)}
         >
-          ↗
+          <ExternalLinkIcon />
         </button>
         <button
           type="button"
@@ -229,7 +232,7 @@ function ExplorerRow({
           aria-label={`Copy path of ${entry.name}`}
           onClick={() => onCopy(entry.relativePath)}
         >
-          ⧉
+          <CopyIcon />
         </button>
       </span>
     </div>

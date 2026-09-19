@@ -1,5 +1,12 @@
 import { activeTarget, type Capability, errorMessage } from "@rootray/shared";
 import { type RefObject, useEffect, useRef, useState } from "react";
+import {
+  ExplorerIcon,
+  FocusIcon,
+  InspectorIcon,
+  OutputIcon,
+  ResetLayoutIcon,
+} from "../../components/icons";
 import { Splitter } from "../../components/Splitter";
 import { projectDisplayName } from "../../lib/format";
 import {
@@ -434,7 +441,7 @@ export function ProjectView() {
                 title="Explorer (Ctrl+B)"
                 onClick={toggleExplorer}
               >
-                ◧
+                <ExplorerIcon />
               </button>
               <button
                 type="button"
@@ -445,7 +452,7 @@ export function ProjectView() {
                 title="Inspector"
                 onClick={toggleInspector}
               >
-                ◨
+                <InspectorIcon />
               </button>
               <button
                 type="button"
@@ -456,7 +463,7 @@ export function ProjectView() {
                 title="Output (Ctrl+J)"
                 onClick={toggleOutput}
               >
-                ▤
+                <OutputIcon />
               </button>
               <button
                 type="button"
@@ -465,7 +472,7 @@ export function ProjectView() {
                 title="Reset layout"
                 onClick={() => dispatch({ type: "layout-reset" })}
               >
-                ⟲
+                <ResetLayoutIcon />
               </button>
             </fieldset>
             <button
@@ -549,7 +556,7 @@ export function ProjectView() {
                         title="Code Focus — give the editor the workbench"
                         onClick={() => dispatch({ type: "layout-focus", mode: "code" })}
                       >
-                        ⤢
+                        <FocusIcon />
                       </button>
                     )}
                   </div>

@@ -193,4 +193,66 @@ describe("editor session reducer", () => {
     expect(s.editor?.currentContent).toBe("const x = 1;\n");
     expect(s.editor?.status).toBe("clean");
   });
+
+  it("stale edit-opened with older seq is discarded", () => {
+    // Open session 1 (seq: 1)
+    let s = uiReducer(initialUiState, {
+      type: "edit-open",
+      relativePath: "src/A.tsx",
+      source: { ...SRC, relativePath: "src/A.tsx", line: 10 },
+      seq: 1,
+    });
+    expect(s.editor?.relativePath).toBe("src/A.tsx");
+    expect(s.editor?.seq).toBe(1);
+
+    // Rapid click opens session 2 (seq: 2)
+    s = uiReducer(s, {
+      type: "edit-open",
+      relativePath: "src/B.tsx",
+      source: { ...SRC, relativePath: "src/B.tsx", line: 20 },
+      seq: 2,
+    });
+    expect(s.editor?.relativePath).toBe("src/B.tsx");
+    expect(s.editor?.seq).toBe(2);
+
+    // Stale read response for session 1 arrives late (seq: 1)
+    s = uiReducer(s, {
+      type: "edit-opened",
+      read: read({ relativePath: "src/A.tsx", content: "A content" }),
+      source: { ...SRC, relativePath: "src/A.tsx", line: 10 },
+      seq: 1,
+    });
+    // B is still the active session and has not been clobbered
+    expect(s.editor?.relativePath).toBe("src/B.tsx");
+    expect(s.editor?.seq).toBe(2);
+
+    // Valid read response for session 2 arrives (seq: 2)
+    s = uiReducer(s, {
+      type: "edit-opened",
+      read: read({ relativePath: "src/B.tsx", content: "B content" }),
+      source: { ...SRC, relativePath: "src/B.tsx", line: 20 },
+      seq: 2,
+    });
+    expect(s.editor?.relativePath).toBe("src/B.tsx");
+    expect(s.editor?.currentContent).toBe("B content");
+    expect(s.editor?.status).toBe("clean");
+  });
+
+  it("same-file selection preserves dirty edits while updating focus line and seq", () => {
+    let s = openSession(initialUiState);
+    s = uiReducer(s, { type: "edit-changed", content: "dirty content" });
+    expect(s.editor?.status).toBe("dirty");
+
+    s = uiReducer(s, {
+      type: "edit-open",
+      relativePath: "src/App.tsx",
+      source: { ...SRC, line: 42, column: 8 },
+      seq: 5,
+    });
+    expect(s.editor?.status).toBe("dirty");
+    expect(s.editor?.currentContent).toBe("dirty content");
+    expect(s.editor?.selectedLine).toBe(42);
+    expect(s.editor?.selectedColumn).toBe(8);
+    expect(s.editor?.seq).toBe(5);
+  });
 });

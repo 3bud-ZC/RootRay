@@ -1,5 +1,38 @@
 # RootRay Status
 
+## In Development — v0.3.0-dev (UNPUBLISHED, UNTAGGED)
+
+### Full Product Identity + Inspect-to-Code Reliability Pass
+
+- **Stable Release Baseline**: v0.2.0 remains immutable and published. v0.3.0 remains UNPUBLISHED and UNTAGGED.
+- **Inspect-to-Code Reliability**:
+  - **Root Cause Diagnosed**: In `CodeEditor.tsx`, language syntax highlighting extensions load asynchronously. The initial editor build closed over the empty string `""` from when `ed.status === "loading"`. When `build()` completed, it initialized CodeMirror `EditorState` with `doc: ""` and dropped line focus. Rapid selection also lacked monotonic sequence numbers, allowing stale read responses to overwrite newer selections. In `useAutoReveal.ts`, same-file reselection returned early before switching `workspaceTab` to `"split"`.
+  - **Pipeline Fix**:
+    1. Added monotonic request sequencing `seq` to `EditSession` and reducer actions (`edit-open`, `edit-opened`). Stale read completions with older sequence numbers are discarded.
+    2. `EditorPanel.tsx` directly renders `.qe-loading` while `ed.status === "loading"`, mounting `LazyCodeEditor` with `key={ed.relativePath}` only when document text is ready.
+    3. `CodeEditor.tsx` tracks document text and focus position with `valueRef` and `focusRef` so `build()` always creates `EditorState` with the actual file text and immediately focuses the inspected line.
+    4. `useAutoReveal.ts` no longer returns early on same-file selections, guaranteeing that re-clicking elements in the same file re-centers line focus and switches from `preview` to `split` view.
+- **Brand Inspection Overlay**:
+  - `packages/inspector-runtime/src/overlay.ts` redesigned to use RootRay glowing orange `#ff6b0c` (`border: 1.5px solid #ff6b0c`, glowing ray box shadow).
+  - Dark translucent chip with `backdrop-filter: blur(8px)`.
+  - Glowing orange ray indicator dot before component/tag name.
+  - High-contrast hierarchy: orange component name (`#ff9d5c`), muted path and line location (`#9aa4b8`).
+- **Unified Product Visual Language**:
+  - Centralized SVG icon system (`apps/desktop/src/components/icons.tsx`) replacing ad-hoc unicode glyphs (`×`, `⤢`, `◧`, `◨`, `▤`, `⟲`, `←`, `→`, `⟳`, `⌕`, `⧉`, `↗`, `▸`, `⌃`, `⌄`, `⌫`).
+  - Dark scrollbars (`scrollbar-color: #29313e transparent` and `::-webkit-scrollbar`).
+  - Clean neutral styling for workbench view tabs (`Preview` | `Code` | `Split`) and `Interact`; glowing RootRay orange badge for active `Inspect`.
+  - Inspector confidence badges with high-contrast distinct styles (`EXACT SOURCE`, `APPROXIMATE`, `COMPONENT`, `UNRESOLVED`).
+  - Active file row highlighting in Explorer (`background: rgba(255, 107, 12, 0.09)`, `inset 2px 0 var(--accent)`).
+  - Error boundary asset updated to canonical `/brand/error.png`.
+- **Quality Gates & Verification**:
+  - Rust: **213 passed** / 1 ignored (`cargo test`)
+  - Vitest: **204 passed** across all packages (`pnpm -r test`)
+  - Playwright E2E: **64 passed**
+  - Biome: 0 errors (`pnpm exec biome check .`)
+  - TypeScript: 0 errors across 10 workspace projects (`pnpm -r typecheck`)
+  - Installer smoke: **PASS** (`scripts/installer-smoke.ps1`)
+  - ClientFlow-CRM verification: `login-form.tsx` line 46 verified.
+
 ## Current Release
 **v0.2.0** — Universal Project Workspace — **published, 100%**
 

@@ -1,5 +1,6 @@
 import type { LogLine } from "@rootray/shared";
 import { useEffect, useRef } from "react";
+import { ChevronDownIcon, ChevronUpIcon, ClearIcon } from "../../components/icons";
 import { Splitter } from "../../components/Splitter";
 import { stripAnsi } from "../../lib/format";
 import { OUTPUT_MAX, OUTPUT_MIN } from "../../state/layout";
@@ -65,7 +66,7 @@ export function LogPanel({
             title="Expand output (Ctrl+J)"
             onClick={() => dispatch({ type: "layout-update", patch: { outputVisible: true } })}
           >
-            ⌃
+            <ChevronUpIcon />
           </button>
         </div>
       </section>
@@ -101,7 +102,7 @@ export function LogPanel({
           title="Clear logs"
           onClick={() => dispatch({ type: "logs-cleared" })}
         >
-          ⌫
+          <ClearIcon />
         </button>
         <button
           type="button"
@@ -110,7 +111,7 @@ export function LogPanel({
           title="Collapse output (Ctrl+J)"
           onClick={() => dispatch({ type: "layout-update", patch: { outputVisible: false } })}
         >
-          ⌄
+          <ChevronDownIcon />
         </button>
       </div>
       <div className="logbox" ref={boxRef} onScroll={onScroll}>

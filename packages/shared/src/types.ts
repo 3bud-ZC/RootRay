@@ -450,6 +450,8 @@ export interface EditSession {
   selectedColumn: number | null;
   canRevert: boolean;
   error: CoreErrorPayload | null;
+  /** Monotonic request sequence number — newer selections always win. */
+  seq?: number | undefined;
 }
 
 // --- project navigation -------------------------------------------------------

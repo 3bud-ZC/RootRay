@@ -6,6 +6,7 @@
 
 import { errorMessage } from "@rootray/shared";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { CloseIcon } from "../../components/icons";
 import { getSettings, openSourceLocation } from "../../lib/ipc";
 import { useStore } from "../../state/store";
 import {
@@ -111,7 +112,7 @@ export function EditorPanel() {
           aria-label="Close editor"
           onClick={() => requestCloseEditor(dispatch)}
         >
-          ×
+          <CloseIcon />
         </button>
       </div>
 
@@ -152,9 +153,12 @@ export function EditorPanel() {
           <DiffView oldText={ed.diskContent} newText={ed.currentContent} />
         ) : state.conflictDiskContent !== null && inConflict ? (
           <DiffView oldText={ed.currentContent} newText={state.conflictDiskContent} mineFirst />
+        ) : ed.status === "loading" ? (
+          <div className="qe-loading muted">Loading editor…</div>
         ) : (
           <Suspense fallback={<div className="qe-loading muted">Loading editor…</div>}>
             <LazyCodeEditor
+              key={ed.relativePath}
               value={ed.currentContent}
               relativePath={ed.relativePath}
               focusLine={ed.selectedLine}
