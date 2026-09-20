@@ -29,9 +29,14 @@
 - `RootRay_0.3.0_x64-setup.exe` — **4,036,371 bytes**, SHA-256
   `D841E659599C01F48FADC8D9100694A567404E7F5B6CE0699467C27CF2C26350`
 
-- **Current main SHA:** `8bba6dfbac53652743728fca8b6dbba33291b0b3`
-- **CI:** run `35525297892` — **SUCCESS**
+- **Product candidate source SHA:** `8bba6dfbac53652743728fca8b6dbba33291b0b3`
+  (last product-code candidate commit)
+- **Product candidate CI:** run `35525297892` — **SUCCESS**
 - **Last Updated:** 2026-09-20
+
+> Documentation-only commits may exist above the product candidate
+> source SHA; the current repository tip must be read from Git rather
+> than hard-coded into STATUS.md.
 
 ---
 
