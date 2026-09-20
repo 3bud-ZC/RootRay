@@ -225,26 +225,25 @@ test("home view passes axe serious/critical checks", async ({ page }) => {
 
 // ---- brand layer ---------------------------------------------------------
 
-test("brand: header mark and home lockup render real images", async ({ page }) => {
+test("brand: home lockup renders and header has no interior icon", async ({ page }) => {
   await stubTauri(page, { canned: CANNED, runtime: RUNTIME_WITH_PROJECT });
   await page.goto(URL);
   await expect(page.locator("text=Open a workspace")).toBeVisible();
-  for (const sel of [".brand-mark", ".home-lockup"]) {
-    const img = page.locator(sel);
-    await expect(img).toBeVisible();
-    const w = await img.evaluate((el: HTMLImageElement) => el.naturalWidth);
-    expect(w, `${sel} failed to load`).toBeGreaterThan(0);
-  }
+  const lockup = page.locator(".home-lockup");
+  await expect(lockup).toBeVisible();
+  const w = await lockup.evaluate((el: HTMLImageElement) => el.naturalWidth);
+  expect(w, ".home-lockup failed to load").toBeGreaterThan(0);
+  await expect(page.locator(".brand-mark")).toHaveCount(0);
+  await expect(page.locator(".brand-name")).toHaveText("RootRay");
 });
 
-test("brand: header uses the robot head glyph at readable size", async ({ page }) => {
+test("brand: compact header uses readable RootRay text", async ({ page }) => {
   await stubTauri(page, { canned: CANNED, runtime: RUNTIME_WITH_PROJECT });
   await page.goto(URL);
-  const mark = page.locator(".brand-mark");
-  await expect(mark).toHaveAttribute("src", "/brand/mascot-head.png");
-  const w = await mark.evaluate((el: HTMLImageElement) => el.getBoundingClientRect().width);
-  expect(w).toBeGreaterThanOrEqual(22);
-  expect(w).toBeLessThanOrEqual(26);
+  await expect(page.locator(".brand-mark")).toHaveCount(0);
+  const name = page.locator(".brand-name");
+  await expect(name).toBeVisible();
+  await expect(name.locator(".brand-name-accent")).toHaveText("Ray");
 });
 
 test("brand: preview waiting state shows the mascot at readable size", async ({ page }) => {

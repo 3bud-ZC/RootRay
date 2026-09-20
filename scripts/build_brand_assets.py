@@ -23,7 +23,7 @@ PUBLIC_BRAND = ROOT / "apps" / "desktop" / "public" / "brand"
 ICONS = ROOT / "apps" / "desktop" / "src-tauri" / "icons"
 
 WORDMARK_SOURCE = SOURCE / "wordmark-ui-to-source.png"
-ICON_SOURCE = SOURCE / "app-icon-master.png"
+OFFICIAL_APP_ICON_SOURCE = SOURCE / "official-app-icon.png"
 HERO_SOURCE = SOURCE / "wide-hero-source.png"
 SPLASH_SOURCE = SOURCE / "splash-lockup-source.png"
 LOCKUP_SOURCE = SOURCE / "lockup-source.png"
@@ -136,7 +136,7 @@ def main() -> None:
     ICONS.mkdir(parents=True, exist_ok=True)
 
     wordmark_src = Image.open(WORDMARK_SOURCE).convert("RGBA")
-    icon_src = Image.open(ICON_SOURCE).convert("RGBA")
+    official_icon_src = Image.open(OFFICIAL_APP_ICON_SOURCE).convert("RGBA")
     hero_src = Image.open(HERO_SOURCE).convert("RGBA")
     splash_src = Image.open(SPLASH_SOURCE).convert("RGBA")
     lockup_src = Image.open(LOCKUP_SOURCE).convert("RGBA")
@@ -173,29 +173,21 @@ def main() -> None:
     save_png(loading, BRAND / "rootray-loading-strip.png")
     save_png(banner, BRAND / "rootray-small-banner.png")
 
-    # App icons: use the explicit app-icon row in the brand board for Windows
-    # frames. The large frames use the board's tighter 256px composition so
-    # Start Menu / Recent / taskbar surfaces read as the robot, not a tiny
-    # robot floating inside an extra-padded tile. No hand-authored pixel maps
-    # and no orange-ring substitute.
+    # App icons: use the user-approved official app icon image directly for
+    # Windows frames. No hand-authored pixel maps, ring substitute, or board
+    # crop may replace this source.
     frames: dict[int, Image.Image] = {}
-    windows_icon_source = crop(board_src, CROPS["board_icon_256"])
-    for size, key in ((16, "board_icon_16"), (24, "board_icon_32"), (32, "board_icon_32"), (64, "board_icon_64"), (128, "board_icon_128")):
-        frames[size] = square_fit(crop(board_src, CROPS[key]), size, Image.Resampling.NEAREST)
-    frames[48] = square_fit(windows_icon_source, 48, Image.Resampling.NEAREST)
-    frames[256] = square_fit(windows_icon_source, 256, Image.Resampling.NEAREST)
+    for size in (16, 24, 32, 48, 64, 128, 256):
+        frames[size] = square_fit(official_icon_src, size, Image.Resampling.LANCZOS)
 
-    for size in (16, 24, 32, 64, 128, 256):
+    for size in (16, 24, 32, 48, 64, 128, 256):
         save_png(frames[size], BRAND / f"icon-{size}.png")
 
     frames[256].save(ICONS / "icon.ico", format="ICO", append_images=[frames[s] for s in (16, 24, 32, 48, 64, 128)])
     save_png(frames[32], ICONS / "32x32.png")
     save_png(frames[128], ICONS / "128x128.png")
     save_png(frames[256], ICONS / "128x128@2x.png")
-    save_png(square_fit(windows_icon_source, 512, Image.Resampling.NEAREST), ICONS / "icon.png")
-
-    # Header mark is a board-derived small app icon, not a synthetic glyph.
-    save_png(frames[32], PUBLIC_BRAND / "mascot-head.png")
+    save_png(square_fit(official_icon_src, 512, Image.Resampling.LANCZOS), ICONS / "icon.png")
 
     # GitHub social preview uses the supplied wide artwork directly.
     social = hero.resize((1280, 548), Image.Resampling.LANCZOS)

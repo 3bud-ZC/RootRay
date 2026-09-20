@@ -93,9 +93,9 @@ function decodePng(buf: Buffer): { width: number; height: number; px: Buffer } {
   return { width, height, px };
 }
 
-/** Classify frame pixels: robot = white head + black face + orange marks. */
-function frameColorStats(frame: IcoFrame) {
-  const { px } = decodePng(frame.data);
+/** Classify frame pixels: robot = light head + dark face + orange marks. */
+function colorStats(buf: Buffer) {
+  const { px } = decodePng(buf);
   const n = px.length / 4;
   let white = 0;
   let dark = 0;
@@ -108,7 +108,7 @@ function frameColorStats(frame: IcoFrame) {
     const a = px[i * 4 + 3] ?? 0;
     if (a < 40) continue;
     opaque++;
-    if (r > 180 && g > 180 && b > 180) white++;
+    if (r > 110 && g > 110 && b > 110 && Math.max(r, g, b) - Math.min(r, g, b) < 90) white++;
     else if (r < 45 && g < 45 && b < 55) dark++;
     else if (r > 170 && g > 50 && g < 160 && b < 70) orange++;
   }
@@ -125,40 +125,59 @@ describe("brand assets", () => {
     },
   );
 
-  it("public/brand/mascot-head.png is a real board-derived PNG", () => {
-    const buf = pngOk("public/brand/mascot-head.png");
-    expect(buf.length).toBeGreaterThan(100);
-    expect(buf.length).toBeLessThan(64 * 1024);
+  it("official app icon source is square, transparent-edged robot artwork", () => {
+    const buf = pngOk("../../docs/brand/source/official-app-icon.png");
+    expect(buf.length).toBeGreaterThan(256 * 1024);
+    expect(buf.length).toBeLessThan(2 * 1024 * 1024);
+    const source = decodePng(buf);
+    expect(source.width).toBe(source.height);
+    expect(source.width).toBeGreaterThanOrEqual(512);
+    expect(source.px[3], "source top-left should be transparent").toBe(0);
+    const s = colorStats(buf);
+    expect(s.white, "source has no light robot head").toBeGreaterThan(10_000);
+    expect(s.dark, "source has no dark robot face").toBeGreaterThan(10_000);
+    expect(s.orange, "source has no orange eyes/accent").toBeGreaterThan(1_000);
+    expect(s.orange / s.opaque, "source reads as ring-only art").toBeLessThan(0.6);
   });
 
-  it.each(["icon-16.png", "icon-24.png", "icon-32.png"])(
-    "docs/brand/%s small-icon master exists",
-    (name) => {
-      pngOk(`../../docs/brand/${name}`);
+  it.each([16, 24, 32, 48, 64, 128, 256])(
+    "docs/brand/icon-%d.png is a generated official-icon frame",
+    (size) => {
+      const buf = pngOk(`../../docs/brand/icon-${size}.png`);
+      const decoded = decodePng(buf);
+      expect(decoded.width).toBe(size);
+      expect(decoded.height).toBe(size);
     },
   );
 
-  it("icon.ico is a multi-size ICO with all required frames", () => {
+  it("every ICO frame matches the generated official-icon PNG", () => {
     const frames = icoFrames("src-tauri/icons/icon.ico");
-    expect(frames.length).toBeGreaterThanOrEqual(7);
-    const sizes = frames.map((f) => f.size);
-    for (const s of [16, 24, 32, 48, 64, 128, 256]) {
-      expect(sizes, `missing ${s}px frame`).toContain(s);
+    for (const size of [16, 24, 32, 48, 64, 128, 256]) {
+      const frame = frames.find((candidate) => candidate.size === size);
+      expect(frame, `no ${size}px frame`).toBeTruthy();
+      const expected = decodePng(pngOk(`../../docs/brand/icon-${size}.png`));
+      const actual = decodePng((frame as IcoFrame).data);
+      expect(actual.width).toBe(expected.width);
+      expect(actual.height).toBe(expected.height);
+      expect(
+        Buffer.compare(actual.px, expected.px),
+        `${size}px ICO frame differs from official source output`,
+      ).toBe(0);
     }
   });
 
   it.each([16, 24, 32])(
-    "icon.ico %dpx frame is the ROBOT — white head, black face, orange marks (not a ring)",
+    "icon.ico %dpx frame is the ROBOT — light head, dark face, orange marks (not a ring)",
     (size) => {
       const frame = icoFrames("src-tauri/icons/icon.ico").find((f) => f.size === size);
       expect(frame, `no ${size}px frame`).toBeTruthy();
-      const s = frameColorStats(frame as IcoFrame);
-      // The ring mark was ~100% orange on transparent. A robot icon must
-      // contain all three signature colors in meaningful amounts.
-      expect(s.white, `${size}px: no white head pixels`).toBeGreaterThan(8);
-      expect(s.dark, `${size}px: no black face pixels`).toBeGreaterThan(8);
+      const s = colorStats((frame as IcoFrame).data);
+      // The old ring-only mark was almost entirely orange on transparency.
+      // A robot icon must contain all three signature colors in meaningful amounts.
+      expect(s.white, `${size}px: no light head pixels`).toBeGreaterThan(8);
+      expect(s.dark, `${size}px: no dark face pixels`).toBeGreaterThan(8);
       expect(s.orange, `${size}px: no orange eye/antenna pixels`).toBeGreaterThan(2);
-      expect(s.orange / s.opaque, `${size}px: reads as ring mark`).toBeLessThan(0.6);
+      expect(s.orange / s.opaque, `${size}px: reads as ring-only mark`).toBeLessThan(0.6);
     },
   );
 });
@@ -167,8 +186,9 @@ describe("app header", () => {
   const app = readFileSync("src/app/App.tsx", "utf8");
   const projectView = readFileSync("src/features/projects/ProjectView.tsx", "utf8");
 
-  it("header mark uses the board-derived small app icon", () => {
-    expect(app).toContain("/brand/mascot-head.png");
+  it("compact app header does not embed an interior icon", () => {
+    expect(app).not.toContain("brand-mark");
+    expect(app).not.toContain("/brand/mascot-head.png");
   });
 
   it("compact app header uses readable product text instead of the tiny raster wordmark", () => {
@@ -187,6 +207,7 @@ describe("app header", () => {
 
 describe("brand generator", () => {
   const script = readFileSync("../../scripts/build_brand_assets.py", "utf8");
+  const tauriConfig = readFileSync("src-tauri/tauri.conf.json", "utf8");
 
   it("does not contain hand-authored robot pixel maps", () => {
     expect(script).not.toMatch(/ROBOT_(16|24|32)|ROBOT_MAPS|ICON_PAL/);
@@ -197,10 +218,16 @@ describe("brand generator", () => {
     expect(script).toContain("does not redraw");
   });
 
-  it("uses a tight board-derived robot crop for large Windows icon frames", () => {
-    expect(script).toContain("windows_icon_source");
-    expect(script).toContain('CROPS["board_icon_256"]');
+  it("uses the official app icon image for Windows icon frames", () => {
+    expect(script).toContain("OFFICIAL_APP_ICON_SOURCE");
+    expect(script).toContain("official-app-icon.png");
     expect(script).not.toContain("frames[256] = square_fit(icon_src");
+    expect(script).not.toContain("mascot-head.png");
+  });
+
+  it("configures the official ICO for NSIS installer and uninstaller icons", () => {
+    expect(tauriConfig).toContain('"installerIcon": "icons/icon.ico"');
+    expect(tauriConfig).toContain('"uninstallerIcon": "icons/icon.ico"');
   });
 });
 

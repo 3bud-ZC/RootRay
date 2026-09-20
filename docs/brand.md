@@ -20,7 +20,7 @@ the mascot, app icon, wordmark, lockup, hero, or UI-state illustrations.
 
 | File | Canonical role |
 |---|---|
-| `source/app-icon-master.png` | High-resolution app icon master |
+| `source/official-app-icon.png` | Official application icon master for Windows/Tauri surfaces |
 | `source/brand-board-source.png` | App icon sizes, loading frames, home/empty/success/error/header/toast references |
 | `source/wide-hero-source.png` | README hero and GitHub social preview source |
 | `source/splash-lockup-source.png` | Splash / loading lockup source |
@@ -29,7 +29,9 @@ the mascot, app icon, wordmark, lockup, hero, or UI-state illustrations.
 
 `scripts/build_brand_assets.py` is the only supported generator. It
 crops and resizes these files; it must not contain custom robot pixel
-maps or geometric substitutes.
+maps or geometric substitutes. The former `source/app-icon-master.png`
+is retained only as historical artwork and is not used for application
+icon generation.
 
 ## Production Assets
 
@@ -103,7 +105,7 @@ icon, uninstaller icon, or avatar.
 | Ready / success | `success.png` | 56-120px |
 | Error | `error.png` | 72-140px |
 | Preview waiting/loading | `mascot.png` in `BrandLoader` | 56-80px |
-| Header | `mascot-head.png` + `wordmark.png` | compact |
+| Header | readable `RootRay` text + canonical tagline | compact, no interior icon |
 | README hero / social preview | approved wide artwork | full width |
 
 ## Typography

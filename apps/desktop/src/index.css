@@ -107,15 +107,8 @@ body {
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
-}
-
-.brand-mark {
-  width: 22px;
-  height: 22px;
-  object-fit: contain;
-  image-rendering: pixelated;
 }
 
 .brand-name {

@@ -4,7 +4,7 @@
  *
  * Drives the REAL installed RootRay binary:
  *
- *   Home (lockup + header mark) → Settings/About → seed → analyze →
+ *   Home (lockup + text header) → Settings/About → seed → analyze →
  *   Run ClientFlow → embedded Preview workbench → Inspect → source
  *   beside preview → Preview Focus → Stop.
  *
@@ -120,23 +120,19 @@ async function main() {
     console.log("attached to installed app UI");
 
     await appPage.locator(".home-lockup").waitFor({ timeout: 15_000 });
-    assert.ok(await imgLoaded(appPage, ".brand-mark"), "header mascot failed to load");
     assert.ok(await imgLoaded(appPage, ".home-lockup"), "home lockup failed to load");
-    const markSrc = await appPage.locator(".brand-mark").getAttribute("src");
-    assert.match(
-      markSrc ?? "",
-      /mascot-head\.png$/,
-      `header should use head glyph, got ${markSrc}`,
+    assert.equal(
+      await appPage.locator(".brand-mark").count(),
+      0,
+      "header should not embed an icon",
     );
-    const markW = await appPage
-      .locator(".brand-mark")
-      .evaluate((el) => el.getBoundingClientRect().width);
-    assert.ok(markW >= 22 && markW <= 26, `header mark ${markW}px outside 22-26px band`);
+    assert.equal((await appPage.locator(".brand-name").innerText()).replace(/\s+/g, ""), "RootRay");
+    assert.equal(await appPage.locator(".brand-name-accent").innerText(), "Ray");
     const tag = await appPage.locator(".brand-tag").innerText();
     assert.equal(tag, "Point at the UI. Reach the source.");
     await shot(appPage, SHOTS, "01-home");
     copyFileSync(join(SHOTS, "01-home.png"), join(MEDIA, "home.png"));
-    console.log("  ok  branded home — lockup + header mark + tagline");
+    console.log("  ok  branded home — lockup + text header + tagline");
 
     // ---- Settings → About -----------------------------------------------------
     await appPage.locator('button[aria-label="Settings"]').click();

@@ -7,7 +7,7 @@
 - **Published:** NO
 - **Tagged:** NO
 - **Stable release:** `v0.2.0` (see **Current Release** below)
-- **Latest functional state:** Identity readability correction complete
+- **Latest functional state:** Official App Icon Correction complete
   on top of the Full Product Identity + Inspect-to-Code Reliability Pass
 - **Inspect-to-Code:** PASS
 - **Blank editor:** FIXED
@@ -18,7 +18,7 @@
 
 - Rust: **213 passed**
 - Ignored Rust: **1** — passes explicitly
-- Vitest: **204 passed**
+- Vitest: **211 passed**
 - Playwright: **64 passed**
 - TypeScript: **PASS**
 - Biome: **0 errors**
@@ -26,28 +26,47 @@
 
 ### Latest visual correction checks
 
-- Desktop Vitest: **94 passed** (`pnpm --filter @rootray/desktop test`)
-- Focused Playwright brand/a11y: **6 passed**
+- Desktop Vitest: **99 passed** (`pnpm --filter @rootray/desktop test`)
+- Focused Playwright brand/a11y: **64 passed**
+- Full Playwright regression: **64 passed**
 - TypeScript: **PASS** (`pnpm -r typecheck`)
+- Biome: **0 errors** (8 existing CSS specificity warnings)
 - Desktop production build: **PASS**
 - Tauri/NSIS build: **PASS**
 - Installer smoke: **PASS**
 - Installed brand verification: **PASS**
 
+### Official App Icon Correction
+
+- `docs/brand/source/official-app-icon.png` is the canonical source for
+  the Windows/Tauri application icon.
+- The previous application-icon source is superseded; no hand-authored
+  robot substitute or ring-only identity is used.
+- The in-app header image icon was removed. The RootRay wordmark/name
+  and `Point at the UI. Reach the source.` tagline remain.
+- Official icon frames were generated at **16, 24, 32, 48, 64, 128,
+  and 256px** and assembled into the Tauri/Windows ICO.
+- NSIS installer and uninstaller icons are explicitly configured to use
+  the generated official ICO.
+- Fresh installed verification: executable, title bar, taskbar, Start
+  Menu, native big/small window icons (Alt+Tab/title-bar surfaces),
+  installer, uninstaller, and Programs & Features all use the official
+  icon; the header has no interior image icon.
+
 ### Current development installer
 
-- `RootRay_0.3.0_x64-setup.exe` — **4,036,261 bytes**, SHA-256
-  `4824AA9FC373BBB2CBCF9DC3E732B89C18C7B2B195129CBF8B4E6548B64D4EFD`
+- `RootRay_0.3.0_x64-setup.exe` — **4,160,518 bytes**, SHA-256
+  `3651CA8FDD758618A2F162524A0F324B2E23BA12D59B1A89633F03B430F96A3D`
 
-- **Product candidate source SHA:** current `main` tip; read with
-  `git rev-parse HEAD` after the final candidate commit.
+- **Product candidate source identity:** read the final product-code
+  commit with `git rev-parse HEAD` after the candidate commit.
 - **Product candidate CI:** latest pushed candidate CI is reported with
   the final acceptance result for that exact SHA.
 - **Last Updated:** 2026-09-20
 
-> Documentation-only commits may exist above the product candidate
-> source SHA; the current repository tip must be read from Git rather
-> than hard-coded into STATUS.md.
+> STATUS.md does not hard-code the mutable repository tip. Read the
+> product candidate source SHA and current repository tip from Git;
+> later documentation-only commits may exist above the product commit.
 
 ---
 
@@ -390,7 +409,8 @@ results are the current test counts in **Current Development** above.)
   - Inspector confidence badges with high-contrast distinct styles (`EXACT SOURCE`, `APPROXIMATE`, `COMPONENT`, `UNRESOLVED`).
   - Active file row highlighting in Explorer (`background: rgba(255, 107, 12, 0.09)`, `inset 2px 0 var(--accent)`).
   - Error boundary asset updated to canonical `/brand/error.png`.
-- **Quality Gates & Verification** (still the current counts):
+- **Quality Gates & Verification** (historical pass counts; current counts are
+  in **Current Development** above):
   - Rust: **213 passed** / 1 ignored (`cargo test`)
   - Vitest: **204 passed** across all packages (`pnpm -r test`)
   - Playwright E2E: **64 passed**
@@ -437,11 +457,11 @@ approved artwork.
   and executable icon verification. Screenshots live under
   `target/installed-verify-brand/`; selected real product screenshots
   were refreshed in `docs/media/`.
-- **Fresh installer:** `RootRay_0.3.0_x64-setup.exe` —
-  **4,036,371 bytes**, SHA-256
+- **Fresh installer (historical for this pass):**
+  `RootRay_0.3.0_x64-setup.exe` — **4,036,371 bytes**, SHA-256
   `D841E659599C01F48FADC8D9100694A567404E7F5B6CE0699467C27CF2C26350`.
-  (This artifact remains the current development installer — see
-  **Current Development** above.)
+  This artifact was current for that pass and is superseded by the
+  Official App Icon Correction installer in **Current Development**.
 - **Verification:** `cargo test -p rootray-core` — 213 passed, 1 ignored;
   `cargo test -p rootray-core --test suite -- --ignored` — 1 passed;
   `pnpm -r test` — all workspace tests passed including desktop Vitest
@@ -646,9 +666,9 @@ artwork only and no longer appears in any application-icon context.
 
 > **Superseded counts/artifacts:** Vitest **191** and Playwright **62**
 > below are historical milestones superseded by the current Vitest
-> **204** / Playwright **64**. The 3,271,995-byte installer
+> **211** / Playwright **64**. The 3,271,995-byte installer
 > (`31dab9fe…`) and earlier binaries below are superseded by the
-> current 4,036,371-byte candidate (`D841E659…`) — see **Current
+> current 4,160,518-byte candidate (`3651CA8F…`) — see **Current
 > Development**.
 
 **Acceptance caveat (resolved):** the earlier rounds below ran against a
