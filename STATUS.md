@@ -1,37 +1,39 @@
 # RootRay Status
 
-## In Development — v0.3.0-dev (UNPUBLISHED, UNTAGGED)
+## Current Development
 
-### Full Product Identity + Inspect-to-Code Reliability Pass
+- **Version:** `v0.3.0-dev`
+- **State:** Manual Acceptance Candidate
+- **Published:** NO
+- **Tagged:** NO
+- **Stable release:** `v0.2.0` (see **Current Release** below)
+- **Latest functional state:** Full Product Identity + Inspect-to-Code
+  Reliability Pass complete
+- **Inspect-to-Code:** PASS
+- **Blank editor:** FIXED
+- **Rapid selection stale-read protection:** PASS
+- **Same-file reselection:** PASS
 
-- **Stable Release Baseline**: v0.2.0 remains immutable and published. v0.3.0 remains UNPUBLISHED and UNTAGGED.
-- **Inspect-to-Code Reliability**:
-  - **Root Cause Diagnosed**: In `CodeEditor.tsx`, language syntax highlighting extensions load asynchronously. The initial editor build closed over the empty string `""` from when `ed.status === "loading"`. When `build()` completed, it initialized CodeMirror `EditorState` with `doc: ""` and dropped line focus. Rapid selection also lacked monotonic sequence numbers, allowing stale read responses to overwrite newer selections. In `useAutoReveal.ts`, same-file reselection returned early before switching `workspaceTab` to `"split"`.
-  - **Pipeline Fix**:
-    1. Added monotonic request sequencing `seq` to `EditSession` and reducer actions (`edit-open`, `edit-opened`). Stale read completions with older sequence numbers are discarded.
-    2. `EditorPanel.tsx` directly renders `.qe-loading` while `ed.status === "loading"`, mounting `LazyCodeEditor` with `key={ed.relativePath}` only when document text is ready.
-    3. `CodeEditor.tsx` tracks document text and focus position with `valueRef` and `focusRef` so `build()` always creates `EditorState` with the actual file text and immediately focuses the inspected line.
-    4. `useAutoReveal.ts` no longer returns early on same-file selections, guaranteeing that re-clicking elements in the same file re-centers line focus and switches from `preview` to `split` view.
-- **Brand Inspection Overlay**:
-  - `packages/inspector-runtime/src/overlay.ts` redesigned to use RootRay glowing orange `#ff6b0c` (`border: 1.5px solid #ff6b0c`, glowing ray box shadow).
-  - Dark translucent chip with `backdrop-filter: blur(8px)`.
-  - Glowing orange ray indicator dot before component/tag name.
-  - High-contrast hierarchy: orange component name (`#ff9d5c`), muted path and line location (`#9aa4b8`).
-- **Unified Product Visual Language**:
-  - Centralized SVG icon system (`apps/desktop/src/components/icons.tsx`) replacing ad-hoc unicode glyphs (`×`, `⤢`, `◧`, `◨`, `▤`, `⟲`, `←`, `→`, `⟳`, `⌕`, `⧉`, `↗`, `▸`, `⌃`, `⌄`, `⌫`).
-  - Dark scrollbars now use the centralized brand border token (`var(--rr-border)`) rather than a hard-coded legacy gray.
-  - Clean neutral styling for workbench view tabs (`Preview` | `Code` | `Split`) and `Interact`; glowing RootRay orange badge for active `Inspect`.
-  - Inspector confidence badges with high-contrast distinct styles (`EXACT SOURCE`, `APPROXIMATE`, `COMPONENT`, `UNRESOLVED`).
-  - Active file row highlighting in Explorer (`background: rgba(255, 107, 12, 0.09)`, `inset 2px 0 var(--accent)`).
-  - Error boundary asset updated to canonical `/brand/error.png`.
-- **Quality Gates & Verification**:
-  - Rust: **213 passed** / 1 ignored (`cargo test`)
-  - Vitest: **204 passed** across all packages (`pnpm -r test`)
-  - Playwright E2E: **64 passed**
-  - Biome: 0 errors (`pnpm exec biome check .`)
-  - TypeScript: 0 errors across 10 workspace projects (`pnpm -r typecheck`)
-  - Installer smoke: **PASS** (`scripts/installer-smoke.ps1`)
-  - ClientFlow-CRM verification: `login-form.tsx` line 46 verified.
+### Current tests
+
+- Rust: **213 passed**
+- Ignored Rust: **1** — passes explicitly
+- Vitest: **204 passed**
+- Playwright: **64 passed**
+- TypeScript: **PASS**
+- Biome: **0 errors**
+- Installer smoke: **PASS**
+
+### Current development installer
+
+- `RootRay_0.3.0_x64-setup.exe` — **4,036,371 bytes**, SHA-256
+  `D841E659599C01F48FADC8D9100694A567404E7F5B6CE0699467C27CF2C26350`
+
+- **Current main SHA:** `8bba6dfbac53652743728fca8b6dbba33291b0b3`
+- **CI:** run `35525297892` — **SUCCESS**
+- **Last Updated:** 2026-09-20
+
+---
 
 ## Current Release
 **v0.2.0** — Universal Project Workspace — **published, 100%**
@@ -330,9 +332,58 @@ Re-scanned this cycle with `cargo run -p rootray-core --example scan`:
 
 ---
 
-## In development — v0.3.0 (unpublished, not tagged)
+## v0.3 Development History
 
-### Visual Identity Reconstruction from Approved Artwork — 2026-09-20
+> **Everything in this section is historical v0.3 narrative** — each
+> entry records what was true at the time of that pass and is preserved
+> for audit. The single authoritative current candidate — version,
+> state, test counts, installer and SHA-256 — is **Current
+> Development** above. Where figures below differ (earlier counts such
+> as Vitest 191 / Playwright 62, earlier installers and checksums), they
+> are **superseded**.
+>
+> **Canonical brand rule (current):** brand assets derive from the
+> user-approved artwork under `docs/brand/source/` via
+> `scripts/build_brand_assets.py`. Historical references below to
+> hand-authored small robot maps, invented icon variants and the
+> ring-mark fallback describe superseded implementations, not current
+> implementation guidance.
+
+### Historical — Full Product Identity + Inspect-to-Code Reliability Pass
+
+(Latest completed pass — produced the current candidate; its gate
+results are the current test counts in **Current Development** above.)
+
+- **Stable Release Baseline**: v0.2.0 remains immutable and published. v0.3.0 remains UNPUBLISHED and UNTAGGED.
+- **Inspect-to-Code Reliability**:
+  - **Root Cause Diagnosed**: In `CodeEditor.tsx`, language syntax highlighting extensions load asynchronously. The initial editor build closed over the empty string `""` from when `ed.status === "loading"`. When `build()` completed, it initialized CodeMirror `EditorState` with `doc: ""` and dropped line focus. Rapid selection also lacked monotonic sequence numbers, allowing stale read responses to overwrite newer selections. In `useAutoReveal.ts`, same-file reselection returned early before switching `workspaceTab` to `"split"`.
+  - **Pipeline Fix**:
+    1. Added monotonic request sequencing `seq` to `EditSession` and reducer actions (`edit-open`, `edit-opened`). Stale read completions with older sequence numbers are discarded.
+    2. `EditorPanel.tsx` directly renders `.qe-loading` while `ed.status === "loading"`, mounting `LazyCodeEditor` with `key={ed.relativePath}` only when document text is ready.
+    3. `CodeEditor.tsx` tracks document text and focus position with `valueRef` and `focusRef` so `build()` always creates `EditorState` with the actual file text and immediately focuses the inspected line.
+    4. `useAutoReveal.ts` no longer returns early on same-file selections, guaranteeing that re-clicking elements in the same file re-centers line focus and switches from `preview` to `split` view.
+- **Brand Inspection Overlay**:
+  - `packages/inspector-runtime/src/overlay.ts` redesigned to use RootRay glowing orange `#ff6b0c` (`border: 1.5px solid #ff6b0c`, glowing ray box shadow).
+  - Dark translucent chip with `backdrop-filter: blur(8px)`.
+  - Glowing orange ray indicator dot before component/tag name.
+  - High-contrast hierarchy: orange component name (`#ff9d5c`), muted path and line location (`#9aa4b8`).
+- **Unified Product Visual Language**:
+  - Centralized SVG icon system (`apps/desktop/src/components/icons.tsx`) replacing ad-hoc unicode glyphs (`×`, `⤢`, `◧`, `◨`, `▤`, `⟲`, `←`, `→`, `⟳`, `⌕`, `⧉`, `↗`, `▸`, `⌃`, `⌄`, `⌫`).
+  - Dark scrollbars now use the centralized brand border token (`var(--rr-border)`) rather than a hard-coded legacy gray.
+  - Clean neutral styling for workbench view tabs (`Preview` | `Code` | `Split`) and `Interact`; glowing RootRay orange badge for active `Inspect`.
+  - Inspector confidence badges with high-contrast distinct styles (`EXACT SOURCE`, `APPROXIMATE`, `COMPONENT`, `UNRESOLVED`).
+  - Active file row highlighting in Explorer (`background: rgba(255, 107, 12, 0.09)`, `inset 2px 0 var(--accent)`).
+  - Error boundary asset updated to canonical `/brand/error.png`.
+- **Quality Gates & Verification** (still the current counts):
+  - Rust: **213 passed** / 1 ignored (`cargo test`)
+  - Vitest: **204 passed** across all packages (`pnpm -r test`)
+  - Playwright E2E: **64 passed**
+  - Biome: 0 errors (`pnpm exec biome check .`)
+  - TypeScript: 0 errors across 10 workspace projects (`pnpm -r typecheck`)
+  - Installer smoke: **PASS** (`scripts/installer-smoke.ps1`)
+  - ClientFlow-CRM verification: `login-form.tsx` line 46 verified.
+
+### Historical — Approved Artwork Reconstruction — 2026-09-20
 
 This pass corrects the previous brand implementation that had
 reinterpreted RootRay's identity instead of deriving it from the supplied
@@ -373,6 +424,8 @@ approved artwork.
 - **Fresh installer:** `RootRay_0.3.0_x64-setup.exe` —
   **4,036,371 bytes**, SHA-256
   `D841E659599C01F48FADC8D9100694A567404E7F5B6CE0699467C27CF2C26350`.
+  (This artifact remains the current development installer — see
+  **Current Development** above.)
 - **Verification:** `cargo test -p rootray-core` — 213 passed, 1 ignored;
   `cargo test -p rootray-core --test suite -- --ignored` — 1 passed;
   `pnpm -r test` — all workspace tests passed including desktop Vitest
@@ -388,6 +441,8 @@ approved artwork.
 
 **v0.3.0 remains unpublished and untagged.**
 
+### Historical — Integrated Browser Workbench
+
 **Integrated browser workbench.** The project now runs *inside* RootRay:
 Run → the dev-server URL opens in an embedded WebView2 child surface →
 normal app interaction → Inspect → click an element → source opens
@@ -395,7 +450,7 @@ beside the preview → edit + save → HMR/Fast Refresh applies in place →
 stop tears the surface down with the process tree. External browser
 opening remains an explicit fallback action, never the default.
 
-### Architecture
+#### Architecture (historical)
 
 - **Native child webview** — a second WebView2 (`project-preview`)
   parented to the main window, created via `Window::add_child` (Tauri
@@ -417,6 +472,9 @@ opening remains an explicit fallback action, never the default.
   auto-reveal the mapped source beside the preview; Ctrl+Shift+C and
   Escape toggle Inspect from *inside* the preview (runtime keydown);
   canvas/runtime-created DOM stays honestly source-unresolved.
+
+### Historical — Layout and Lifecycle Pass
+
 - **Resizable, collapsible workbench** — Explorer and Inspector panes
   collapse to the rail (Ctrl+B) and drag-resize; the Output console
   collapses to a bar and drags vertically (Ctrl+J); the preview/code
@@ -444,7 +502,7 @@ opening remains an explicit fallback action, never the default.
 - **Settings** — `openPreviewAutomatically` (default on) migrates the
   legacy `openBrowserAutomatically` value when unset.
 
-### Installed-app fixes found by golden-path verification
+#### Installed-app fixes found by golden-path verification (historical)
 
 - **`preview_create` must be `async`** — synchronous commands run inside
   WebView2's IPC dispatch, where `add_child`'s controller creation never
@@ -464,7 +522,13 @@ opening remains an explicit fallback action, never the default.
   rebuilt (`pnpm -r build`) before bundling; `build.rs` stages dist
   outputs into `inspector-assets/` automatically.
 
-### Brand identity & open-source readiness
+### Historical — Brand Integration and Open-Source Readiness
+
+> **Partially superseded:** the "purpose-built pixel variants" and the
+> asset-pipeline outputs described below were later replaced by
+> crops/resizes of the user-approved artwork under
+> `docs/brand/source/` — see "Historical — Approved Artwork
+> Reconstruction" above for the canonical rule.
 
 The supplied pixel-art robot mascot and identity artwork are now the
 product brand — applied to the app shell and docs while the workbench
@@ -477,7 +541,7 @@ itself stays a dense, professional developer tool.
   rendered entirely from the robot — purpose-built pixel variants for
   16/24/32px, full mascot from 48px up — plus a 1280×640 social
   preview. (The earlier ring-mark small-icon fallback was rejected and
-  removed — see "Manual brand correction pass".)
+  removed — see "Superseded — Manual Brand Correction".)
 - **Centralized palette** — brand tokens in `index.css`: accent
   `#ff6b0c` sampled from the artwork, ember/glow variables, cool
   blue-gray panel borders. Semantic status tints kept; transient states
@@ -501,7 +565,14 @@ itself stays a dense, professional developer tool.
   actually visible (DOM screenshots blank it); DPI-aware sizing fixed
   a clipped right edge on scaled displays.
 
-### Manual brand correction pass
+### Superseded — Manual Brand Correction
+
+> **Superseded** by the Approved Artwork Reconstruction pass: the
+> hand-authored small robot maps, the ring-mark references and the
+> 3,266,142-byte installer below are historical record, not current
+> implementation. Canonical rule: brand assets derive from
+> `docs/brand/source/`; current installer is in **Current
+> Development**.
 
 Manual feedback on the installed build rejected the previous icon
 decision: the Windows title bar and taskbar showed the orange ring
@@ -555,7 +626,14 @@ artwork only and no longer appears in any application-icon context.
   · `scripts/installer-smoke.ps1` PASS · `installed-verify-brand.mjs`
   PASS end-to-end on the installed build.
 
-### v0.3.0 verification so far
+### Historical — Verification and Installer Acceptance
+
+> **Superseded counts/artifacts:** Vitest **191** and Playwright **62**
+> below are historical milestones superseded by the current Vitest
+> **204** / Playwright **64**. The 3,271,995-byte installer
+> (`31dab9fe…`) and earlier binaries below are superseded by the
+> current 4,036,371-byte candidate (`D841E659…`) — see **Current
+> Development**.
 
 **Acceptance caveat (resolved):** the earlier rounds below ran against a
 *manually deployed* binary (the exe copied over the install dir) after
@@ -921,9 +999,9 @@ built the v0.1.0 installer from.
   were built from): `29b9b6751a12893a027a1db4ed956398946e675b`
 - **Post-release documentation SHA** (the v0.2.0 docs-finalization
   commit on `main`): `9a46534eaa78d9d77afe4d172e17097981d6e26b`
-- This STATUS-consistency correction lands as one further
-  documentation-only commit on `main` (tip above `9a46534e`); the
-  installer was NOT built from it and the `v0.2.0` tag is unchanged.
+- This STATUS-consolidation correction lands as one further
+  documentation-only commit on `main`; the installer was NOT built
+  from it and the `v0.2.0` tag is unchanged.
 
 ## Last Updated
-2026-09-19
+2026-09-20
