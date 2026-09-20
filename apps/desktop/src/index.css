@@ -112,16 +112,26 @@ body {
 }
 
 .brand-mark {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   object-fit: contain;
   image-rendering: pixelated;
 }
 
-.brand-wordmark {
-  width: 92px;
-  height: auto;
-  image-rendering: pixelated;
+.brand-name {
+  display: inline-flex;
+  align-items: baseline;
+  flex-shrink: 0;
+  color: var(--text);
+  font-weight: 650;
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.brand-name-accent {
+  color: var(--rr-orange-bright);
+  text-shadow: 0 0 10px var(--rr-orange-glow);
   flex-shrink: 0;
 }
 
@@ -582,20 +592,24 @@ body {
 .ready-title-row {
   display: flex;
   align-items: center;
-  gap: 12px;
   min-width: 0;
 }
 
-.ready-state-art {
-  width: 58px;
-  height: auto;
-  flex-shrink: 0;
-}
-
 .ready-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   font-weight: 600;
   margin-top: 1px;
+}
+
+.ready-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
 }
 
 .ready-facts {

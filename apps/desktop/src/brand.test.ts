@@ -165,14 +165,23 @@ describe("brand assets", () => {
 
 describe("app header", () => {
   const app = readFileSync("src/app/App.tsx", "utf8");
+  const projectView = readFileSync("src/features/projects/ProjectView.tsx", "utf8");
 
   it("header mark uses the board-derived small app icon", () => {
     expect(app).toContain("/brand/mascot-head.png");
   });
 
-  it("header wordmark uses the approved raster asset, not CSS-built text", () => {
-    expect(app).toContain("/brand/wordmark.png");
-    expect(app).not.toContain("brand-name-accent");
+  it("compact app header uses readable product text instead of the tiny raster wordmark", () => {
+    expect(app).not.toContain("/brand/wordmark.png");
+    expect(app).toContain("brand-name-accent");
+    expect(app).toContain("Root");
+    expect(app).toContain("Ray");
+  });
+
+  it("ready summary stays professional and does not embed mascot state thumbnails", () => {
+    expect(projectView).not.toContain("ready-state-art");
+    expect(projectView).not.toContain("/brand/success.png");
+    expect(projectView).not.toContain("/brand/error.png");
   });
 });
 
@@ -186,6 +195,12 @@ describe("brand generator", () => {
   it("documents the approved artwork boards as the source of truth", () => {
     expect(script).toContain("docs/brand/source/");
     expect(script).toContain("does not redraw");
+  });
+
+  it("uses a tight board-derived robot crop for large Windows icon frames", () => {
+    expect(script).toContain("windows_icon_source");
+    expect(script).toContain('CROPS["board_icon_256"]');
+    expect(script).not.toContain("frames[256] = square_fit(icon_src");
   });
 });
 

@@ -624,14 +624,10 @@ export function ProjectView() {
       <section className="project-card ready-summary">
         <div className="project-head">
           <div className="ready-title-row">
-            <img
-              className="ready-state-art brand-img"
-              src={runtime.error ? "/brand/error.png" : "/brand/success.png"}
-              alt=""
-            />
             <div>
               <h1 className="project-name">{projectDisplayName(workspace.name, workspace.root)}</h1>
               <div className={runtime.error ? "bad ready-status" : "ok ready-status"}>
+                <span className="ready-status-dot" aria-hidden="true" />
                 {runtime.error ? "Project needs attention" : "Project ready"}
               </div>
               <div className="project-path" title={workspace.root}>

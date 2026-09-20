@@ -7,8 +7,8 @@
 - **Published:** NO
 - **Tagged:** NO
 - **Stable release:** `v0.2.0` (see **Current Release** below)
-- **Latest functional state:** Full Product Identity + Inspect-to-Code
-  Reliability Pass complete
+- **Latest functional state:** Identity readability correction complete
+  on top of the Full Product Identity + Inspect-to-Code Reliability Pass
 - **Inspect-to-Code:** PASS
 - **Blank editor:** FIXED
 - **Rapid selection stale-read protection:** PASS
@@ -24,14 +24,25 @@
 - Biome: **0 errors**
 - Installer smoke: **PASS**
 
+### Latest visual correction checks
+
+- Desktop Vitest: **94 passed** (`pnpm --filter @rootray/desktop test`)
+- Focused Playwright brand/a11y: **6 passed**
+- TypeScript: **PASS** (`pnpm -r typecheck`)
+- Desktop production build: **PASS**
+- Tauri/NSIS build: **PASS**
+- Installer smoke: **PASS**
+- Installed brand verification: **PASS**
+
 ### Current development installer
 
-- `RootRay_0.3.0_x64-setup.exe` — **4,036,371 bytes**, SHA-256
-  `D841E659599C01F48FADC8D9100694A567404E7F5B6CE0699467C27CF2C26350`
+- `RootRay_0.3.0_x64-setup.exe` — **4,036,261 bytes**, SHA-256
+  `4824AA9FC373BBB2CBCF9DC3E732B89C18C7B2B195129CBF8B4E6548B64D4EFD`
 
-- **Product candidate source SHA:** `8bba6dfbac53652743728fca8b6dbba33291b0b3`
-  (last product-code candidate commit)
-- **Product candidate CI:** run `35525297892` — **SUCCESS**
+- **Product candidate source SHA:** current `main` tip; read with
+  `git rev-parse HEAD` after the final candidate commit.
+- **Product candidate CI:** latest pushed candidate CI is reported with
+  the final acceptance result for that exact SHA.
 - **Last Updated:** 2026-09-20
 
 > Documentation-only commits may exist above the product candidate

@@ -173,14 +173,17 @@ def main() -> None:
     save_png(loading, BRAND / "rootray-loading-strip.png")
     save_png(banner, BRAND / "rootray-small-banner.png")
 
-    # App icons: use the explicit app-icon row in the brand board at small
-    # sizes and the supplied high-resolution app icon for large Windows
-    # surfaces. No hand-authored pixel maps and no orange-ring substitute.
+    # App icons: use the explicit app-icon row in the brand board for Windows
+    # frames. The large frames use the board's tighter 256px composition so
+    # Start Menu / Recent / taskbar surfaces read as the robot, not a tiny
+    # robot floating inside an extra-padded tile. No hand-authored pixel maps
+    # and no orange-ring substitute.
     frames: dict[int, Image.Image] = {}
+    windows_icon_source = crop(board_src, CROPS["board_icon_256"])
     for size, key in ((16, "board_icon_16"), (24, "board_icon_32"), (32, "board_icon_32"), (64, "board_icon_64"), (128, "board_icon_128")):
         frames[size] = square_fit(crop(board_src, CROPS[key]), size, Image.Resampling.NEAREST)
-    frames[48] = square_fit(icon_src, 48, Image.Resampling.NEAREST)
-    frames[256] = square_fit(icon_src, 256, Image.Resampling.NEAREST)
+    frames[48] = square_fit(windows_icon_source, 48, Image.Resampling.NEAREST)
+    frames[256] = square_fit(windows_icon_source, 256, Image.Resampling.NEAREST)
 
     for size in (16, 24, 32, 64, 128, 256):
         save_png(frames[size], BRAND / f"icon-{size}.png")
@@ -189,7 +192,7 @@ def main() -> None:
     save_png(frames[32], ICONS / "32x32.png")
     save_png(frames[128], ICONS / "128x128.png")
     save_png(frames[256], ICONS / "128x128@2x.png")
-    save_png(square_fit(icon_src, 512, Image.Resampling.NEAREST), ICONS / "icon.png")
+    save_png(square_fit(windows_icon_source, 512, Image.Resampling.NEAREST), ICONS / "icon.png")
 
     # Header mark is a board-derived small app icon, not a synthetic glyph.
     save_png(frames[32], PUBLIC_BRAND / "mascot-head.png")
