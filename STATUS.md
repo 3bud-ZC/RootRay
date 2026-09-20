@@ -19,7 +19,7 @@
   - High-contrast hierarchy: orange component name (`#ff9d5c`), muted path and line location (`#9aa4b8`).
 - **Unified Product Visual Language**:
   - Centralized SVG icon system (`apps/desktop/src/components/icons.tsx`) replacing ad-hoc unicode glyphs (`×`, `⤢`, `◧`, `◨`, `▤`, `⟲`, `←`, `→`, `⟳`, `⌕`, `⧉`, `↗`, `▸`, `⌃`, `⌄`, `⌫`).
-  - Dark scrollbars (`scrollbar-color: #29313e transparent` and `::-webkit-scrollbar`).
+  - Dark scrollbars now use the centralized brand border token (`var(--rr-border)`) rather than a hard-coded legacy gray.
   - Clean neutral styling for workbench view tabs (`Preview` | `Code` | `Split`) and `Interact`; glowing RootRay orange badge for active `Inspect`.
   - Inspector confidence badges with high-contrast distinct styles (`EXACT SOURCE`, `APPROXIMATE`, `COMPONENT`, `UNRESOLVED`).
   - Active file row highlighting in Explorer (`background: rgba(255, 107, 12, 0.09)`, `inset 2px 0 var(--accent)`).
@@ -332,7 +332,7 @@ Re-scanned this cycle with `cargo run -p rootray-core --example scan`:
 
 ## In development — v0.3.0 (unpublished, not tagged)
 
-### Visual Identity Reconstruction from Approved Artwork — 2026-09-19
+### Visual Identity Reconstruction from Approved Artwork — 2026-09-20
 
 This pass corrects the previous brand implementation that had
 reinterpreted RootRay's identity instead of deriving it from the supplied
@@ -371,12 +371,14 @@ approved artwork.
   `target/installed-verify-brand/`; selected real product screenshots
   were refreshed in `docs/media/`.
 - **Fresh installer:** `RootRay_0.3.0_x64-setup.exe` —
-  **4,033,598 bytes**, SHA-256
-  `D6EEFB50258F29FB8F173DD08C0C6DE795FBBB4EAA9FD068FF39D1C3001511A9`.
+  **4,036,371 bytes**, SHA-256
+  `D841E659599C01F48FADC8D9100694A567404E7F5B6CE0699467C27CF2C26350`.
 - **Verification:** `cargo test -p rootray-core` — 213 passed, 1 ignored;
   `cargo test -p rootray-core --test suite -- --ignored` — 1 passed;
   `pnpm -r test` — all workspace tests passed including desktop Vitest
-  90, package Vitest suites, and Playwright 64; `pnpm -r typecheck` —
+  92, package Vitest suites for 204 Vitest tests total, and Playwright
+  64; `pnpm --filter @rootray/e2e test` — 64 passed;
+  `pnpm -r typecheck` —
   pass; `pnpm exec biome check .` — pass with 8 existing CSS specificity
   warnings; `cargo check -p rootray-core`, `cargo check -p
   rootray-desktop`, `cargo build -p rootray-desktop`, `pnpm -r build`,

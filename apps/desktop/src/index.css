@@ -36,7 +36,7 @@
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: #29313e transparent;
+  scrollbar-color: var(--rr-border) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -47,7 +47,7 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #29313e;
+  background: var(--rr-border);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
