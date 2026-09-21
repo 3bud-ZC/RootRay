@@ -42,11 +42,17 @@
 
 ### Workbench Density + Inspector Responsiveness Pass
 
-- **Blank editor hardening:** asynchronous CodeMirror/language view
-  creation now performs a final document reconciliation after the editor
-  view exists, so source updates during lazy setup cannot leave numbered
-  but empty content. Regression coverage asserts actual rendered source
-  text and the exact marked inspected line.
+- **Blank editor correction:** the previous acceptance was a false
+  positive because it checked the source path before lazy CodeMirror had
+  mounted; line-number/path presence was incorrectly treated as success.
+  The installed DOM diagnostic showed source reads and styles were valid,
+  but the editor could transiently expose an unready view. CodeMirror now
+  reconciles after view creation and keeps the editor surface hidden until
+  its document has non-whitespace source (empty files remain valid).
+- **Mandatory DOM regression:** installed acceptance waits for `.cm-content`,
+  requires non-whitespace `.cm-line` text, compares rendered text to disk,
+  verifies computed contrast/visibility, and verifies the exact marked line
+  for page.tsx, card.tsx, label.tsx, and login-form.tsx.
 - **Split priority:** Split preserves Preview + Code first. Preview and
   Code each retain a 360px practical minimum; Explorer and Inspector are
   secondary panes.
@@ -94,8 +100,8 @@
 
 ### Current development installer
 
-- `RootRay_0.3.0_x64-setup.exe` — **4,161,273 bytes**, SHA-256
-  `409CC4EA3E3A5C79F1C93F77285378FF5F85AFF5D2618F607C26EF9F2DE23F3D`
+- `RootRay_0.3.0_x64-setup.exe` — **4,163,517 bytes**, SHA-256
+  `2734168E08A2A1C1B39F7BF4B02B975376DF4BE88AEBB8F4AEECD623DC5C02AD`
 
 - **Product candidate source identity:** read the final product-code
   commit with `git rev-parse HEAD` after the candidate commit.
@@ -707,7 +713,7 @@ artwork only and no longer appears in any application-icon context.
 > below are historical milestones superseded by the current Vitest
 > **214** / Playwright **66**. The 3,271,995-byte installer
 > (`31dab9fe…`) and earlier binaries below are superseded by the
-> current 4,161,273-byte candidate (`409CC4EA…`) — see **Current
+> current 4,163,517-byte candidate (`2734168E…`) — see **Current
 > Development**.
 
 **Acceptance caveat (resolved):** the earlier rounds below ran against a

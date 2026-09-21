@@ -1191,6 +1191,10 @@ body {
   height: 100%;
 }
 
+.qe-cm-host[data-editor-ready="false"] .cm-editor {
+  visibility: hidden;
+}
+
 .qe-loading {
   padding: 20px;
 }

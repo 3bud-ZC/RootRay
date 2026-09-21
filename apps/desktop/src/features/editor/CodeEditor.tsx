@@ -158,6 +158,8 @@ export function CodeEditor({
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
+    // Do not expose line-number chrome until a real document is ready.
+    host.dataset.editorReady = "false";
     let disposed = false;
     let view: EditorView | null = null;
 
@@ -210,6 +212,8 @@ export function CodeEditor({
           changes: { from: 0, to: view.state.doc.length, insert: latestContent },
         });
       }
+      host.dataset.editorReady =
+        latestContent.trim() || view.state.doc.length === 0 ? "true" : "false";
       applyFocus(view, focusRef.current.line, focusRef.current.column);
     };
 
@@ -237,6 +241,10 @@ export function CodeEditor({
     view.dispatch({
       changes: { from: 0, to: current.length, insert: value },
     });
+    if (hostRef.current) {
+      hostRef.current.dataset.editorReady =
+        value.trim() || view.state.doc.length === 0 ? "true" : "false";
+    }
     if (focusRef.current.line !== null) {
       applyFocus(view, focusRef.current.line, focusRef.current.column);
     }

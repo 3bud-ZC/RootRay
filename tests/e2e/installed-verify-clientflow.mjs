@@ -62,6 +62,57 @@ function rootrayScratch() {
   return readdirSync(cache).filter((d) => d.startsWith("rootray-"));
 }
 
+async function assertRenderedCode(appPage, sourceText, expectedLine, relativePath) {
+  const diskText = sourceText.trim();
+  assert.ok(diskText.length > 0, `${relativePath} disk source is empty`);
+  assert.ok(expectedLine, `${relativePath} selected source line is missing`);
+
+  await until(
+    async () => {
+      const content = appPage.locator(".cm-content");
+      if ((await content.count()) === 0) return false;
+      const text = (await content.textContent()) ?? "";
+      const lines = appPage.locator(".cm-line");
+      if ((await lines.count()) === 0) return false;
+      const nonWhitespace = await lines.evaluateAll(
+        (els) => els.filter((line) => line.textContent?.trim()).length,
+      );
+      const marked = (await appPage.locator(".cm-rootray-marked-line").textContent()) ?? "";
+      return nonWhitespace > 0 && text.includes(expectedLine) && marked.includes(expectedLine);
+    },
+    `rendered CodeMirror source for ${relativePath}`,
+    30_000,
+  );
+
+  const diagnostics = await appPage.locator(".cm-content").evaluate((content) => {
+    const lines = [...document.querySelectorAll(".cm-line")];
+    const token = content.querySelector("span");
+    const style = (node) =>
+      node
+        ? ((s) => ({
+            color: s.color,
+            backgroundColor: s.backgroundColor,
+            opacity: s.opacity,
+            visibility: s.visibility,
+            display: s.display,
+            fontSize: s.fontSize,
+          }))(getComputedStyle(node))
+        : null;
+    return {
+      contentTextLength: content.textContent?.length ?? 0,
+      contentInnerText: content.innerText.slice(0, 160),
+      lineCount: lines.length,
+      nonWhitespaceLines: lines.filter((line) => line.textContent?.trim()).length,
+      markedText: document.querySelector(".cm-rootray-marked-line")?.textContent ?? "",
+      contentStyle: style(content),
+      lineStyle: style(lines[0]),
+      tokenStyle: style(token),
+    };
+  });
+  console.log(`  editor rendered ${relativePath}: ${JSON.stringify(diagnostics)}`);
+  return diagnostics;
+}
+
 async function inspectElement(appPage, devPage, cssSel, clickPos) {
   const el = devPage.locator(cssSel).first();
   await el.waitFor({ timeout: 20_000 });
@@ -121,6 +172,8 @@ async function inspectElement(appPage, devPage, cssSel, clickPos) {
   } catch {
     /* reveal never landed — asserted below */
   }
+
+  await assertRenderedCode(appPage, selectedSource, previewLine, selFile);
 
   await shot(appPage, SHOTS, `sel-${tag}-${Math.random().toString(36).slice(2, 7)}`);
 
