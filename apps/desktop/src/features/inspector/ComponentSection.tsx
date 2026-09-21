@@ -40,8 +40,7 @@ export function ComponentSection({ source }: { source: SourceLocation }) {
   const usedBy = summary?.usedBy ?? [];
 
   return (
-    <div className="intel-section">
-      <h4 className="section-title">Component</h4>
+    <div className="intel-section inspector-detail-body">
       <div className="intel-name">{name}</div>
       {failed && <p className="muted">Component analysis unavailable.</p>}
       {summary && !def && <p className="muted">Definition not resolved in analyzed sources.</p>}

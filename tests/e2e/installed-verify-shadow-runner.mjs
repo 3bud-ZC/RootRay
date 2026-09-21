@@ -126,7 +126,7 @@ async function main() {
     const selFile = (await appPage.locator(".sel-file").innerText()).trim();
     const selPos = (await appPage.locator(".sel-pos").innerText()).trim();
     assert.equal(selFile, "index.html");
-    assert.match(selPos, new RegExp(`Line ${CONTAINER_LINE} · Column \\d+`), selPos);
+    assert.match(selPos, new RegExp(`${CONTAINER_LINE}:\\d+`), selPos);
     await shot(appPage, SHOTS, "sr-04-authored-selection");
     console.log(`  ok  authored mapping: ${selFile} ${selPos} (authored line ${CONTAINER_LINE})`);
 

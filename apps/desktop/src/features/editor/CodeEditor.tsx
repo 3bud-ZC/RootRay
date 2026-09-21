@@ -176,8 +176,9 @@ export function CodeEditor({
           },
         },
       ]);
+      const initialContent = valueRef.current;
       const state = EditorState.create({
-        doc: valueRef.current,
+        doc: initialContent,
         extensions: [
           lineNumbers(),
           highlightActiveLineGutter(),
@@ -200,6 +201,15 @@ export function CodeEditor({
       });
       view = new EditorView({ state, parent: host });
       viewRef.current = view;
+      // The language extension resolves asynchronously. Reconcile once more
+      // after the view exists so a value change during that gap cannot leave
+      // a correctly numbered but empty document behind.
+      const latestContent = valueRef.current;
+      if (latestContent !== initialContent) {
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: latestContent },
+        });
+      }
       applyFocus(view, focusRef.current.line, focusRef.current.column);
     };
 

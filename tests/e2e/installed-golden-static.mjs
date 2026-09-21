@@ -126,7 +126,7 @@ async function main() {
     const selFile = (await appPage.locator(".sel-file").innerText()).trim();
     const selPos = (await appPage.locator(".sel-pos").innerText()).trim();
     assert.equal(selFile, "index.html");
-    assert.match(selPos, new RegExp(`Line ${CANVAS_LINE} · Column \\d+`), selPos);
+    assert.match(selPos, new RegExp(`${CANVAS_LINE}:\\d+`), selPos);
     // Canvas honesty: the section explains runtime-rendered pixels while the
     // canvas element itself still maps to its authored source.
     await appPage.locator(".canvas-section").waitFor({ timeout: 10_000 });

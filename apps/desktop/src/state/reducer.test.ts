@@ -187,7 +187,7 @@ describe("workbench layout", () => {
       patch: { explorerWidth: 40, inspectorWidth: 9000, splitRatio: 1.4 },
     });
     expect(s.layout.explorerWidth).toBe(160);
-    expect(s.layout.inspectorWidth).toBe(560);
+    expect(s.layout.inspectorWidth).toBe(420);
     expect(s.layout.splitRatio).toBe(0.9);
 
     s = uiReducer(s, {

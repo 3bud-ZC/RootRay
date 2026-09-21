@@ -24,6 +24,7 @@ import {
   INSPECTOR_MAX,
   INSPECTOR_MIN,
   LAYOUT_DEFAULTS,
+  responsivePaneHides,
 } from "../../state/layout";
 import { useStore } from "../../state/store";
 import { EditorPanel } from "../editor/EditorPanel";
@@ -103,13 +104,15 @@ export function ProjectView() {
   const [changing, setChanging] = useState(false);
   // Widths snapshotted at drag start — deltas apply to a stable base.
   const leftBase = useRef(220);
-  const rightBase = useRef(320);
+  const rightBase = useRef(350);
   const explorerBtnRef = useRef<HTMLButtonElement>(null);
   const inspectorBtnRef = useRef<HTMLButtonElement>(null);
   const outputBtnRef = useRef<HTMLButtonElement>(null);
   const leftPaneRef = useRef<HTMLElement>(null);
   const rightPaneRef = useRef<HTMLElement>(null);
+  const wbBodyRef = useRef<HTMLDivElement>(null);
 
+  const isLive = runningPhases.includes(runtime.phase as LivePhase);
   const focused = layout.focusMode !== "none";
   const explorerVis = layout.explorerVisible && !layout.autoExplorer && !focused;
   const inspectorVis = layout.inspectorVisible && !layout.autoInspector && !focused;
@@ -226,31 +229,52 @@ export function ProjectView() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  // Narrow windows prefer Preview+Code over squeezing every pane —
-  // auto-hides layer over (never overwrite) the stored user preference.
+  // Measure the actual workbench body instead of using viewport breakpoints.
+  // This keeps Split usable after Explorer/Inspector widths and splitters are
+  // accounted for, while auto-hides remain transient over user preferences.
+  const responsiveTab =
+    layout.focusMode === "preview"
+      ? "preview"
+      : layout.focusMode === "code"
+        ? "code"
+        : state.workspaceTab;
   useEffect(() => {
-    const mqExplorer = window.matchMedia("(max-width: 980px)");
-    const mqInspector = window.matchMedia("(max-width: 760px)");
-    const apply = () =>
-      dispatch({
-        type: "layout-auto",
-        explorer: mqExplorer.matches,
-        inspector: mqInspector.matches,
+    const body = wbBodyRef.current;
+    if (!body || !isLive) return;
+
+    const apply = () => {
+      const next = responsivePaneHides({
+        availableWidth: body.getBoundingClientRect().width,
+        split: responsiveTab === "split",
+        explorerVisible: layout.explorerVisible,
+        inspectorVisible: layout.inspectorVisible,
+        explorerWidth: layout.explorerWidth,
+        inspectorWidth: layout.inspectorWidth,
       });
-    apply();
-    mqExplorer.addEventListener("change", apply);
-    mqInspector.addEventListener("change", apply);
-    return () => {
-      mqExplorer.removeEventListener("change", apply);
-      mqInspector.removeEventListener("change", apply);
+      if (next.explorer !== layout.autoExplorer || next.inspector !== layout.autoInspector) {
+        dispatch({ type: "layout-auto", explorer: next.explorer, inspector: next.inspector });
+      }
     };
-  }, [dispatch]);
+
+    const observer = new ResizeObserver(apply);
+    observer.observe(body);
+    apply();
+    return () => observer.disconnect();
+  }, [
+    dispatch,
+    isLive,
+    layout.autoExplorer,
+    layout.autoInspector,
+    layout.explorerVisible,
+    layout.explorerWidth,
+    layout.inspectorVisible,
+    layout.inspectorWidth,
+    responsiveTab,
+  ]);
 
   if (!workspace) return null;
   const target = activeTarget(workspace);
   const caps = target?.capabilities ?? workspace.capabilities;
-
-  const isLive = runningPhases.includes(runtime.phase as LivePhase);
 
   const run = async () => {
     dispatch({ type: "notice", message: null });
@@ -503,7 +527,7 @@ export function ProjectView() {
 
         <RunnerPanel />
 
-        <div className="wb-body">
+        <div className="wb-body" ref={wbBodyRef}>
           {/* Hidden panes stay mounted — Explorer's expanded dirs and
               scroll position are component state, so display:none beats
               unmounting for preserving them. */}

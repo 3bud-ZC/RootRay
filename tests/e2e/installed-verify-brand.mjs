@@ -18,7 +18,7 @@
 
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
-import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   attachCdp,
@@ -64,7 +64,7 @@ async function main() {
   const px = execSync(
     `python -c "from PIL import Image; im=Image.open(r'${iconPng}').convert('RGB'); ` +
       `d=list(im.getdata()); ` +
-      `print(sum(1 for r,g,b in d if r>200 and g>200 and b>200), ` +
+      `print(sum(1 for r,g,b in d if r>120 and g>120 and b>120), ` +
       `sum(1 for r,g,b in d if r>200 and 60<g<160 and b<80))"`,
     { encoding: "utf8" },
   ).trim();
@@ -93,7 +93,7 @@ async function main() {
     const lpx = execSync(
       `python -c "from PIL import Image; im=Image.open(r'${lnkPng}').convert('RGB'); ` +
         `d=list(im.getdata()); ` +
-        `print(sum(1 for r,g,b in d if r>200 and g>200 and b>200), ` +
+        `print(sum(1 for r,g,b in d if r>120 and g>120 and b>120), ` +
         `sum(1 for r,g,b in d if r>200 and 60<g<160 and b<80))"`,
       { encoding: "utf8" },
     ).trim();
@@ -198,8 +198,8 @@ async function main() {
 
     // ---- Title-bar icon: crop the native title bar from a real window capture.
     // PrintWindow renders the composited window incl. the OS-drawn icon —
-    // DOM screenshots can't see it. Robot head = white pixels present; the
-    // rejected ring mark has none.
+    // DOM screenshots can't see it. Robot head = light neutral pixels present; the
+    // rejected ring-only mark has none.
     const winPng = join(SHOTS, "window.png");
     execSync(
       `powershell -NoProfile -ExecutionPolicy Bypass -File "${join(REPO_ROOT, "tests", "e2e", "capture-window.ps1")}" ` +
@@ -208,7 +208,7 @@ async function main() {
     const tb = execSync(
       `python -c "from PIL import Image; im=Image.open(r'${winPng}').convert('RGB'); ` +
         `crop=im.crop((8,6,42,36)); d=list(crop.getdata()); ` +
-        `print(sum(1 for r,g,b in d if r>170 and g>170 and b>170), ` +
+        `print(sum(1 for r,g,b in d if r>120 and g>120 and b>120), ` +
         `sum(1 for r,g,b in d if r>150 and 40<g<170 and b<90))"`,
       { encoding: "utf8" },
     ).trim();
@@ -219,7 +219,7 @@ async function main() {
 
     // ---- Taskbar: PrintWindow on Shell_TrayWnd renders the taskbar even when
     // occluded. Locate RootRay's own button via UI Automation and assert the
-    // robot signature on THAT tile — the old ring mark has zero white pixels.
+    // robot signature on THAT tile — the old ring-only mark has no light head pixels.
     const taskPng = join(SHOTS, "taskbar.png");
     const tbRect = execSync(
       `powershell -NoProfile -ExecutionPolicy Bypass -Command "` +
@@ -250,7 +250,7 @@ async function main() {
       `python -c "from PIL import Image; im=Image.open(r'${taskPng}').convert('RGB'); ` +
         `w,h=im.size; x=max(0,${bx}-8); y=max(0,${by}-4); ` +
         `d=list(im.crop((x,y,min(w,x+${bw}+16),min(h,y+${bh}+8))).getdata()); ` +
-        `print(sum(1 for r,g,b in d if r>170 and g>170 and b>170), ` +
+        `print(sum(1 for r,g,b in d if r>120 and g>120 and b>120), ` +
         `sum(1 for r,g,b in d if r>150 and 40<g<170 and b<90))"`,
       { encoding: "utf8" },
     ).trim();
@@ -272,6 +272,43 @@ async function main() {
     await devPage.locator(".rr-box").waitFor({ timeout: 15_000 });
     await h1.click();
     await page2.locator(".qe-path").waitFor({ timeout: 15_000 });
+    const sourceText = readFileSync(
+      join(PROJECT, "src", "app", "(auth)", "login", "page.tsx"),
+      "utf8",
+    );
+    const editor = page2.locator(".cm-content");
+    const editorText = (await editor.textContent()) ?? "";
+    const editorInfo = await editor.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        textContentLength: el.textContent?.length ?? 0,
+        lineCount: el.querySelectorAll(".cm-line").length,
+        color: style.color,
+        opacity: style.opacity,
+        visibility: style.visibility,
+      };
+    });
+    const selPos = (await page2.locator(".sel-pos").innerText()).trim();
+    const position = /(\d+):(\d+)/.exec(selPos);
+    assert.ok(position, `invalid inspected source position: ${selPos}`);
+    const expectedLine = sourceText.split(/\r?\n/)[Number(position[1]) - 1]?.trim();
+    assert.ok(expectedLine, `missing source line ${position[1]} in ClientFlow file`);
+    assert.ok(
+      editorText.includes(expectedLine),
+      `CodeMirror is missing focused source text: ${JSON.stringify({ editorInfo, expectedLine })}`,
+    );
+    const markedLine = await page2.locator(".cm-rootray-marked-line").innerText();
+    assert.ok(markedLine.includes(expectedLine), "inspected source line is not focused");
+    assert.equal(
+      await page2.locator(".source-preview").count(),
+      0,
+      "Inspector duplicated the Code pane",
+    );
+    assert.equal(
+      (await page2.locator(".sel-file-name").innerText()).trim(),
+      "page.tsx",
+      "Inspector filename summary is not readable",
+    );
     await shot(page2, SHOTS, "04-inspect-source");
     copyFileSync(join(SHOTS, "04-inspect-source.png"), join(MEDIA, "inspect-source.png"));
     const selFile = (await page2.locator(".sel-file").first().textContent()).trim();

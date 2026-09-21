@@ -360,6 +360,14 @@ test("workbench: inspect selection auto-reveals source beside the preview", asyn
   await expect(page.locator(".qeditor")).toBeVisible({ timeout: 10_000 });
   await expect(page.locator(".qe-path")).toContainText("src/App.tsx");
   await expect(page.getByRole("tab", { name: "Split" })).toHaveAttribute("aria-selected", "true");
+
+  // The editor acceptance is rendered source, not merely line-number chrome.
+  await emitInspector(page, selection("src/App.tsx", 1));
+  await expect(page.locator(".cm-content")).toContainText("// src/App.tsx");
+  await expect(page.locator(".cm-rootray-marked-line")).toContainText("// src/App.tsx");
+  await expect(page.locator(".source-preview")).toHaveCount(0);
+  await expect(page.locator(".sel-file-name")).toHaveText("App.tsx");
+  await expect(page.locator(".sel-pos")).toHaveText("1:5");
   // The preview host is still there — the reveal happens beside it.
   await expect(page.locator(".preview-host")).toBeVisible();
 });
@@ -529,6 +537,67 @@ test("workbench: Split ratio drags across a wide range via the divider", async (
   await divider.dblclick();
   const w3 = (await host.boundingBox())!.width;
   expect(Math.abs(w3 - w0)).toBeLessThanOrEqual(24);
+});
+
+test("workbench: Split prioritizes Preview and Code at constrained widths", async ({ page }) => {
+  await page.setViewportSize({ width: 1_000, height: 700 });
+  await goLive(page);
+  await page.getByRole("tab", { name: "Split" }).click();
+
+  // The user preference stays on, but the Inspector is transiently hidden
+  // so Preview + Code each retain their practical minimum width.
+  await expect(page.locator(".wb-right")).not.toBeVisible();
+  await expect(page.getByRole("button", { name: /toggle inspector/i })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect((await page.locator(".preview-host").boundingBox())!.width).toBeGreaterThanOrEqual(360);
+  expect((await page.locator(".wb-code").boundingBox())!.width).toBeGreaterThanOrEqual(360);
+
+  // Widening restores the requested Inspector state without changing it.
+  await page.setViewportSize({ width: 1_600, height: 900 });
+  await expect(page.locator(".wb-right")).toBeVisible();
+
+  // A deliberate user hide remains hidden after responsive state clears.
+  await page.getByRole("button", { name: /toggle inspector/i }).click();
+  await expect(page.locator(".wb-right")).not.toBeVisible();
+  await page.setViewportSize({ width: 1_000, height: 700 });
+  await expect(page.locator(".wb-right")).not.toBeVisible();
+});
+
+test("workbench: desktop sizes keep panes usable without global scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 1_920, height: 1_080 });
+  await goLive(page);
+  await page.getByRole("tab", { name: "Split" }).click();
+
+  for (const width of [1_920, 1_600, 1_366]) {
+    await page.setViewportSize({ width, height: 768 });
+    const metrics = await page.evaluate(() => {
+      const shell = document.querySelector<HTMLElement>(".app-shell");
+      const body = document.querySelector<HTMLElement>(".wb-body");
+      const toolbar = document.querySelector<HTMLElement>(".preview-toolbar");
+      const preview = document.querySelector<HTMLElement>(".preview-host");
+      const code = document.querySelector<HTMLElement>(".wb-code");
+      const inspector = document.querySelector<HTMLElement>(".wb-right");
+      return {
+        shellOverflow: shell ? shell.scrollHeight - shell.clientHeight : 0,
+        bodyOverflow: body ? body.scrollWidth - body.clientWidth : 0,
+        toolbarOverflow: toolbar ? toolbar.scrollWidth - toolbar.clientWidth : 0,
+        previewWidth: preview?.getBoundingClientRect().width ?? 0,
+        codeWidth: code?.getBoundingClientRect().width ?? 0,
+        inspectorWidth: inspector?.getBoundingClientRect().width ?? 0,
+        inspectorVisible: Boolean(inspector && getComputedStyle(inspector).display !== "none"),
+      };
+    });
+    expect(metrics.shellOverflow, `${width}px shell`).toBeLessThanOrEqual(1);
+    expect(metrics.bodyOverflow, `${width}px workbench`).toBeLessThanOrEqual(1);
+    expect(metrics.toolbarOverflow, `${width}px toolbar`).toBeLessThanOrEqual(1);
+    expect(metrics.previewWidth, `${width}px preview`).toBeGreaterThanOrEqual(360);
+    expect(metrics.codeWidth, `${width}px code`).toBeGreaterThanOrEqual(360);
+    if (metrics.inspectorVisible) {
+      expect(metrics.inspectorWidth, `${width}px inspector`).toBeGreaterThanOrEqual(300);
+    }
+  }
 });
 
 test("workbench: Preview Focus maximizes the surface and exits cleanly", async ({ page }) => {

@@ -64,9 +64,7 @@ export function StylesSection({
     void quickEdit(state, dispatch, path, { relativePath: path, line: 1, column: 1 });
 
   return (
-    <div className="intel-section">
-      <h4 className="section-title">Styles</h4>
-
+    <div className="intel-section inspector-detail-body">
       {styles.classes.length > 0 && (
         <div className="styles-group">
           <span className="muted styles-label">Classes</span>

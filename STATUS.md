@@ -7,8 +7,8 @@
 - **Published:** NO
 - **Tagged:** NO
 - **Stable release:** `v0.2.0` (see **Current Release** below)
-- **Latest functional state:** Official App Icon Correction complete
-  on top of the Full Product Identity + Inspect-to-Code Reliability Pass
+- **Latest functional state:** Workbench Density + Inspector Responsiveness
+  Pass complete on top of the Official App Icon Correction
 - **Inspect-to-Code:** PASS
 - **Blank editor:** FIXED
 - **Rapid selection stale-read protection:** PASS
@@ -18,23 +18,59 @@
 
 - Rust: **213 passed**
 - Ignored Rust: **1** — passes explicitly
-- Vitest: **211 passed**
-- Playwright: **64 passed**
+- Vitest: **214 passed**
+- Playwright: **66 passed**
 - TypeScript: **PASS**
 - Biome: **0 errors**
 - Installer smoke: **PASS**
 
 ### Latest visual correction checks
 
-- Desktop Vitest: **99 passed** (`pnpm --filter @rootray/desktop test`)
-- Focused Playwright brand/a11y: **64 passed**
-- Full Playwright regression: **64 passed**
+- Desktop Vitest: **102 passed** (`pnpm --filter @rootray/desktop test`)
+- Focused Workbench Playwright: **22 passed**
+- Full Playwright regression: **66 passed**
 - TypeScript: **PASS** (`pnpm -r typecheck`)
 - Biome: **0 errors** (8 existing CSS specificity warnings)
 - Desktop production build: **PASS**
+- Workspace build: **PASS**
 - Tauri/NSIS build: **PASS**
 - Installer smoke: **PASS**
-- Installed brand verification: **PASS**
+- Installed ClientFlow source/density verification: **PASS**
+
+### Workbench Density + Inspector Responsiveness Pass
+
+- **Blank editor hardening:** asynchronous CodeMirror/language view
+  creation now performs a final document reconciliation after the editor
+  view exists, so source updates during lazy setup cannot leave numbered
+  but empty content. Regression coverage asserts actual rendered source
+  text and the exact marked inspected line.
+- **Split priority:** Split preserves Preview + Code first. Preview and
+  Code each retain a 360px practical minimum; Explorer and Inspector are
+  secondary panes.
+- **Responsive pane collapse:** actual workbench width is measured with
+  `ResizeObserver`. Inspector auto-collapses before Explorer when Split
+  cannot satisfy Preview + Code minimums. Responsive hides are transient
+  and never overwrite persisted user visibility preferences; widening
+  restores the requested state.
+- **Inspector usability:** width is clamped to 300–420px with a 350px
+  default. Source metadata uses readable filename, ellipsized path,
+  compact confidence badge, and one-line `line:column` coordinates.
+- **Inspector deduplication:** the large read-only source snippet was
+  removed from Inspector. Source, Component, and Styles & Box Model are
+  collapsible metadata sections; the Code pane owns source rendering.
+- **Output/Explorer behavior:** Output remains collapsed by default,
+  Explorer state remains preserved and independently collapsible, and the
+  shell/panes retain internal scrolling without global window scroll.
+- **Screen-size verification:** responsive Playwright checks pass at
+  **1920×1080**, **1600×900**, and **1366×768**; no pane or toolbar
+  overflow was observed.
+- **ClientFlow-CRM installed acceptance:** fresh NSIS Run → embedded
+  Preview → Inspect → source reveal with actual CodeMirror text and exact
+  line focus → Inspector hide/restore → Explorer collapse → Output
+  resize/collapse → Preview Focus → Restart/Stop all passed. The native
+  Change Project picker continuation remains environment-limited by the
+  machine's `git hub`/`GitHub` path alias (`NO_ANCHOR`), not a product
+  assertion failure.
 
 ### Official App Icon Correction
 
@@ -55,8 +91,8 @@
 
 ### Current development installer
 
-- `RootRay_0.3.0_x64-setup.exe` — **4,160,518 bytes**, SHA-256
-  `3651CA8FDD758618A2F162524A0F324B2E23BA12D59B1A89633F03B430F96A3D`
+- `RootRay_0.3.0_x64-setup.exe` — **4,161,273 bytes**, SHA-256
+  `409CC4EA3E3A5C79F1C93F77285378FF5F85AFF5D2618F607C26EF9F2DE23F3D`
 
 - **Product candidate source identity:** read the final product-code
   commit with `git rev-parse HEAD` after the candidate commit.
@@ -666,9 +702,9 @@ artwork only and no longer appears in any application-icon context.
 
 > **Superseded counts/artifacts:** Vitest **191** and Playwright **62**
 > below are historical milestones superseded by the current Vitest
-> **211** / Playwright **64**. The 3,271,995-byte installer
+> **214** / Playwright **66**. The 3,271,995-byte installer
 > (`31dab9fe…`) and earlier binaries below are superseded by the
-> current 4,160,518-byte candidate (`3651CA8F…`) — see **Current
+> current 4,161,273-byte candidate (`409CC4EA…`) — see **Current
 > Development**.
 
 **Acceptance caveat (resolved):** the earlier rounds below ran against a

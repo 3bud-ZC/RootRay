@@ -1,13 +1,12 @@
-import type { DetectedLauncher, InspectorPhase, SourcePreview } from "@rootray/shared";
+import type { DetectedLauncher, InspectorPhase } from "@rootray/shared";
 import { errorMessage } from "@rootray/shared";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CloseIcon } from "../../components/icons";
 import {
   clearInspectorSelection,
   detectEditors,
   getSettings,
   openSourceLocation,
-  readSourcePreview,
   setInspection,
   updateSettings,
 } from "../../lib/ipc";
@@ -33,12 +32,9 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
   const { state, dispatch } = useStore();
   const inspector = state.inspector;
   const sel = inspector.lastSelection;
-  const [preview, setPreview] = useState<SourcePreview | null>(null);
-  const [previewErr, setPreviewErr] = useState<string | null>(null);
   const [launchers, setLaunchers] = useState<DetectedLauncher[]>([]);
   const [editorId, setEditorId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const reqId = useRef(0);
 
   const connected = inspector.phase === "connected" || inspector.phase === "inspecting";
 
@@ -52,30 +48,6 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
       })
       .catch(() => {});
   }, []);
-
-  // Fetch the read-only preview whenever the selection changes. A
-  // runtime-created element has no authored source — nothing to preview.
-  useEffect(() => {
-    const id = ++reqId.current;
-    if (!sel?.source) {
-      setPreview(null);
-      setPreviewErr(null);
-      return;
-    }
-    readSourcePreview(sel.source.relativePath, sel.source.line)
-      .then((p) => {
-        if (reqId.current === id) {
-          setPreview(p);
-          setPreviewErr(null);
-        }
-      })
-      .catch((e) => {
-        if (reqId.current === id) {
-          setPreview(null);
-          setPreviewErr(errorMessage(e));
-        }
-      });
-  }, [sel]);
 
   const toggleInspect = async () => {
     setBusy(true);
@@ -123,7 +95,7 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
         .catch(() => null);
     }
     try {
-      await navigator.clipboard.writeText(buildContextBlock(sel, preview, usedBy));
+      await navigator.clipboard.writeText(buildContextBlock(sel, null, usedBy));
     } catch {
       dispatch({ type: "notice", message: "Copy failed" });
     }
@@ -211,23 +183,33 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
             )}
           </div>
           {sel.source ? (
-            <div className="selection-loc">
-              <div className="sel-loc-row">
-                <span className="sel-file">{sel.source.relativePath}</span>
-                <span className={`badge-confidence badge-${sel.source.confidence ?? "exact"}`}>
-                  {sel.source.confidence === "exact"
-                    ? "EXACT SOURCE"
-                    : sel.source.confidence === "approximate"
-                      ? "APPROXIMATE"
-                      : sel.source.confidence === "component"
-                        ? "COMPONENT"
-                        : "SOURCE"}
-                </span>
+            <details className="inspector-disclosure" open>
+              <summary>Source</summary>
+              <div className="selection-loc">
+                <div className="sel-file-stack">
+                  <strong className="sel-file-name">
+                    {sel.source.relativePath.split("/").pop() ?? sel.source.relativePath}
+                  </strong>
+                  <span className="sel-file" title={sel.source.relativePath}>
+                    {sel.source.relativePath}
+                  </span>
+                </div>
+                <div className="sel-loc-meta">
+                  <span className={`badge-confidence badge-${sel.source.confidence ?? "exact"}`}>
+                    {sel.source.confidence === "exact"
+                      ? "EXACT SOURCE"
+                      : sel.source.confidence === "approximate"
+                        ? "APPROXIMATE"
+                        : sel.source.confidence === "component"
+                          ? "COMPONENT"
+                          : "SOURCE"}
+                  </span>
+                  <span className="sel-pos">
+                    {sel.source.line}:{sel.source.column}
+                  </span>
+                </div>
               </div>
-              <span className="sel-pos">
-                Line {sel.source.line} · Column {sel.source.column}
-              </span>
-            </div>
+            </details>
           ) : (
             <div className="selection-loc">
               <div className="sel-loc-row">
@@ -241,23 +223,18 @@ export function InspectorPanel({ onSearch }: { onSearch: (query: string) => void
 
           {sel.element.tagName === "canvas" && <CanvasSection hasSource={Boolean(sel.source)} />}
 
-          {preview && (
-            <pre className="source-preview">
-              {preview.lines.map((l) => (
-                <div
-                  key={l.n}
-                  className={`src-line ${l.n === preview.selectedLine ? "selected" : ""}`}
-                >
-                  <span className="src-n">{l.n}</span>
-                  <span className="src-t">{l.text}</span>
-                </div>
-              ))}
-            </pre>
+          {sel.source && (
+            <details className="inspector-disclosure" open>
+              <summary>Component</summary>
+              <ComponentSection source={sel.source} />
+            </details>
           )}
-          {previewErr && <p className="muted">Preview unavailable: {previewErr}</p>}
-
-          {sel.source && <ComponentSection source={sel.source} />}
-          {sel.styles && <StylesSection styles={sel.styles} onSearch={onSearch} />}
+          {sel.styles && (
+            <details className="inspector-disclosure" open>
+              <summary>Styles &amp; Box Model</summary>
+              <StylesSection styles={sel.styles} onSearch={onSearch} />
+            </details>
+          )}
 
           <div className="selection-actions">
             {launchers.length > 1 && (

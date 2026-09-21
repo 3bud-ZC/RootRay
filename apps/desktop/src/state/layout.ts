@@ -28,22 +28,57 @@ export interface WorkbenchLayout {
 
 export const EXPLORER_MIN = 160;
 export const EXPLORER_MAX = 480;
-export const INSPECTOR_MIN = 220;
-export const INSPECTOR_MAX = 560;
+export const INSPECTOR_MIN = 300;
+export const INSPECTOR_MAX = 420;
 export const OUTPUT_MIN = 80;
 export const OUTPUT_MAX = 480;
 export const SPLIT_MIN = 0.1;
 export const SPLIT_MAX = 0.9;
 /** Minimum pixel floor for each half of the split row (drag clamp). */
-export const PREVIEW_MIN_PX = 200;
-export const CODE_MIN_PX = 220;
+export const PREVIEW_MIN_PX = 360;
+export const CODE_MIN_PX = 360;
+export const PANE_SPLITTER_PX = 5;
+
+export interface ResponsivePaneInput {
+  availableWidth: number;
+  split: boolean;
+  explorerVisible: boolean;
+  inspectorVisible: boolean;
+  explorerWidth: number;
+  inspectorWidth: number;
+}
+
+/**
+ * Compute transient responsive hides without changing persisted visibility.
+ * Inspector is sacrificed before Explorer so Split keeps Preview + Code usable.
+ */
+export function responsivePaneHides(input: ResponsivePaneInput): {
+  explorer: boolean;
+  inspector: boolean;
+} {
+  if (!input.split) return { explorer: false, inspector: false };
+  const explorerSpace = input.explorerVisible ? input.explorerWidth + PANE_SPLITTER_PX : 0;
+  const inspectorSpace = input.inspectorVisible ? input.inspectorWidth + PANE_SPLITTER_PX : 0;
+  const centerMin = PREVIEW_MIN_PX + CODE_MIN_PX;
+  const withAllPanes = input.availableWidth - explorerSpace - inspectorSpace;
+  if (withAllPanes >= centerMin) return { explorer: false, inspector: false };
+
+  const withoutInspector = input.availableWidth - explorerSpace;
+  if (withoutInspector >= centerMin) {
+    return { explorer: false, inspector: input.inspectorVisible };
+  }
+  return {
+    explorer: input.explorerVisible,
+    inspector: input.inspectorVisible,
+  };
+}
 
 export const LAYOUT_DEFAULTS: WorkbenchLayout = {
   explorerVisible: true,
   inspectorVisible: true,
   outputVisible: false,
   explorerWidth: 220,
-  inspectorWidth: 320,
+  inspectorWidth: 350,
   outputHeight: 170,
   splitRatio: 0.55,
   focusMode: "none",

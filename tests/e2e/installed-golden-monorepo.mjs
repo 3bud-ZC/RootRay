@@ -169,11 +169,11 @@ async function main() {
       .innerText()
       .then((s) => s.trim())
       .catch(() => null);
-    const previewLine = await appPage
-      .locator(".src-line.selected .src-t")
-      .innerText()
-      .then((s) => s.trim())
-      .catch(() => null);
+    const sourceText = readFileSync(join(WORKSPACE, selFile), "utf8");
+    const position = /(\d+):(\d+)/.exec(selPos);
+    const previewLine = position
+      ? (sourceText.split(/\r?\n/)[Number(position[1]) - 1]?.trim() ?? null)
+      : null;
     await shot(appPage, SHOTS, "04-selected");
 
     // THE acceptance condition: workspace-relative, path-safe identity.

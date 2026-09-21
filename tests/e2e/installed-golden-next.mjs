@@ -127,7 +127,7 @@ async function main() {
     const selFile = (await appPage.locator(".sel-file").innerText()).trim();
     const selPos = (await appPage.locator(".sel-pos").innerText()).trim();
     assert.equal(selFile, "components/ActionButton.tsx");
-    assert.match(selPos, /Line \d+ · Column \d+/, selPos);
+    assert.match(selPos, /\d+:\d+/, selPos);
     const selComponent = (await appPage.locator(".sel-component").innerText()).trim();
     assert.equal(selComponent, "ActionButton");
     assert.match(await button.innerText(), /Count is 0/); // click suppressed

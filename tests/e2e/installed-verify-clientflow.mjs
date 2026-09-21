@@ -91,13 +91,13 @@ async function inspectElement(appPage, devPage, cssSel, clickPos) {
     .innerText()
     .then((s) => s.trim())
     .catch(() => null);
-  // RootRay's own source preview — the real file lines around the reported
-  // location; the selected line is where the mapping claims the JSX lives.
-  const previewLine = await appPage
-    .locator(".src-line.selected .src-t")
-    .innerText()
-    .then((s) => s.trim())
-    .catch(() => null);
+  // Read the actual selected source file from disk; the Inspector no longer
+  // duplicates a code preview because the Code pane owns source rendering.
+  const selectedSource = readFileSync(join(PROJECT, selFile), "utf8");
+  const selectedLineMatch = /(\d+):(\d+)/.exec(selPos);
+  const previewLine = selectedLineMatch
+    ? (selectedSource.split(/\r?\n/)[Number(selectedLineMatch[1]) - 1]?.trim() ?? null)
+    : null;
   const hasStyles = await appPage
     .locator(".boxmodel")
     .isVisible()
@@ -138,14 +138,14 @@ async function inspectElement(appPage, devPage, cssSel, clickPos) {
   assert.ok(existsSync(join(PROJECT, selFile)), `source file missing: ${selFile}`);
   // The click may land on a nested element (inspector resolves innermost) —
   // a different file than the locator's own stamp is then *correct*, not a
-  // conflict. Record it; the preview-line check below proves the location.
+  // conflict. Record it; the actual-source line check below proves the location.
   const nested = attrFile && attrFile !== selFile;
   // Auto-reveal must have opened exactly the file the selection reported.
   assert.equal(revealed, selFile, `auto-reveal opened ${revealed}, expected ${selFile}`);
 
   // The reported line must be real source containing a JSX opening tag for
   // the rendered element (or the element's stamped line, when attrs exist).
-  const m = /Line (\d+) · Column (\d+)/.exec(selPos);
+  const m = /(\d+):(\d+)/.exec(selPos);
   assert.ok(m, `bad position text: ${selPos}`);
   const line = Number(m[1]);
   const col = Number(m[2]);
