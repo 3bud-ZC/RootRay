@@ -35,7 +35,10 @@
 - Workspace build: **PASS**
 - Tauri/NSIS build: **PASS**
 - Installer smoke: **PASS**
-- Installed ClientFlow source/density verification: **PASS**
+- Installed ClientFlow source/density verification: **PASS** — 4 authored
+  selections (page, Card, Label, LoginForm) rendered actual CodeMirror
+  source with exact line focus; responsive-hidden Inspector metadata
+  remained attached and usable when restored.
 
 ### Workbench Density + Inspector Responsiveness Pass
 

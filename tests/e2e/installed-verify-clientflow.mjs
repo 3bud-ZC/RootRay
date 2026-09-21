@@ -77,7 +77,7 @@ async function inspectElement(appPage, devPage, cssSel, clickPos) {
   // behavior. To select a container's own JSX site, aim at its padding.
   await el.click(clickPos ? { position: clickPos } : undefined);
 
-  await appPage.locator(".selection").waitFor({ timeout: 15_000 });
+  await appPage.locator(".selection").waitFor({ state: "attached", timeout: 15_000 });
   const selTag = (await appPage.locator(".sel-tag").innerText()).trim();
   const selFile = (await appPage.locator(".sel-file").innerText()).trim();
   const selPos = (await appPage.locator(".sel-pos").innerText()).trim();
@@ -98,15 +98,8 @@ async function inspectElement(appPage, devPage, cssSel, clickPos) {
   const previewLine = selectedLineMatch
     ? (selectedSource.split(/\r?\n/)[Number(selectedLineMatch[1]) - 1]?.trim() ?? null)
     : null;
-  const hasStyles = await appPage
-    .locator(".boxmodel")
-    .isVisible()
-    .catch(() => false);
-  const hasComponent = await appPage
-    .locator(".intel-section")
-    .first()
-    .isVisible()
-    .catch(() => false);
+  const hasStyles = (await appPage.locator(".boxmodel").count()) > 0;
+  const hasComponent = (await appPage.locator(".intel-section").count()) > 0;
   // Click-to-source: the auto-reveal opens the mapped file in the
   // workbench. The open is async — .qe-path can briefly hold the previous
   // file, so poll for the reported path rather than reading once.
