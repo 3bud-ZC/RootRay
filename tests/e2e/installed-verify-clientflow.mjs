@@ -297,11 +297,23 @@ async function main() {
       { css: "h1", pos: null }, // page.tsx — heading ("ClientFlow" / company name)
       // Card's own box: the py-4 top padding strip above CardHeader.
       { css: '[data-slot="card"]', pos: { x: 60, y: 6 } }, // card.tsx
+      {
+        css: 'label[for="email"]',
+        pos: null,
+        expectedFile: "src/components/ui/label.tsx",
+        expectedComponent: "Label",
+      },
       { css: "form", pos: { x: 4, y: 2 } }, // login-form.tsx — form's own edge
-      { css: "input#email", pos: null }, // ui/input.tsx — Input primitive
+      { css: "input#email", pos: null }, // ui/input.tsx — Input primitive when mapped
     ];
     for (const t of targets) {
       const r = await inspectElement(appPage, devPage, t.css, t.pos);
+      if (t.expectedFile) {
+        assert.equal(r.file, t.expectedFile, `${t.css} resolved to the wrong source`);
+        assert.equal(r.component, t.expectedComponent, `${t.css} resolved to the wrong component`);
+        await shot(appPage, SHOTS, "exact-label-source");
+        console.log(`  ok  explicit Label target: ${t.css} → ${r.file}:${r.line}:${r.col}`);
+      }
       results.push(r);
       console.log(
         `  ok  <${r.tag}> → ${r.file}:${r.line}:${r.col}` +

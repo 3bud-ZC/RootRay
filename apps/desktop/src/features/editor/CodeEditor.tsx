@@ -24,7 +24,7 @@ import {
   lineNumbers,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { languageExtension } from "./language";
 
 /** Set / clear the "this is where the inspected element lives" line. */
@@ -141,6 +141,8 @@ export function CodeEditor({
 }: CodeEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const [ready, setReady] = useState(false);
+  const [emptyFile, setEmptyFile] = useState(false);
   // Latest callbacks — the view is created once and must not capture
   // stale props.
   const cbRef = useRef({ onChange, onSave });
@@ -160,6 +162,8 @@ export function CodeEditor({
     if (!host) return;
     // Do not expose line-number chrome until a real document is ready.
     host.dataset.editorReady = "false";
+    setReady(false);
+    setEmptyFile(false);
     let disposed = false;
     let view: EditorView | null = null;
 
@@ -212,8 +216,10 @@ export function CodeEditor({
           changes: { from: 0, to: view.state.doc.length, insert: latestContent },
         });
       }
-      host.dataset.editorReady =
-        latestContent.trim() || view.state.doc.length === 0 ? "true" : "false";
+      const hasDocument = Boolean(latestContent.trim()) || view.state.doc.length === 0;
+      host.dataset.editorReady = hasDocument ? "true" : "false";
+      setEmptyFile(hasDocument && view.state.doc.length === 0);
+      setReady(hasDocument);
       applyFocus(view, focusRef.current.line, focusRef.current.column);
     };
 
@@ -241,10 +247,12 @@ export function CodeEditor({
     view.dispatch({
       changes: { from: 0, to: current.length, insert: value },
     });
+    const hasDocument = Boolean(value.trim()) || view.state.doc.length === 0;
     if (hostRef.current) {
-      hostRef.current.dataset.editorReady =
-        value.trim() || view.state.doc.length === 0 ? "true" : "false";
+      hostRef.current.dataset.editorReady = hasDocument ? "true" : "false";
     }
+    setEmptyFile(hasDocument && view.state.doc.length === 0);
+    setReady(hasDocument);
     if (focusRef.current.line !== null) {
       applyFocus(view, focusRef.current.line, focusRef.current.column);
     }
@@ -257,7 +265,14 @@ export function CodeEditor({
     if (view) applyFocus(view, focusLine, focusColumn);
   }, [focusLine, focusColumn]);
 
-  return <div className="qe-cm-host" ref={hostRef} />;
+  return (
+    <div className="qe-cm-shell">
+      <div className="qe-cm-host" ref={hostRef} />
+      <div className={`qe-cm-state${ready ? " is-ready" : ""}`}>
+        {emptyFile ? "Empty file" : "Loading source…"}
+      </div>
+    </div>
+  );
 }
 
 function applyFocus(view: EditorView, line: number | null, column: number | null) {

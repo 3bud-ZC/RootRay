@@ -19,7 +19,7 @@
 - Rust: **213 passed**
 - Ignored Rust: **1** — passes explicitly
 - Vitest: **214 passed**
-- Playwright: **66 passed**
+- Playwright: **67 passed**
 - TypeScript: **PASS**
 - Biome: **0 errors**
 - Installer smoke: **PASS**
@@ -27,18 +27,19 @@
 ### Latest visual correction checks
 
 - Desktop Vitest: **102 passed** (`pnpm --filter @rootray/desktop test`)
-- Focused Workbench Playwright: **22 passed**
-- Full Playwright regression: **66 passed**
+- Focused Workbench Playwright: **23 passed**
+- Full Playwright regression: **67 passed**
 - TypeScript: **PASS** (`pnpm -r typecheck`)
 - Biome: **0 errors** (8 existing CSS specificity warnings)
 - Desktop production build: **PASS**
 - Workspace build: **PASS**
 - Tauri/NSIS build: **PASS**
 - Installer smoke: **PASS**
-- Installed ClientFlow source/density verification: **PASS** — 4 authored
-  selections (page, Card, Label, LoginForm) rendered actual CodeMirror
-  source with exact line focus; responsive-hidden Inspector metadata
-  remained attached and usable when restored.
+- Installed ClientFlow source/density verification: **PASS** — explicit
+  `label[for="email"]` resolved to `src/components/ui/label.tsx:9:5`
+  with component `Label`; 5 selections (page, Card, Label, form, input)
+  rendered actual CodeMirror source with exact line focus and responsive-
+  hidden Inspector metadata remained attached and usable when restored.
 
 ### Workbench Density + Inspector Responsiveness Pass
 
@@ -53,6 +54,9 @@
   requires non-whitespace `.cm-line` text, compares rendered text to disk,
   verifies computed contrast/visibility, and verifies the exact marked line
   for page.tsx, card.tsx, label.tsx, and login-form.tsx.
+- **Slow mount behavior:** the lazy editor regression shows `Loading
+  source…` before CodeMirror readiness and never exposes numbered blank
+  code; source text then appears and the loading state disappears.
 - **Split priority:** Split preserves Preview + Code first. Preview and
   Code each retain a 360px practical minimum; Explorer and Inspector are
   secondary panes.
@@ -100,14 +104,14 @@
 
 ### Current development installer
 
-- `RootRay_0.3.0_x64-setup.exe` — **4,163,517 bytes**, SHA-256
-  `2734168E08A2A1C1B39F7BF4B02B975376DF4BE88AEBB8F4AEECD623DC5C02AD`
+- `RootRay_0.3.0_x64-setup.exe` — **4,162,162 bytes**, SHA-256
+  `40B6C2F909EC9FC16502B21DE84E94B00996325BDE8CF9A41BBBCB7D686D2A97`
 
 - **Product candidate source identity:** read the final product-code
   commit with `git rev-parse HEAD` after the candidate commit.
 - **Product candidate CI:** latest pushed candidate CI is reported with
   the final acceptance result for that exact SHA.
-- **Last Updated:** 2026-09-20
+- **Last Updated:** 2026-09-21
 
 > STATUS.md does not hard-code the mutable repository tip. Read the
 > product candidate source SHA and current repository tip from Git;
@@ -713,7 +717,7 @@ artwork only and no longer appears in any application-icon context.
 > below are historical milestones superseded by the current Vitest
 > **214** / Playwright **66**. The 3,271,995-byte installer
 > (`31dab9fe…`) and earlier binaries below are superseded by the
-> current 4,163,517-byte candidate (`2734168E…`) — see **Current
+> current 4,162,162-byte candidate (`40B6C2F9…`) — see **Current
 > Development**.
 
 **Acceptance caveat (resolved):** the earlier rounds below ran against a

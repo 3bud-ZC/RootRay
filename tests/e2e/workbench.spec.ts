@@ -372,6 +372,26 @@ test("workbench: inspect selection auto-reveals source beside the preview", asyn
   await expect(page.locator(".preview-host")).toBeVisible();
 });
 
+test("workbench: slow editor mount shows loading, never numbered blank code", async ({ page }) => {
+  let delayed = false;
+  await page.route(/\/assets\/CodeEditor-.*\.js$/, async (route) => {
+    delayed = true;
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await route.continue();
+  });
+  await goLive(page);
+  await emitInspector(page, selection("src/App.tsx", 1));
+  await expect.poll(() => delayed).toBe(true);
+  await expect(page.locator(".qe-loading")).toContainText("Loading source", {
+    timeout: 5_000,
+  });
+  await expect(page.locator(".cm-content")).toContainText("// src/App.tsx", {
+    timeout: 15_000,
+  });
+  await expect(page.locator(".cm-line").filter({ hasText: "// src/App.tsx" })).toBeVisible();
+  await expect(page.locator(".qe-cm-state")).not.toBeVisible();
+});
+
 test("workbench: rapid selections settle on the newest source", async ({ page }) => {
   await goLive(page);
   // Two selections land back-to-back — the second must win the editor.

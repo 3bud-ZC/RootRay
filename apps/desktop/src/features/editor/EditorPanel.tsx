@@ -154,9 +154,9 @@ export function EditorPanel() {
         ) : state.conflictDiskContent !== null && inConflict ? (
           <DiffView oldText={ed.currentContent} newText={state.conflictDiskContent} mineFirst />
         ) : ed.status === "loading" ? (
-          <div className="qe-loading muted">Loading editor…</div>
+          <div className="qe-loading muted">Loading source…</div>
         ) : (
-          <Suspense fallback={<div className="qe-loading muted">Loading editor…</div>}>
+          <Suspense fallback={<div className="qe-loading muted">Loading source…</div>}>
             <LazyCodeEditor
               key={ed.relativePath}
               value={ed.currentContent}
